@@ -40,6 +40,13 @@ public sealed class Ptq1Lut
     // into the cache costs a large share of the chunk's own work.
     private const int MinChunkRows = 128;
 
+    // A chunk's weights, at most. A chunk is swept once per block, so its rows have to stay in
+    // the cache from one sweep to the next. Measured on the P30, 2026-10-31: the 2B's output
+    // head (248,320 rows) went out in chunks of 20,693 rows - 9 MB, read back from memory on
+    // each of its 16 sweeps - and cost 1.09 s a token, 3.2 times its share of the weights.
+    // The model's other products came in chunks of about 230 KB and kept to their share.
+    private const int MaxChunkBytes = 256 * 1024;
+
     private readonly float[] _table;
     private readonly float[] _y;
     private readonly float[] _sums;
@@ -117,10 +124,14 @@ public sealed class Ptq1Lut
     public unsafe void MatVec(ReadOnlySpan<byte> matrix, ReadOnlySpan<float> blockScales, Span<float> output)
     {
         CheckMatrix(matrix, blockScales, output.Length);
+        var chunk = Math.Max(MinChunkRows, MaxChunkBytes / (Blocks * Ptq1.BlockBytes));
         fixed (byte* m = matrix)
         fixed (float* dw = blockScales)
         fixed (float* o = output)
-            MatVecRows(m, dw, o, 0, output.Length);
+        {
+            for (var first = 0; first < output.Length; first += chunk)
+                MatVecRows(m, dw, o, first, Math.Min(output.Length, first + chunk));
+        }
     }
 
     /// <summary>
@@ -136,7 +147,8 @@ public sealed class Ptq1Lut
         fixed (float* dw = blockScales)
         fixed (float* o = output)
         {
-            _rows.Set(m, dw, o, output.Length, Math.Max(MinChunkRows, output.Length / (pool.Threads * 4)));
+            var cached = MaxChunkBytes / (Blocks * Ptq1.BlockBytes);
+            _rows.Set(m, dw, o, output.Length, Math.Max(MinChunkRows, Math.Min(output.Length / (pool.Threads * 4), cached)));
             try
             {
                 pool.Run(_rows);
