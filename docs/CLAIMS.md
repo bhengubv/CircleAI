@@ -197,6 +197,19 @@ against the pinned llama.cpp fork the repo already ships.
 | It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
 | It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
 
+## Balance and readiness
+
+What the brain does with the phone's heat and battery, and what it says while it gets ready.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A start says when it is warming up, not only that it is loading | tested | A_start_says_it_is_loading_and_then_that_it_is_warming |
+| The warming step reaches the brain's status and becomes "Nearly ready to answer." | tested | The_in_process_brain_carries_the_step_into_its_status_and_readiness_into_words |
+| A nearly flat battery steps the power budget down without the caller saying so | tested | A_nearly_flat_battery_steps_the_budget_down_without_the_caller_saying_so |
+| A hot device steps a high power budget down | tested | A_hot_device_steps_a_high_budget_down |
+| MNN's own 4-bit working memory costs the 0.8B its answers, so an MNN brain loads with it off | measured | desktop win-x64 MNN bridge, 2026-11-01 (0 of 6 answers alike at 4 bits; off, 6 of 6 twice) |
+| The phone reads its heat and battery while it answers | unproven | built 2026-11-01; not yet run on the P30 |
+
 ## Other databases
 
 | Claim | Status | Evidence |
