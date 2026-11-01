@@ -213,8 +213,18 @@ public static class Program
                 modelSelector:    DeviceAwareModelSelector.Preferring(catalogue, registry),
                 modelRegistry:    registry);
 
+            // THE MACHINE'S HEAT, FOR EVERY ANSWER (OPEN-GAPS A11, A13): the thermal service was
+            // written and never built. A PC's battery is not read here; heat is enough to step a
+            // High budget down.
+            using var thermal = new ThermalThrottleService(
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<ThermalThrottleService>.Instance);
+            thermal.StateChanged += (_, state) => say($"thermal state {state}");
+            thermal.StartMonitoring();
+            PowerBudgetPolicy.Conditions = () => (null, thermal.ShouldPauseInference);
+
             // THE SAME REQUEST PATH AS THE PHONE: durable questions, one worker, readiness.
             var readiness = new CircleAI.Assistant.Lifecycle.ReadinessTracker(Path.Combine(data, "readiness.json"));
+            Action<CircleAI.Assistant.Lifecycle.LoadStep>? reportStep = null; // the brain's, once it exists
             await using var brain = new InProcessBrainWorker(async ct =>
             {
                 // IT WAITS FOR THE CHOICE RATHER THAN DENYING ONE. A question can now
@@ -231,9 +241,11 @@ public static class Program
                 // than assumed, and the property is the only thing the choice has to
                 // reach.
                 options.ModelId = pick;
+                options.LoadStepChanged = step => reportStep?.Invoke(step);
                 await service.StartAsync(ct).ConfigureAwait(false);
                 return new InProcessBrain(service, pick!);
             }, log: say);
+            reportStep = brain.ReportStep; // "Warming" while the first prefill runs (OPEN-GAPS A14)
 
             // A MODEL THAT LOADED HERE IS PROVEN HERE - the only kind housekeeping lets
             // replace another (rule 5), so without this line nothing is ever reclaimed.
@@ -247,7 +259,7 @@ public static class Program
                 CircleAI.Assistant.Lifecycle.PauseReason.None,
                 s.LastFailure is { } f ? CircleAI.Assistant.Lifecycle.ReadinessSentences.For(f.Kind)
                                        : CircleAI.Assistant.Lifecycle.ReadinessSentences.For(
-                                             CircleAI.Assistant.Lifecycle.ComponentState.Of("brain", s.Phase, "", s.Since)),
+                                             CircleAI.Assistant.Lifecycle.ComponentState.Of("brain", s.Phase, "", s.Since) with { Step = s.Step }),
                 s.ModelId, s.Since, null, s.RetryAfter));
             // AND THE FIRST STATUS SAYS "CHOOSING", WHICH IS WHAT IS HAPPENING. This
             // reported Installed or NoModel from a choice already made; the choice is

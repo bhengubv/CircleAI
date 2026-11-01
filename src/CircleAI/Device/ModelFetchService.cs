@@ -57,6 +57,17 @@ public sealed class ModelFetchService : Service
     /// <summary>Where the models live. Set before <see cref="Start"/>.</summary>
     public static string? StorageDirectory { get; set; }
 
+    /// <summary>
+    /// This device's catalogue verdicts, read when a plan is made - so the fetch plans with the
+    /// owner's refusals and this phone's verdicts, as setup does (OPEN-GAPS A′8). Set at start-up.
+    /// </summary>
+    public static Func<CircleAI.Core.Models.IModelCatalog?>? Catalogue { get; set; }
+
+    // The plan setup would make here, refusals and verdicts included: one rule for both.
+    private static IEnumerable<(string Name, long Bytes)> Owed(Core.Models.ModelRegistryService registry, BundleModelLoader loader) =>
+        CircleAI.Assistant.Device.DeviceSetup.PlanHere(registry, loader, Catalogue?.Invoke(), language: null)
+            .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+
     private static readonly object Gate = new();
     private static bool _busy;
 
@@ -103,9 +114,7 @@ public sealed class ModelFetchService : Service
         try
         {
             var registry = new Core.Models.ModelRegistryService();
-            var plan = CircleAI.Assistant.FirstRun
-                .Plan(registry, loader, CircleAI.Core.DeviceProbe.Snapshot(), speech: true)
-                .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+            var plan = Owed(registry, loader);
 
             if (ModelSetup.NotStarted(loader, plan).Count == 0) return;
         }
@@ -219,9 +228,7 @@ public sealed class ModelFetchService : Service
                 // can hear its name long before the 2.8 GB brain arrives.
                 try
                 {
-                    var plan = CircleAI.Assistant.FirstRun
-                        .Plan(registry, loader, CircleAI.Core.DeviceProbe.Snapshot(), speech: true)
-                        .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+                    var plan = Owed(registry, loader);
 
                     await ModelSetup.FetchNotStartedAsync(loader, plan, Say, ct).ConfigureAwait(false);
                 }

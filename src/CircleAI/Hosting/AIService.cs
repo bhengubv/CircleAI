@@ -261,6 +261,7 @@ public sealed class AIService : IAIService
                 NativeLibraryResolver.OverrideDirectory = _options.NativeLibDir;
             NativeLibraryResolver.EnsureRegistered();
 
+            Step(CircleAI.Assistant.Lifecycle.LoadStep.LoadingWeights);
             var modelPath = await ResolveModelPathAsync(ct).ConfigureAwait(false);
             _logger.LogInformation("Butler loading model from {ModelPath}", modelPath);
 
@@ -295,6 +296,7 @@ public sealed class AIService : IAIService
                 // continuing anyway" and report ready - so a model whose first prefill
                 // had already failed was announced as answering, and the first person
                 // to ask found out. Now the generator is let go and the start throws.
+                Step(CircleAI.Assistant.Lifecycle.LoadStep.Warming);
                 try { await WarmUpAsync(ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -1293,6 +1295,13 @@ public sealed class AIService : IAIService
     /// Run". It had no caller either.
     /// </para>
     /// </remarks>
+    // Tells the host which part of the start is running; a host's handler never stops a start.
+    private void Step(CircleAI.Assistant.Lifecycle.LoadStep step)
+    {
+        try { _options.LoadStepChanged?.Invoke(step); }
+        catch (Exception ex) { _logger.LogDebug(ex, "LoadStepChanged threw; the start goes on."); }
+    }
+
     // internal, not private: the seam test builds through it directly.
     internal IChatGenerator BuildByEngine(
         string? modelId, string modelPath, int contextSize, ChatCapability capability)

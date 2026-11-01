@@ -88,6 +88,14 @@ public sealed class AIOptions
     /// <remarks>Settable for the same reason as <see cref="ModelId"/>: a host decides it after building the options.</remarks>
     public ModelEngine? Engine { get; set; }
 
+    /// <summary>
+    /// Told as a start moves on: <see cref="CircleAI.Assistant.Lifecycle.LoadStep.LoadingWeights"/>
+    /// while the model is built, <see cref="CircleAI.Assistant.Lifecycle.LoadStep.Warming"/> while
+    /// its first prefill runs. For a host that reports readiness, so an app can say "nearly ready"
+    /// where it said nothing (OPEN-GAPS A14). Settable: the host wires it after building the options.
+    /// </summary>
+    public Action<CircleAI.Assistant.Lifecycle.LoadStep>? LoadStepChanged { get; set; }
+
     // ------------------------------------------------------------------
     // Inference
     // ------------------------------------------------------------------

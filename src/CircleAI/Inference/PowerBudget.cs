@@ -81,6 +81,15 @@ public static class PowerBudgetPolicy
         bool              PreferSmallerModelInChain);
 
     /// <summary>
+    /// What the device is going through now: its battery (0..100; null when unknown) and whether
+    /// it runs hot. Read by <see cref="Resolve"/> when a caller passes neither, so the low-battery
+    /// and hot-device steps reach every generator - its callers never passed them, so neither step
+    /// could ever fire (OPEN-GAPS A11). The host sets it at start-up, in each process that
+    /// generates; unset, nothing is known and nothing bends.
+    /// </summary>
+    public static Func<(int? BatteryPercent, bool Hot)>? Conditions { get; set; }
+
+    /// <summary>
     /// Map a budget to concrete knobs. Generators call this with the user's
     /// requested <see cref="GenerationOptions"/>; the returned <see cref="Resolution"/>
     /// caps any over-budget values without altering the caller's struct.
@@ -90,6 +99,7 @@ public static class PowerBudgetPolicy
     /// <param name="batteryLevelPercent">
     /// 0..100 if known, <c>null</c> when the platform doesn't surface it.
     /// Used to auto-downgrade <see cref="PowerBudget.Normal"/> on low battery.
+    /// Null with <paramref name="thermalThrottled"/> null too reads <see cref="Conditions"/>.
     /// </param>
     /// <param name="thermalThrottled">
     /// <c>true</c> when the platform reports an elevated thermal state.
@@ -99,12 +109,18 @@ public static class PowerBudgetPolicy
         PowerBudget budget,
         int         requestedMaxTokens,
         int?        batteryLevelPercent = null,
-        bool        thermalThrottled    = false)
+        bool?       thermalThrottled    = null)
     {
+        if (batteryLevelPercent is null && thermalThrottled is null && Conditions is { } read)
+        {
+            try { (batteryLevelPercent, thermalThrottled) = read(); }
+            catch { /* a reading that fails knows nothing; the budget stands */ }
+        }
+
         // Auto-downgrade based on device state.
         if (budget == PowerBudget.Normal && batteryLevelPercent is < 15)
             budget = PowerBudget.Low;
-        if (budget == PowerBudget.High && thermalThrottled)
+        if (budget == PowerBudget.High && thermalThrottled == true)
             budget = PowerBudget.Normal;
 
         return budget switch

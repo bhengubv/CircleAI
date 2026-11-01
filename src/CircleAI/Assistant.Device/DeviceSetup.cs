@@ -76,20 +76,39 @@ public sealed class DeviceSetup : ISetup
     /// Everything that means "do not offer this": the owner turned it off, this
     /// phone was killed by it, or this phone cannot run it.
     /// </summary>
-    private Func<string, bool> NotOffered()
-        => CircleAI.Inference.ModelOffer.NotWorthOffering(
-               _catalogue?.Invoke(), DeclinedModels.Is);
+    private Func<string, bool> NotOffered() => NotOfferedHere(_catalogue?.Invoke());
 
     /// <summary>Models that have loaded on this device: proof that a brain here runs here.</summary>
-    private Func<string, bool> Proven()
+    private Func<string, bool> Proven() => ProvenHere(_catalogue?.Invoke());
+
+    /// <summary>
+    /// Everything that means "do not offer this" on this device, judged against
+    /// <paramref name="catalogue"/>: the owner turned it off, this phone was killed by it, or
+    /// this phone cannot run it.
+    /// </summary>
+    /// <remarks>
+    /// STATIC, SO THE BACKGROUND FETCHER PLANS WITH THE SAME RULE (OPEN-GAPS A′8). It planned
+    /// with none of this - no refusals, no verdicts - so the service that finishes interrupted
+    /// downloads could fetch a brain the owner had switched off, behind their back.
+    /// </remarks>
+    public static Func<string, bool> NotOfferedHere(IModelCatalog? catalogue)
+        => CircleAI.Inference.ModelOffer.NotWorthOffering(catalogue, DeclinedModels.Is);
+
+    /// <summary>Models that have loaded on this device, judged against <paramref name="catalogue"/>.</summary>
+    public static Func<string, bool> ProvenHere(IModelCatalog? catalogue) => id =>
     {
-        var catalogue = _catalogue?.Invoke();
-        return id =>
-        {
-            try { return catalogue?.Assessment(id)?.Proven == true; }
-            catch { return false; }
-        };
-    }
+        try { return catalogue?.Assessment(id)?.Proven == true; }
+        catch { return false; }
+    };
+
+    /// <summary>
+    /// The first-run plan with this device's refusals: what setup offers, and what the
+    /// background fetcher fetches - one rule for both.
+    /// </summary>
+    public static IReadOnlyList<SetupStep> PlanHere(
+        ModelRegistryService registry, BundleModelLoader loader, IModelCatalog? catalogue, string? language) =>
+        FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
+                      declined: NotOfferedHere(catalogue), language: language, proven: ProvenHere(catalogue));
 
     /// <summary>Run something on the UI thread and wait for it.</summary>
     /// <remarks>
@@ -239,8 +258,7 @@ public sealed class DeviceSetup : ISetup
             // question. A Circle OS device was offered a 22.8 GB model at an honest
             // size, accepted it, and the load aborted the process and took a dozen
             // system apps with it. The offer was the defect.
-            return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                 declined: NotOffered(), language: Language, proven: Proven())
+            return PlanHere(registry, loader, _catalogue?.Invoke(), Language)
                 .Select(s => new SetupItem(s.Title, s.Model.TotalBytes))
                 .ToList();
         }, ct);
@@ -299,8 +317,7 @@ public sealed class DeviceSetup : ISetup
                 // declined, for the same reason as above: this is the call that
                 // actually spends somebody's data, so a forgotten refusal here
                 // costs them megabytes rather than only a wrong list.
-                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                          declined: NotOffered(), language: Language, proven: Proven());
+                var steps = PlanHere(registry, loader, _catalogue?.Invoke(), Language);
 
                 // PREVENTION FOR THE ESSENTIALS TOO. First run is the largest
                 // download Circle AI ever asks for; refusing upfront with the

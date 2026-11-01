@@ -14,6 +14,9 @@ public static class ReadinessSentences
     /// <summary>Loading.</summary>
     public const string Loading = "Getting its brain ready.";
 
+    /// <summary>Loaded, and reading its first prompt: the last step before Ready.</summary>
+    public const string Warming = "Nearly ready to answer.";
+
     /// <summary>A model is on the phone and not loaded.</summary>
     public const string Installed = "Ready - it loads its brain when you ask.";
 
@@ -24,12 +27,15 @@ public static class ReadinessSentences
     public static string For(ComponentState state) => state.Phase switch
     {
         BrainPhase.Ready     => Ready,
-        BrainPhase.Loading   => Loading,
+        BrainPhase.Loading   => For(state.Step),
         BrainPhase.Installed => Installed,
         BrainPhase.NoModel   => NoModel,
         BrainPhase.Failed or BrainPhase.Paused => state.Kind is { } k ? For(k) : "It stopped, and will try again.",
         _ => "Starting.",
     };
+
+    /// <summary>The sentence for a step of a load.</summary>
+    public static string For(LoadStep step) => step == LoadStep.Warming ? Warming : Loading;
 
     /// <summary>The sentence for why something stopped.</summary>
     public static string For(FailureKind kind) => kind switch

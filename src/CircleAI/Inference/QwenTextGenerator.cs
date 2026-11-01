@@ -541,13 +541,17 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// </summary>
     public static string? SamplerJsonForTest { get; set; }
 
+    /// <summary>The working-memory mode this model was loaded with.</summary>
+    public CircleAI.Core.KvCompressionMode KvMode { get; private set; }
+
     public QwenTextGenerator(
         string                   modelPath,
         uint                     contextSize,
         int?                     threads,
         IPromptTemplateEngine?   templateEngine,
         string?                  systemPrompt = null,
-        string?                  samplerJson  = null)
+        string?                  samplerJson  = null,
+        CircleAI.Core.KvCompressionMode? kvMode = null)
     {
         // Ensure P/Invoke can find mnnbridge + its MNN core before the first
         // native call — works even on a bare `new QwenTextGenerator(path)`.
@@ -801,6 +805,26 @@ public sealed class QwenTextGenerator : IChatGenerator
             var ok = MnnInteropRt.mnn_llm_set_config(handle.DangerousGetHandle(), samplerJson!) == 0;
             Console.WriteLine($"CIRCLEAI-SAMPLER {samplerJson} accepted={ok}");
         }
+
+        // THE WORKING MEMORY'S MODE, BEFORE LOAD - the only moment MNN reads it (OPEN-GAPS A11:
+        // the bridge maps it onto MNN's own attention_mode, and nothing had ever set it).
+        //
+        // OFF UNLESS A CALLER NAMES ANOTHER, ON A MEASUREMENT, NOT BY DEFAULT. Qwen3.5-0.8B-MNN on
+        // the win-x64 bridge, 2026-11-01, six questions greedily (MnnWorkingMemoryTests): off, the
+        // answers were the same twice over; at 4 bits not one of six matched them, and most broke -
+        // "seven times eight" came back "7", and two answers fell into loops. MNN's own 4-bit
+        // working memory costs a small brain its sense. The power budget prefers 4 bits; that
+        // preference is the C# engine's to take, whose TurboQuant kept every fork token at 4 bits.
+        var kv = kvMode ?? CircleAI.Core.KvCompressionMode.Off;
+        try
+        {
+            Console.WriteLine($"CIRCLEAI-KV mode={kv} {MnnKvCompression.Set(handle, kv)}");
+        }
+        catch (EntryPointNotFoundException)
+        {
+            Console.WriteLine($"CIRCLEAI-KV mode={kv} not in this bridge");
+        }
+        KvMode = kv;
 
         int rc = MnnInterop.mnn_llm_load(handle);
         if (rc != 0)

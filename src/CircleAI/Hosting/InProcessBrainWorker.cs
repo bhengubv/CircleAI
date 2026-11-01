@@ -114,6 +114,19 @@ public sealed class InProcessBrainWorker : IBrainWorker
         }
     }
 
+    /// <summary>
+    /// Which part of the load is running - <see cref="LoadStep.LoadingWeights"/> while the model is
+    /// built, <see cref="LoadStep.Warming"/> while its first prefill runs - so the status says so
+    /// (OPEN-GAPS A14). Ignored outside a load. Wire it to <c>AIOptions.LoadStepChanged</c>.
+    /// </summary>
+    public void ReportStep(LoadStep step)
+    {
+        BrainWorkerStatus status;
+        lock (_gate) status = _status;
+        if (status.Phase != BrainPhase.Loading || status.Step == step) return;
+        Set(BrainPhase.Loading, step, status.ModelId, null, null);
+    }
+
     /// <inheritdoc />
     public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)
     {

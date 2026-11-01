@@ -166,8 +166,10 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             else
             {
                 previous = _brain;
-                brain = _brain = new InProcessBrainWorker(ct => StartAsync(request, ct),
-                                                          log: line => global::Android.Util.Log.Info(Tag, line));
+                InProcessBrainWorker? created = null;
+                created = new InProcessBrainWorker(ct => StartAsync(request, step => created?.ReportStep(step), ct),
+                                                   log: line => global::Android.Util.Log.Info(Tag, line));
+                brain = _brain = created;
                 _loaded = request;
             }
         }
@@ -181,12 +183,13 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         });
     }
 
-    private static async Task<InProcessBrain> StartAsync(WorkerLoadRequest request, CancellationToken ct)
+    private static async Task<InProcessBrain> StartAsync(WorkerLoadRequest request, Action<LoadStep> step, CancellationToken ct)
     {
         var factory = OptionsFactory ?? throw new InvalidOperationException("the inference process has no options");
         var options = factory(request);
         options.ModelId = request.ModelId;
         options.Engine = request.Engine;
+        options.LoadStepChanged = step; // the status says "Warming" while the first prefill runs (OPEN-GAPS A14)
 
         var registry = new ModelRegistryService();
         var loader = new BundleModelLoader(request.ModelDirectory, registry);

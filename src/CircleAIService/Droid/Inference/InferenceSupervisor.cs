@@ -373,7 +373,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             {
                 using var limit = new CancellationTokenSource(LoadLimit);
                 await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash),
-                    new Progress<LoadStep>(step => Report(BrainPhase.Loading, step, model, null, ReadinessSentences.Loading)),
+                    new Progress<LoadStep>(step => Report(BrainPhase.Loading, step, model, null, ReadinessSentences.For(step))),
                     limit.Token).ConfigureAwait(false);
             }
             catch (System.OperationCanceledException)

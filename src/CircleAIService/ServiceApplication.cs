@@ -106,6 +106,7 @@ public sealed class ServiceApplication : Application
         AndroidDeviceMemory.Install(this);
         base.OnCreate();
         InstallLogging("inference");
+        InstallBalance();
         global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
 
         // A TEST SWITCH, NOT A LOG: with soak/prompt-dump.on in this app's own test folder,
@@ -249,6 +250,46 @@ public sealed class ServiceApplication : Application
     /// </remarks>
     private static string TestSwitchesArmedFile(global::Android.Content.Context context) =>
         System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "CircleAI", "state", "test-switches.armed");
+
+    private CircleAI.Hosting.ThermalThrottleService? _thermal;
+
+    /// <summary>
+    /// THE DEVICE'S CONDITIONS, FOR EVERY ANSWER THIS PROCESS GIVES (OPEN-GAPS A11, A13). The
+    /// thermal service was written and never built; it now polls the phone's own thermal status,
+    /// and the battery is read whenever a power budget is resolved - so a hot phone and a nearly
+    /// flat one step the budget down as PowerBudgetPolicy always said they would. Each process
+    /// that generates installs its own: the policy's reader is per process.
+    /// </summary>
+    private void InstallBalance()
+    {
+        try
+        {
+            var thermal = _thermal = new CircleAI.Hosting.ThermalThrottleService(
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<CircleAI.Hosting.ThermalThrottleService>.Instance);
+            thermal.StateChanged += (_, state) => CircleAI.Core.Logging.CircleLog.Info("Balance", $"thermal state {state}");
+            thermal.StartMonitoring();
+            CircleAI.Inference.PowerBudgetPolicy.Conditions = () => (BatteryPercent(), thermal.ShouldPauseInference);
+        }
+        catch (Exception ex)
+        {
+            CircleAI.Core.Logging.CircleLog.Warn("Balance", "the device's conditions are not read here: " + ex.GetType().Name);
+        }
+    }
+
+    // The battery's charge, 0 to 100, or null when the phone does not say.
+    private int? BatteryPercent()
+    {
+        try
+        {
+            var battery = GetSystemService(BatteryService) as global::Android.OS.BatteryManager;
+            var level = battery?.GetIntProperty((int)global::Android.OS.BatteryProperty.Capacity) ?? int.MinValue;
+            return level is >= 0 and <= 100 ? level : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// ONE LOG FOR THE PROCESS (S1): logcat as before, a file in this app's own storage
@@ -605,6 +646,7 @@ public sealed class ServiceApplication : Application
 
         base.OnCreate();
         InstallLogging("service");
+        InstallBalance();
 
         // WHERE STANDING GRANTS LIVE. A killed service process must not forget who
         // the person already approved: an in-memory store is safe but asks again on
@@ -993,6 +1035,9 @@ public sealed class ServiceApplication : Application
         // download task below, and the bootstrap's dead-weight check reads it; now
         // that downloads wait for the bootstrap, that check would always find it unset.
         CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;
+        // AND WHAT THE OWNER REFUSED, so a fetch never brings back a brain they switched off
+        // (OPEN-GAPS A′8). A lambda: the catalogue is built further down.
+        CircleAI.Device.ModelFetchService.Catalogue = () => CircleAI.Device.CircleNeuronService.Catalogue;
 
         try
         {
