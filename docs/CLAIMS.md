@@ -254,6 +254,16 @@ What a capability tile's chat knows about its subject (OPEN-GAPS A9).
 | A tile's chat frames each question the way its pack's adapter does, and an ordinary chat is untouched | tested | A_question_is_framed_the_way_the_packs_own_adapter_frames_it |
 | The framing makes a small model's answers better | unproven | built 2026-11-01; not yet compared on a phone |
 
+## Choosing a transport
+
+How a payload picks its way when there is more than one (OPEN-GAPS A10).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Transports are tried in the order the contract states, narrowed by what is up and by connectivity | tested | Connectivity_narrows_it |
+| A payload falls through a transport that fails to the next one that is up | tested | A_payload_goes_the_first_way_that_is_up_and_falls_through_a_failure |
+| The device sends anything over the mesh | unproven | no transport is registered on the device (2026-11-01) |
+
 ## Other databases
 
 | Claim | Status | Evidence |
