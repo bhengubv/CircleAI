@@ -138,33 +138,10 @@ public sealed class PrismHadamard
     /// <summary>
     /// The normalised Sylvester-Walsh-Hadamard transform of one block, in place, as the fork's
     /// ggml_compute_forward_fwht computes it: scale by 1/sqrt(n) first, then the butterflies
-    /// (u + v, u - v) at widths 1, 2, 4 ... n/2. The block length must be a power of two.
+    /// (u + v, u - v) at widths 1, 2, 4 ... n/2. The block length must be a power of two. The
+    /// kernel is the one TurboQuant's rotation shares (<see cref="CircleAI.Core.Compression.WalshHadamard"/>).
     /// </summary>
-    public static unsafe void Transform(Span<float> block)
-    {
-        var n = block.Length;
-        if (n == 0 || (n & (n - 1)) != 0) throw new ArgumentException($"A Hadamard block is a power of two, not {n}.", nameof(block));
-        var scale = 1.0f / MathF.Sqrt(n);
-        fixed (float* p = block)
-        {
-            for (var j = 0; j < n; j++) p[j] *= scale;
-            for (var len = 1; len < n; len <<= 1)
-            {
-                for (var i = 0; i < n; i += 2 * len)
-                {
-                    var a = p + i;
-                    var c = a + len;
-                    for (var j = 0; j < len; j++)
-                    {
-                        var u = a[j];
-                        var v = c[j];
-                        a[j] = u + v;
-                        c[j] = u - v;
-                    }
-                }
-            }
-        }
-    }
+    public static void Transform(Span<float> block) => CircleAI.Core.Compression.WalshHadamard.Transform(block);
 
     /// <summary>
     /// The folding <paramref name="file"/> declares, checked as the fork checks it; null when
