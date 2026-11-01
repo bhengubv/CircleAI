@@ -154,7 +154,15 @@ public sealed class HousekeepingBeforePullTests
         var setup = Source("src", "CircleAI", "Assistant.Device", "DeviceSetup.cs");
         var run   = setup.IndexOf("public Task RunAsync(IProgress<SetupProgressReport> progress", StringComparison.Ordinal);
         var wait  = setup.IndexOf("WaitForHousekeepingAsync(", run, StringComparison.Ordinal);
-        var plan  = setup.IndexOf("FirstRun.Plan(", run, StringComparison.Ordinal);
+        // PlanHere is the one planning call setup and the fetch service share (OPEN-GAPS A′8,
+        // 2026-11-01), so it wraps FirstRun.Plan above RunAsync - the plan is whichever of the
+        // two spellings RunAsync reaches first.
+        var plan  = new[]
+            {
+                setup.IndexOf("FirstRun.Plan(", run, StringComparison.Ordinal),
+                setup.IndexOf("PlanHere(", run, StringComparison.Ordinal),
+            }
+            .Where(i => i >= 0).DefaultIfEmpty(-1).Min();
 
         Assert.True(run >= 0 && wait > run, "setup started from the app never waits for housekeeping");
         Assert.True(plan > wait, "setup plans its downloads before housekeeping has finished");

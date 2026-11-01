@@ -156,7 +156,11 @@ public sealed class EveryModelArrivesByDefaultTests : IDisposable
 
         // And what follows them is ordered smallest first, so each extra language
         // arrives as soon as it can rather than behind the largest file on the phone.
-        var tail = plan.Skip(titles.IndexOf("the eyes") + 1).Select(s => s.Model.TotalBytes).ToList();
+        // THE TAIL STARTS AFTER THE LAST ABILITY. This said "after the eyes" while the eyes were
+        // the last of them; "search by meaning" and "who said what" follow them now (OPEN-GAPS
+        // A7, A3), and they are abilities, not the long tail.
+        var abilities = FirstRun.WantedFor(speech: true).Select(w => w.Title).ToHashSet(StringComparer.Ordinal);
+        var tail = plan.Skip(titles.FindLastIndex(abilities.Contains) + 1).Select(s => s.Model.TotalBytes).ToList();
         if (tail.Count > 1)
             Assert.True(tail.SequenceEqual(tail.OrderBy(b => b)),
                 "the long tail is not smallest-first");

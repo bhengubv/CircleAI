@@ -12,7 +12,7 @@ Last verified: **2026-09-11**, against `main`.
 **Closed this pass:** A1, A2, A4, A5, A6 (procedural), A′1, A′3, A′4, A′5, A′6, A‴, C2.
 **Found and fixed in passing:** E1–E20 — **E10 and E11 were found by a PHONE**, not by 3271 green tests — **E8 was mine**, introduced and caught in this same pass.
 **Found and NOT fixed:** A7 and C3 — both recorded rather than closed, and the rows say why.
-**Closed 2026-11-01:** A′8, A13, A14, A3, A8's Kokoro half, A7, A12 and A9 in code (each waits on a phone to be seen working); A11 switched on, measured, and kept off for MNN on purpose; B6 built in C#. The rows say how.
+**Closed 2026-11-01:** A′8, A13, A14, A3, A8's Kokoro half, A7, A12, A9 and A10's selector in code (each waits on a phone to be seen working); A11 switched on, measured, and kept off for MNN on purpose; B6 built in C#. The rows say how.
 
 **Still open, and what each is actually waiting on:**
 
