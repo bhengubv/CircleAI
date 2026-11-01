@@ -29,12 +29,23 @@ public sealed class ManagedGeneratorFixture : IDisposable
 {
     public ManagedGeneratorFixture()
     {
-        if (Bonsai2Model.TwoB() is { } path) Generator = ManagedChatGenerator.Load(path, new ManagedGeneratorOptions { ContextLength = 1024 });
+        Path = Bonsai2Model.TwoB();
+        if (Path is not null)
+            Generator = ManagedChatGenerator.Load(Path, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = PrimedDirectory });
     }
+
+    public string? Path { get; }
 
     public ManagedChatGenerator? Generator { get; }
 
-    public void Dispose() => Generator?.Dispose();
+    /// <summary>Where this run's primed starts go: a folder of its own, gone when the run ends.</summary>
+    public string PrimedDirectory { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"circleai-primed-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        Generator?.Dispose();
+        try { Directory.Delete(PrimedDirectory, recursive: true); } catch (DirectoryNotFoundException) { }
+    }
 }
 
 public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, ITestOutputHelper output) : IClassFixture<ManagedGeneratorFixture>
@@ -273,6 +284,35 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
 
         output.WriteLine($"reasoning: {full.ReasoningContent}");
         output.WriteLine($"answer: {full.Text}");
+    }
+
+    [Fact]
+    public async Task A_conversation_with_the_same_system_turn_starts_primed_and_answers_as_a_cold_start_does()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        ChatMessage[] earlier = [new("system", persona), new("user", "Hello!")];
+        ChatMessage[] next = [new("system", persona), new("user", "What is two plus two?")];
+        await g.GenerateAsync(earlier, Greedy(4)); // reads the system turn once, and primes
+        var inMemory = new TurnTimingRecorder();
+        var answer = await g.GenerateAsync(next, Greedy(10, inMemory));
+        Assert.Equal("primed", inMemory.KvPath);
+
+        // A new process finds the start on disk; one that keeps none reads the whole prompt; the
+        // three answers are one answer.
+        using var fresh = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = fixture.PrimedDirectory });
+        var fromDisk = new TurnTimingRecorder();
+        Assert.Equal(answer, await fresh.GenerateAsync(next, Greedy(10, fromDisk)));
+        Assert.Equal("primed-disk", fromDisk.KvPath);
+
+        using var cold = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        var reset = new TurnTimingRecorder();
+        Assert.Equal(answer, await cold.GenerateAsync(next, Greedy(10, reset)));
+        Assert.Equal("reset", reset.KvPath);
+
+        output.WriteLine($"{answer} - prefill: primed {inMemory.PrefillMs} ms, from disk {fromDisk.PrefillMs} ms, cold {reset.PrefillMs} ms ({reset.PromptTokens} tokens)");
     }
 
     [Fact]

@@ -1313,11 +1313,17 @@ public sealed class AIService : IAIService
             if (entry is not null && EngineChoice.Run(entry) is null)
                 throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
 
+            // WORKING MEMORY AT 4 BITS, KEYS IN THE MSE FORM (S3). Measured on the 2B against the
+            // fork, teacher-forced over all its fixtures: 4 bits kept every one of 289 tokens in a
+            // quarter of fp16's memory, and the MSE form beat the Prod form at every width (see
+            // TurboKvCacheTests). A device plan may hold it at fewer bits under pressure.
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={modelId} cap={capability}");
             return CircleAI.Inference.Managed.ManagedChatGenerator.Load(modelPath, new CircleAI.Inference.Managed.ManagedGeneratorOptions
             {
                 ContextLength = Math.Max(1, contextSize),
                 Threads = _options.ThreadCount ?? 0,
+                KvMode = KvCompressionMode.TurboQuant4Bit,
+                KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
             });
         }
 

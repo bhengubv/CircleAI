@@ -114,7 +114,8 @@ public sealed record AskSubmission(
 /// <param name="TtftMs">From its turn coming to the first piece of answer.</param>
 /// <param name="TotalMs">From acceptance to the answer being complete.</param>
 /// <param name="ModelId">The model that answered.</param>
-/// <param name="KvPath">How the prompt cache was used: reset, prefix-hit, continued, or none.</param>
+/// <param name="KvPath">How the prompt cache was used: reset, prefix-hit, continued, primed (the C# engine began at its
+/// primed start, held in memory) or primed-disk (kept on disk), or none.</param>
 /// <param name="Finish">Why generation stopped: eos, length, cancel, error, shortcut.</param>
 public sealed record TurnTiming(
     long QueueMs = -1,

@@ -30,6 +30,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using CircleAI.Core;
 
 namespace CircleAI.Inference;
 
@@ -384,25 +385,6 @@ internal static partial class MnnInterop
     /// <summary>Load a KV-cache session. Returns <c>true</c> on success.</summary>
     public static bool LoadSession(MnnModelHandle handle, string path)
         => mnn_llm_load_session(handle, path) == 0;
-}
-
-/// <summary>
-/// KV cache compression mode. Mirrors the C ABI's integer encoding so the
-/// managed and native layers agree without translation tables.
-/// </summary>
-public enum KvCompressionMode
-{
-    /// <summary>Full FP16 KV cache — default behaviour, always supported.</summary>
-    Off = 0,
-
-    /// <summary>TurboQuant at 4 bits per channel — ~4× shrink, &lt; 1% accuracy loss expected.</summary>
-    TurboQuant4Bit = 1,
-
-    /// <summary>TurboQuant at 3 bits per channel — ~5× shrink, marginal accuracy loss expected.</summary>
-    TurboQuant3Bit = 2,
-
-    /// <summary>TurboQuant at 2 bits per channel — ~8× shrink, noticeable accuracy loss expected.</summary>
-    TurboQuant2Bit = 3,
 }
 
 /// <summary>

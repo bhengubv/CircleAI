@@ -5,6 +5,7 @@
 // model + native libraries on disk; Phase 4.1 ports the algorithm and
 // adds end-to-end integration tests.
 
+using CircleAI.Core;
 using CircleAI.Inference;
 using Xunit;
 

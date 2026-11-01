@@ -24,6 +24,8 @@
 // by part (TakeTimes), so a phone can say where a token's second goes.
 
 using System.Diagnostics;
+using CircleAI.Core;
+using CircleAI.Core.Compression;
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Kernels;
 using CircleAI.Inference.Managed.Rotation;
@@ -115,7 +117,15 @@ public sealed class Qwen35Model
     }
 
     /// <summary>A new, empty conversation state holding up to <paramref name="capacity"/> tokens.</summary>
-    public Qwen35State NewState(int capacity) => new(Config, Math.Min(capacity, Config.ContextLength));
+    public Qwen35State NewState(int capacity) => NewState(capacity, KvCompressionMode.Off, TurboQuantForm.Mse);
+
+    /// <summary>
+    /// A new, empty conversation state holding up to <paramref name="capacity"/> tokens, its attention
+    /// keys and values held in <paramref name="kvMode"/> - the keys in <paramref name="keyForm"/>
+    /// when compressed.
+    /// </summary>
+    public Qwen35State NewState(int capacity, KvCompressionMode kvMode, TurboQuantForm keyForm) =>
+        new(Config, Math.Min(capacity, Config.ContextLength), kvMode, keyForm);
 
     /// <summary>The time the Forward calls since the last call took, by part; the count starts again.</summary>
     public ForwardTimes TakeTimes()
@@ -305,6 +315,28 @@ public sealed class Qwen35Model
         for (var h = 0; h < c.Heads; h++) Rope(_q.AsSpan(h * hd, hd));
         for (var g = 0; g < c.KvHeads; g++) Rope(_k.AsSpan(g * hd, hd));
 
+        var count = position + 1;
+        var scores = Scores(count);
+        var scale = 1.0f / MathF.Sqrt(hd);
+        var groupSize = c.Heads / c.KvHeads;
+        if (state.Turbo[il] is { } turbo)
+        {
+            // A compressed mode: this token's keys and values join the cache as TurboQuant codes,
+            // and each query head attends on the codes of its group's key/value head.
+            turbo.Write(position, _k, _v);
+            for (var h = 0; h < c.Heads; h++)
+            {
+                var g = h / groupSize;
+                turbo.Scores(g, _q.AsSpan(h * hd, hd), count, scores);
+                Weights(scores.AsSpan(0, count), scale);
+                turbo.Mix(g, scores, count, _attn.AsSpan(h * hd, hd));
+            }
+            for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
+            _tAttention += Stopwatch.GetTimestamp() - started;
+            Product(layer.Output!, Tables(_attn, layer.Output!.Input), _mixOut);
+            return;
+        }
+
         // This token's keys and values join the cache in fp16, as the fork's default cache keeps them.
         var kvWidth = c.KvHeads * hd;
         var keys = state.Keys[il];
@@ -316,10 +348,6 @@ public sealed class Qwen35Model
         }
 
         // Each query head attends over every position so far through its group's key/value head.
-        var count = position + 1;
-        var scores = Scores(count);
-        var scale = 1.0f / MathF.Sqrt(hd);
-        var groupSize = c.Heads / c.KvHeads;
         for (var h = 0; h < c.Heads; h++)
         {
             var g = h / groupSize;
@@ -401,6 +429,24 @@ public sealed class Qwen35Model
     }
 
     private float[] _scoresBuffer = new float[256];
+
+    // Scaled scores turned into attention weights, in place: softmax over them.
+    private static void Weights(Span<float> scores, float scale)
+    {
+        var max = float.NegativeInfinity;
+        for (var t = 0; t < scores.Length; t++)
+        {
+            scores[t] *= scale;
+            if (scores[t] > max) max = scores[t];
+        }
+        var sum = 0f;
+        for (var t = 0; t < scores.Length; t++)
+        {
+            scores[t] = MathF.Exp(scores[t] - max);
+            sum += scores[t];
+        }
+        for (var t = 0; t < scores.Length; t++) scores[t] /= sum;
+    }
 
     // ggml's rope cache: theta starts at the position and is multiplied by base^(-2/dims) per pair.
     private void RopeAngles(int position)

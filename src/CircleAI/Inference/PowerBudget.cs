@@ -9,6 +9,8 @@
 // cheap phones where draining 2% of battery on a "hi" reply is unacceptable but
 // spending 8% on a long planning reply is fine.
 
+using CircleAI.Core;
+
 namespace CircleAI.Inference;
 
 /// <summary>

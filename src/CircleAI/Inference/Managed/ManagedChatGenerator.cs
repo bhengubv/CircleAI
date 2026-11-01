@@ -32,6 +32,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
 using CircleAI.Core.Logging;
@@ -60,6 +61,23 @@ public sealed record ManagedGeneratorOptions
 
     /// <summary>Reply tokens when a call asks for none.</summary>
     public int MaxNewTokens { get; init; } = 512;
+
+    /// <summary>
+    /// How the attention layers hold their keys and values: Off is fp16, as the fork holds them; a
+    /// TurboQuant mode holds codes at that many bits a coordinate (S3).
+    /// </summary>
+    public CircleAI.Core.KvCompressionMode KvMode { get; init; }
+
+    /// <summary>The keys' TurboQuant form in a compressed mode; the values always take the MSE form.</summary>
+    public CircleAI.Core.Compression.TurboQuantForm KeyForm { get; init; }
+
+    /// <summary>
+    /// Where primed starts are kept: the state after a conversation's system turn, so the next
+    /// conversation that opens with the same system turn begins there instead of reading it again
+    /// (S3). Null keeps them in the platform's cache folder (the temp path, which on Android is the
+    /// app's own cache); empty keeps them in memory only.
+    /// </summary>
+    public string? PrimedStartDirectory { get; init; }
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
@@ -91,10 +109,18 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private readonly List<int> _history = []; // the tokens the state holds, in order
     private readonly ToolCallGrammar _toolCalls = new();
     private readonly ToolCallGrammar.PieceOf _callPiece;
+    private readonly string? _primedDirectory;
+    private readonly string _modelIdentity;
     private Qwen35State _state;
     private int _disposed;
 
-    private ManagedChatGenerator(GgufFile file, WorkerPool pool, Qwen35Model model, ByteLevelBpe tokenizer,
+    // A primed start on disk: what it is, then the state. Bumped with the engine's arithmetic, so a
+    // start primed by older numbers is never read as this engine's.
+    private const ulong PrimedMagic = 0x3144_454D_4952_5043; // "CPRIMED1", little-endian
+    private const int EngineNumerics = 1;
+    private const int PrimedStartsKept = 4;
+
+    private ManagedChatGenerator(string ggufPath, GgufFile file, WorkerPool pool, Qwen35Model model, ByteLevelBpe tokenizer,
         JinjaTemplate template, ManagedGeneratorOptions options)
     {
         _file = file;
@@ -103,8 +129,15 @@ public sealed class ManagedChatGenerator : IChatGenerator
         _tokenizer = tokenizer;
         _template = template;
         _options = options;
+        _primedDirectory = options.PrimedStartDirectory switch
+        {
+            null => Path.Combine(Path.GetTempPath(), "CircleAI", "primed"),
+            "" => null,
+            var directory => directory,
+        };
+        _modelIdentity = Identity(ggufPath, file.Length);
         _logits = new float[model.Config.Vocabulary];
-        _state = model.NewState(options.ContextLength);
+        _state = model.NewState(options.ContextLength, options.KvMode, options.KeyForm);
 
         foreach (var key in new[] { "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id" })
         {
@@ -160,9 +193,10 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 var model = Qwen35Model.Load(file, pool);
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
-                var generator = new ManagedChatGenerator(file, pool, model, tokenizer, template, options);
+                var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options);
                 var thinking = options.Thinking ? "on" : "off";
-                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, thinking {thinking}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+                var memory = options.KvMode == CircleAI.Core.KvCompressionMode.Off ? "fp16" : $"{options.KvMode}, keys {options.KeyForm}";
+                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
                 return generator;
             }
             catch
@@ -347,17 +381,19 @@ public sealed class ManagedChatGenerator : IChatGenerator
         var requested = options.MaxTokens > 0 ? options.MaxTokens : _options.MaxNewTokens;
         var maxTokens = Math.Min(PowerBudgetPolicy.Resolve(options.Budget, requested).MaxTokens, _state.Capacity - prompt.Count);
         var lastTurn = _turnStart < 0 ? -1 : prompt.LastIndexOf(_turnStart);
+        var primed = PrimedLength(messages, prompt);
         if (timing is not null) timing.PromptTokens = prompt.Count;
 
         try
         {
-            var path = Resume(prompt);
+            var path = Resume(prompt, primed);
             if (timing is not null) timing.KvPath = path;
             var reused = _history.Count;
             _model.TakeTimes(); // whatever an abandoned call left counted
             for (var i = reused; i < prompt.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
+                if (i == primed && _state.PrimedPosition != i) Prime(prompt, i);
                 if (i == lastTurn) _state.Mark();
                 _model.Forward(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
                 _history.Add(prompt[i]);
@@ -506,8 +542,10 @@ public sealed class ManagedChatGenerator : IChatGenerator
         }
     }
 
-    // Brings the state to the longest start of the prompt it can reuse, and says which it did.
-    private string Resume(List<int> prompt)
+    // Brings the state to the longest start of the prompt it can reuse, and says which it did:
+    // all it holds; the mark where the last turn began; the primed start where the system turn
+    // ended, held in memory or kept on disk; or nothing.
+    private string Resume(List<int> prompt, int primed)
     {
         Debug.Assert(_history.Count == _state.Position);
         var held = _history.Count;
@@ -521,9 +559,134 @@ public sealed class ManagedChatGenerator : IChatGenerator
             return "prefix-hit";
         }
 
+        if (primed > 0)
+        {
+            if (_state.PrimedPosition == primed && _history.Count >= primed && Holds(prompt, primed))
+            {
+                _state.RewindToPrimed();
+                _history.RemoveRange(primed, _history.Count - primed);
+                return "primed";
+            }
+            if (LoadPrimed(prompt, primed)) return "primed-disk";
+        }
+
         _state.Reset();
         _history.Clear();
         return "reset";
+    }
+
+    // Where the system turn ends - the start of the turn after it - when the conversation opens
+    // with one; 0 when it does not. The service keeps the system turn to the persona alone, so it
+    // is the same tokens every time.
+    private int PrimedLength(IReadOnlyList<ChatMessage> messages, List<int> prompt)
+    {
+        if (_turnStart < 0 || !messages.Any(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(m.Content)))
+            return 0;
+        var first = prompt.IndexOf(_turnStart);
+        return first < 0 ? 0 : Math.Max(0, prompt.IndexOf(_turnStart, first + 1));
+    }
+
+    // The system turn is in: this point is remembered, and kept on disk for the next process.
+    private void Prime(List<int> prompt, int length)
+    {
+        _state.MarkPrimed();
+        if (_primedDirectory is null) return;
+        try
+        {
+            var file = PrimedPath(prompt, length);
+            if (File.Exists(file)) return;
+            Directory.CreateDirectory(_primedDirectory);
+            var writing = file + ".writing";
+            using (var stream = new FileStream(writing, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+            using (var writer = new BinaryWriter(stream, Encoding.UTF8))
+            {
+                writer.Write(PrimedMagic);
+                writer.Write(EngineNumerics);
+                writer.Write(_modelIdentity);
+                writer.Write(length);
+                for (var i = 0; i < length; i++) writer.Write(prompt[i]);
+                _state.Write(writer, _model.Config);
+            }
+            File.Move(writing, file, overwrite: true);
+            CircleLog.Info(Area, Invariant($"primed start kept: a {length}-token system turn, {new FileInfo(file).Length / 1024} KB"));
+            Prune();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            CircleLog.Warn(Area, "a primed start could not be kept: " + e.Message);
+        }
+    }
+
+    // The state at the end of this prompt's system turn, from disk, when one was kept for this
+    // model, engine, working memory and system turn; the conversation goes on from there.
+    private bool LoadPrimed(List<int> prompt, int length)
+    {
+        if (_primedDirectory is null) return false;
+        var file = PrimedPath(prompt, length);
+        if (!File.Exists(file)) return false;
+        try
+        {
+            Qwen35State state;
+            using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
+            using (var reader = new BinaryReader(stream, Encoding.UTF8))
+            {
+                if (reader.ReadUInt64() != PrimedMagic || reader.ReadInt32() != EngineNumerics
+                    || reader.ReadString() != _modelIdentity || reader.ReadInt32() != length)
+                    return false;
+                for (var i = 0; i < length; i++)
+                {
+                    if (reader.ReadInt32() != prompt[i]) return false;
+                }
+                state = Qwen35State.Read(reader, _model.Config);
+            }
+            if (state.Position != length || state.Capacity != _state.Capacity || state.KvMode != _state.KvMode || state.KeyForm != _state.KeyForm)
+                return false;
+
+            _state = state;
+            _history.Clear();
+            for (var i = 0; i < length; i++) _history.Add(prompt[i]);
+            _state.MarkPrimed();
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow); // in use: the last to be pruned
+            return true;
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            CircleLog.Warn(Area, "a primed start could not be read and is primed again: " + e.Message);
+            try { File.Delete(file); } catch (IOException) { }
+            return false;
+        }
+    }
+
+    // A primed start's file, named for everything that decides the state it holds: the engine's
+    // arithmetic, the model, the working memory, the capacity, and the tokens of the system turn.
+    private string PrimedPath(List<int> prompt, int length)
+    {
+        var key = new StringBuilder().Append(EngineNumerics).Append('|').Append(_modelIdentity).Append('|')
+            .Append((int)_state.KvMode).Append('|').Append((int)_state.KeyForm).Append('|').Append(_state.Capacity).Append('|');
+        for (var i = 0; i < length; i++) key.Append(prompt[i]).Append(',');
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key.ToString())));
+        return Path.Combine(_primedDirectory!, hash[..32].ToLowerInvariant() + ".primed");
+    }
+
+    // A few primed starts are kept; the least recently used go first.
+    private void Prune()
+    {
+        var stale = new DirectoryInfo(_primedDirectory!).GetFiles("*.primed")
+            .OrderByDescending(f => f.LastWriteTimeUtc).Skip(PrimedStartsKept);
+        foreach (var file in stale)
+        {
+            try { file.Delete(); } catch (IOException) { }
+        }
+    }
+
+    // The model, without reading all of it: its length and the hash of its first megabyte - the
+    // header and the metadata, which name its architecture, its packing and its vocabulary.
+    private static string Identity(string path, long length)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
+        var head = new byte[(int)Math.Min(stream.Length, 1 << 20)];
+        stream.ReadExactly(head);
+        return string.Create(CultureInfo.InvariantCulture, $"{length}:{Convert.ToHexString(SHA256.HashData(head))[..32]}");
     }
 
     private bool Holds(List<int> prompt, int count)
