@@ -453,6 +453,12 @@ public static class CircleAITtsProbe
                    $"after {sw.Elapsed:mm\\:ss}\n\n{ex}\n";
         }
 
+        // A KOKORO BUNDLE IS NOT A PIPER VOICE (OPEN-GAPS A8): an IPA vocabulary in
+        // tokenizer.json, a style vector per voice and 24 kHz out. The Piper path below would
+        // find its .onnx, look for a .onnx.json it does not have, and speak in en-us espeak.
+        if (KokoroTtsEngine.Reads(entry.Architecture))
+            return await RunKokoroAsync(dir, langTag, phrase, wavPath, log, ct).ConfigureAwait(false);
+
         var onnx = Directory.EnumerateFiles(dir, "*.onnx", SearchOption.AllDirectories).FirstOrDefault();
         if (onnx is null) return $"downloaded, but no .onnx under '{dir}'\n";
         log?.Invoke($"downloaded: {new FileInfo(onnx).Length:N0} bytes in {sw.Elapsed:mm\\:ss}");
@@ -492,6 +498,92 @@ public static class CircleAITtsProbe
     /// tell. The sideloaded path had a langid.txt beside the model and so was
     /// right by accident — a downloaded bundle has no such file.
     /// </remarks>
+    private static KokoroTtsEngine? _cachedKokoro;
+    private static string _cachedKokoroKey = "";
+
+    /// <summary>
+    /// Speak through a catalogued Kokoro bundle - the voice for a language no VITS voice
+    /// in the catalogue speaks (Italian, today).
+    /// </summary>
+    /// <remarks>
+    /// The bundle carries one voice pack, and espeak reads the text in the language Kokoro's
+    /// own G2P uses for it. Held between sentences like the Piper voice, for the same reason:
+    /// the load is the cost, not the words.
+    /// </remarks>
+    internal static async Task<string> RunKokoroAsync(
+        string dir, string langTag, string phrase, string wavPath,
+        Action<string>? log = null, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        var model = Directory.EnumerateFiles(dir, "*.onnx", SearchOption.AllDirectories).FirstOrDefault();
+        var voices = Path.Combine(dir, "voices");
+        var pack = Directory.Exists(voices)
+            ? Directory.EnumerateFiles(voices, "*.bin").OrderBy(f => f, StringComparer.Ordinal).FirstOrDefault()
+            : null;
+        if (model is null || pack is null)
+            return $"Kokoro bundle under '{dir}' has no {(model is null ? "model" : "voice pack")}\n";
+
+        var espeakVoice = KokoroEspeakVoice(langTag);
+        var phonemizer = CircleAISpeaker.MobilePhonemizerFactory?.Invoke(espeakVoice);
+        if (phonemizer is null)
+            return "on-device phonemizer not wired (CircleAISpeaker.MobilePhonemizerFactory)\n";
+
+        var voice = Path.GetFileNameWithoutExtension(pack);
+        // FromDirectory takes the model as a stem relative to the bundle: onnx/model_quantized.
+        var stem = Path.ChangeExtension(Path.GetRelativePath(dir, model), null)!.Replace('\\', '/');
+        log?.Invoke($"voice-under-test: Kokoro '{voice}', espeak='{espeakVoice}'");
+
+        try
+        {
+            var key = OnnxSessionFactory.ModelIdentity(model) + "|" + voice + "|" + espeakVoice;
+            if (_cachedKokoro is null || _cachedKokoroKey != key)
+            {
+                _cachedKokoro?.Dispose();
+                _cachedKokoro = KokoroTtsEngine.FromDirectory(dir, voice, phonemizer, stem);
+                _cachedKokoroKey = key;
+                log?.Invoke("engine: cold (building Kokoro session)");
+            }
+            else
+            {
+                log?.Invoke("engine: WARM (session reused)");
+            }
+
+            var engine = _cachedKokoro;
+            // Sentence by sentence: a voice pack styles at most 510 phonemes a call.
+            using var phrased = new PhrasedTtsEngine(engine);
+            var result = await phrased.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
+
+            if (engine.LastSkippedCount > 0)
+                log?.Invoke($"kokoro: {engine.LastSkippedCount} symbol(s) not in its vocabulary: " +
+                            string.Join(" ", engine.LastSkippedSymbols));
+            if (result.AudioData.Length == 0)
+                return $"Kokoro loaded on device but produced 0 bytes for '{langTag}'\n";
+
+            WriteWav(wavPath, result.AudioData.Span, result.SampleRate, result.Channels, result.BitsPerSample);
+            return "SYNTHESIS OK — Kokoro ran on the device.\n" +
+                   $"voice : {voice} (espeak '{espeakVoice}')\n" +
+                   $"audio : {result.SampleRate} Hz, {new FileInfo(wavPath).Length:N0} bytes in {sw.Elapsed:mm\\:ss}\n";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return $"Kokoro '{langTag}' FAILED on device after {sw.Elapsed:mm\\:ss}:\n{ex}\n";
+        }
+    }
+
+    /// <summary>The espeak voice Kokoro's G2P reads a language with.</summary>
+    /// <remarks>misaki's choices: French is fr-fr and Portuguese is Brazilian, as the voices are.</remarks>
+    internal static string KokoroEspeakVoice(string langTag)
+    {
+        var root = langTag.Split('-', '_')[0].Trim().ToLowerInvariant();
+        return root switch
+        {
+            "fr" => "fr-fr",
+            "pt" => "pt-br",
+            _    => root,
+        };
+    }
+
     static long? ResolveLanguageId(string modelDir, string langTag)
     {
         var mapPath = Directory.EnumerateFiles(modelDir, "language_ids.json", SearchOption.AllDirectories)

@@ -77,7 +77,14 @@ public sealed class KokoroTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDisp
     /// </summary>
     public int LastTruncatedPhonemes { get; private set; }
 
-    private KokoroTtsEngine(
+    /// <summary>The catalogue's Architecture for a Kokoro bundle (OPEN-GAPS A8).</summary>
+    public const string Architecture = "kokoro";
+
+    /// <summary>Whether a catalogue row's architecture is one this engine opens.</summary>
+    public static bool Reads(string? architecture) =>
+        string.Equals(architecture, Architecture, StringComparison.OrdinalIgnoreCase);
+
+    internal KokoroTtsEngine(
         string modelPath, IPhonemizer phonemizer,
         IReadOnlyDictionary<string, long> vocab, float[] voicePack)
     {
@@ -216,9 +223,69 @@ public sealed class KokoroTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDisp
     }
 
     /// <summary>Text → IPA → vocabulary ids, recording anything unmapped.</summary>
+    /// <summary>
+    /// espeak's tied pairs as the single symbols Kokoro was trained on - misaki's own
+    /// <c>EspeakG2P</c> table.
+    /// </summary>
+    /// <remarks>
+    /// KOKORO NEVER SAW "t" THEN "ʃ". Its G2P asks espeak for TIED phonemes and folds each
+    /// pair into one symbol - t͡ʃ is ʧ, a͡ɪ is I - so the same word handed over as two
+    /// symbols is the word in a spelling the model was not trained on. Its vocabulary
+    /// carries every symbol on the right of this table.
+    /// </remarks>
+    private static readonly Dictionary<string, string> TiedPairs = new(StringComparer.Ordinal)
+    {
+        ["aɪ"] = "I", ["aʊ"] = "W", ["dz"] = "ʣ", ["dʒ"] = "ʤ", ["eɪ"] = "A", ["oʊ"] = "O",
+        ["əʊ"] = "Q", ["ss"] = "S", ["ts"] = "ʦ", ["tʃ"] = "ʧ", ["ɔɪ"] = "Y",
+    };
+
+    /// <summary>The four affricates, folded even when the phonemizer left out the tie.</summary>
+    /// <remarks>
+    /// THE PHONEMIZERS ON THIS PHONE ASK FOR NO TIES - the Piper voices want espeak's symbols
+    /// one code point at a time - so an affricate reaches here as two items. Inside a word, a
+    /// t before ʃ (or s) and a d before ʒ (or z) is the affricate in every language Kokoro
+    /// speaks; a stress mark or a space between them stops the fold. The vowel pairs are NOT
+    /// folded untied: whether two vowels are one diphthong is exactly what the tie says, and
+    /// without it this would be a guess.
+    /// </remarks>
+    private static readonly HashSet<string> Affricates = new(StringComparer.Ordinal) { "ts", "tʃ", "dz", "dʒ" };
+
+    /// <summary>The phonemizer's symbols in Kokoro's spelling: tied pairs folded, ties dropped.</summary>
+    internal static List<string> Fold(IReadOnlyList<string> phonemes)
+    {
+        const string Tie = "͡";
+        var folded = new List<string>(phonemes.Count);
+        var tied = false;
+
+        foreach (var raw in phonemes)
+        {
+            if (raw is Tie or "^") { tied = folded.Count > 0; continue; }
+
+            var p = raw.Replace(Tie, "", StringComparison.Ordinal).Replace("^", "", StringComparison.Ordinal);
+            if (p.Length == 0) continue;
+
+            if (folded.Count > 0
+                && TiedPairs.TryGetValue(folded[^1] + p, out var pair)
+                && (tied || Affricates.Contains(folded[^1] + p)))
+            {
+                folded[^1] = pair;
+                tied = false;
+                continue;
+            }
+
+            tied = false;
+            // A whole item that is a tied pair (a phonemizer that keeps espeak's phonemes whole).
+            folded.Add(TiedPairs.TryGetValue(p, out var whole) ? whole : p);
+        }
+        return folded;
+    }
+
+    /// <summary>The token ids <see cref="Synthesise"/> would send for this text, without the boundary tokens.</summary>
+    internal IReadOnlyList<long> TokenIds(string text) => Tokenise(text);
+
     private List<long> Tokenise(string text)
     {
-        var phonemes = _phonemizer.Phonemize(text);
+        var phonemes = Fold(_phonemizer.Phonemize(text));
         var ids = new List<long>(phonemes.Count);
         var dropped = new List<string>();
 

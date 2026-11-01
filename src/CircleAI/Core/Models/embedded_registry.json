@@ -3456,6 +3456,39 @@
       "MinRamGb": 0.15,
       "MinStorageGb": 0.03,
       "Capabilities": []
+    },
+    {
+      "Name": "Kokoro-82M-Italian",
+      "Version": "1.0",
+      "Quantization": "int8",
+      "Repo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Architecture": "kokoro",
+      "TotalBytes": 92886853,
+      "BundleFiles": [
+        {
+          "Name": "onnx/model_quantized.onnx",
+          "Sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+          "SizeBytes": 92361116
+        },
+        {
+          "Name": "tokenizer.json",
+          "Sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+          "SizeBytes": 3497
+        },
+        {
+          "Name": "voices/if_sara.bin",
+          "Sha256": "409b69248798fcdc2542330c76953d230710f19b057e59cb82fdc3c4cf71265c",
+          "SizeBytes": 522240
+        }
+      ],
+      "License": "Apache-2.0",
+      "Language": "it",
+      "QualityRank": 5,
+      "MinRamGb": 0.5,
+      "MinStorageGb": 0.1,
+      "Capabilities": []
     }
   ]
 }

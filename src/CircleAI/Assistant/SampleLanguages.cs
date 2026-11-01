@@ -57,6 +57,8 @@ public static class SampleLanguages
             ["ht"] = new("ht", "Haitian Creole", "Kreyòl", "Bonjou monn. Kijan ou ye?"),
             ["id"] = new("id", "Indonesian", "Bahasa Indonesia", "Halo dunia. Apa kabar?"),
             ["ig"] = new("ig", "Igbo", "Asụsụ Igbo", "Ndewo ụwa. Kedu ka ị mere?"),
+            // OPEN-GAPS A8: Kokoro's Italian voice is the first one the catalogue has.
+            ["it"] = new("it", "Italian", "Italiano", "Ciao mondo. Come stai?"),
             ["ja"] = new("ja", "Japanese", "日本語", "こんにちは世界。お元気ですか。"),
             ["jv"] = new("jv", "Javanese", "Basa Jawa", "Sugeng enjing. Piye kabare?"),
             ["ki"] = new("ki", "Kikuyu", "Gĩkũyũ", "Ũhoro waku? Nĩ mwega."),

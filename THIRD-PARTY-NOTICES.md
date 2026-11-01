@@ -27,3 +27,15 @@ the library carries its licence beside it instead (for example
 - **Credit:** Hongji Wang, Chengdong Liang, Shuai Wang, Zhengyang Chen, Binbin Zhang,
   Xu Xiang, Yanlei Deng and Yanmin Qian, "WeSpeaker: A research and production oriented
   speaker embedding learning toolkit", ICASSP 2023; and Hervé Bredin, pyannote.audio.
+
+## Kokoro-82M: the Italian voice
+
+- **What it does here:** speaks Italian, the one of its languages no other voice in the
+  catalogue covers (`KokoroTtsEngine`).
+- **Files fetched:** `onnx/model_quantized.onnx`, `tokenizer.json` and
+  `voices/if_sara.bin` from
+  [onnx-community/Kokoro-82M-v1.0-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX),
+  an ONNX conversion of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M).
+- **Licence:** [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+- **Changes:** none. The files are fetched as published, checked against their hashes, and
+  run unmodified.

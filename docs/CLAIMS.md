@@ -222,6 +222,16 @@ Telling the voices in a transcribed recording apart (OPEN-GAPS A3).
 | How loud a recording was does not change the voice it is read as | tested | How_loud_the_recording_was_does_not_change_the_voice |
 | The speaker model tells real voices apart on a phone | unproven | built 2026-11-01; the model has never run here or on the P30 |
 
+## An Italian voice
+
+Kokoro, for the language of its that no other voice in the catalogue speaks (OPEN-GAPS A8).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| An Italian phone is given an Italian voice by the selector and by setup | tested | An_italian_phone_is_given_it_by_the_selector_and_by_setup |
+| Kokoro is handed the symbols its own G2P trained it on, not espeak's raw spelling | tested | An_untied_affricate_becomes_the_one_symbol_kokoro_was_trained_on |
+| The Italian voice speaks on a phone, and how fast | unproven | built 2026-11-01; Kokoro has never run here or on the P30 |
+
 ## Other databases
 
 | Claim | Status | Evidence |
