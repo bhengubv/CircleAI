@@ -102,6 +102,7 @@ public sealed class WorkerConnection : IAsyncDisposable
             [WorkerWire.Directory] = request.ModelDirectory,
             [WorkerWire.SkipHash] = request.SkipLoadHash ? "1" : "0",
         };
+        if (request.Engine is { } engine) map[WorkerWire.Engine] = engine.ToString();
         Check(await CallAsync(map, WorkPhase.Load, ct).ConfigureAwait(false), WorkPhase.Load);
 
         while (true)

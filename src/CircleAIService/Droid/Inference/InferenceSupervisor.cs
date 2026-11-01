@@ -216,6 +216,47 @@ public sealed class InferenceSupervisor : IBrainWorker
         _connection.Kill();
     }
 
+    /// <summary>
+    /// A developer check: <paramref name="model"/> loaded in the inference process with
+    /// <paramref name="engine"/> (null: its catalogue row's), asked one question by the path every
+    /// question takes there - AIService, the persona, the generator its build site makes - and
+    /// then let go, so the next question loads the chosen brain again.
+    /// </summary>
+    /// <remarks>
+    /// NOT WATCHED FOR PROGRESS AND NOT UNDER THE LOAD LIMIT: a first prefill on the C# engine
+    /// outlasts both on the P30, and this exists to measure it. Nothing here counts for or
+    /// against the model; a check is not evidence about the person's brain. Refused while the
+    /// queue is answering, because it takes the brain away.
+    /// </remarks>
+    public async Task<(string Text, TurnTiming? Timing, long LoadMs)> AskOnceForTestAsync(
+        string model, string modelDirectory, ModelEngine? engine, string question, int maxTokens, CancellationToken ct)
+    {
+        if (SchedulerIdle?.Invoke() == false) throw new InvalidOperationException("the queue is answering; try again when it is idle");
+        await ReleaseAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            await _connection.LoadAsync(new WorkerLoadRequest(model, modelDirectory, SkipLoadHash: true, engine), null, ct).ConfigureAwait(false);
+            var loadMs = clock.ElapsedMilliseconds;
+
+            var text = new System.Text.StringBuilder();
+            TurnTiming? timing = null;
+            var job = new BrainJob("check-" + Guid.NewGuid().ToString("N")[..8], [new ChatMessage("user", question)],
+                question, maxTokens, Spoken: false, DateTimeOffset.UtcNow.AddHours(1));
+            await foreach (var chunk in _connection.GenerateAsync(job, ct).ConfigureAwait(false))
+            {
+                text.Append(chunk.Text);
+                if (chunk.Final) timing = chunk.Timing;
+            }
+            return (text.ToString(), timing, loadMs);
+        }
+        finally
+        {
+            try { await ReleaseAsync(CancellationToken.None).ConfigureAwait(false); }
+            catch { /* the next question loads whatever it needs */ }
+        }
+    }
+
     /// <summary>Android asked the app to trim memory.</summary>
     /// <remarks>
     /// THE OWNER'S RULE: Qwen3.5 stays loaded unless the phone is critically short of

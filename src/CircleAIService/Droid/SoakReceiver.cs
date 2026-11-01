@@ -86,16 +86,23 @@ public sealed class SoakReceiver : BroadcastReceiver
                 });
                 break;
             case "engine":
-                // THE C# ENGINE ANSWERING ON THIS PHONE (S2): the 2B loaded in this process's own
-                // runtime, asked one question with the persona as its system turn, greedily, and
-                // released - so its answer can be compared word for word with the desktop's.
-                // `path` names the file; without it the app's model store and then the sideload
-                // folder (the external files directory, where adb can put it) are looked in.
-                //   ... --es do engine [--es text "Hello! Who are you?"] [--ei max 48] [--es path <file>]
-                var question = intent?.GetStringExtra("text");
-                var model = intent?.GetStringExtra("path");
+                // ONE QUESTION THROUGH THE INFERENCE PROCESS'S OWN BUILD SITE (S2): the model
+                // loaded there with the engine named - the C# engine unless told otherwise - and
+                // asked as every question is asked there (AIService, the persona), then let go so
+                // the next question loads the chosen brain again. The same file on the same path
+                // with "--es engine LlamaCpp" is the native fork, which is how the two are timed
+                // side by side. Without `dir`, the store and then the sideload folder (the external
+                // files directory, where adb can put a model) are looked in.
+                //   ... --es do engine [--es engine Managed|LlamaCpp] [--es text "Hello! Who are you?"]
+                //       [--ei max 48] [--es model Ternary-Bonsai-2-2B] [--es dir <models folder>]
+                var engineName = intent?.GetStringExtra("engine");
+                CircleAI.Core.ModelEngine? engine = Enum.TryParse<CircleAI.Core.ModelEngine>(engineName ?? "Managed", ignoreCase: true, out var parsed)
+                    ? parsed : null;
+                var question = intent?.GetStringExtra("text") ?? "Hello! Who are you?";
+                var model = intent?.GetStringExtra("model") ?? TwoB;
+                var dir = intent?.GetStringExtra("dir");
                 var max = intent?.GetIntExtra("max", 48) ?? 48;
-                System.Threading.Tasks.Task.Run(() => AnswerOnTheManagedEngineAsync(model, question, max));
+                System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max));
                 break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
@@ -115,46 +122,52 @@ public sealed class SoakReceiver : BroadcastReceiver
     /// <summary>Submits one question as the adb caller. Set by the service's startup.</summary>
     public static Action<string>? Ask { get; set; }
 
-    // Where the 2B is looked for when the broadcast names no file: the store, then the sideload folder.
-    private static string[] TwoBCandidates()
-    {
-        const string id = "Ternary-Bonsai-2-2B", file = "Ternary-Bonsai-2-2B-PTQ1_0.gguf";
-        var store = System.IO.Path.Combine(CircleAI.Assistant.Device.ModelStore.Path, id, file);
-        return Application.Context.GetExternalFilesDir(null)?.AbsolutePath is { } sideload
-            ? [store, System.IO.Path.Combine(sideload, "models", id, file)]
-            : [store];
-    }
+    /// <summary>
+    /// Loads a model in the inference process with an engine, asks it one question there and lets
+    /// it go: the answer, its timing and the load's milliseconds. Set by the service's startup.
+    /// </summary>
+    public static Func<string, string, CircleAI.Core.ModelEngine?, string, int,
+        System.Threading.Tasks.Task<(string Text, CircleAI.Assistant.Requests.TurnTiming? Timing, long LoadMs)>>? AskOnce { get; set; }
 
-    private static async System.Threading.Tasks.Task AnswerOnTheManagedEngineAsync(string? path, string? question, int maxTokens)
+    private const string TwoB = "Ternary-Bonsai-2-2B";
+
+    // The models folders a model is looked for in when the broadcast names none: the store, then
+    // the sideload folder.
+    private static string[] ModelFolders() =>
+        Application.Context.GetExternalFilesDir(null)?.AbsolutePath is { } sideload
+            ? [CircleAI.Assistant.Device.ModelStore.Path, System.IO.Path.Combine(sideload, "models")]
+            : [CircleAI.Assistant.Device.ModelStore.Path];
+
+    private static async System.Threading.Tasks.Task AskThroughTheWorkerAsync(
+        string model, string? dir, CircleAI.Core.ModelEngine? engine, string question, int maxTokens)
     {
         const string area = "Engine";
+        var name = engine?.ToString() ?? "the row's engine";
         try
         {
-            var tried = path is null ? TwoBCandidates() : [path];
-            path = tried.FirstOrDefault(System.IO.File.Exists);
-            if (path is null)
+            if (AskOnce is not { } ask)
             {
-                CircleAI.Core.Logging.CircleLog.Warn(area, "engine check: no model at " + string.Join(" or ", tried));
+                CircleAI.Core.Logging.CircleLog.Warn(area, "engine check: the service has not started its inference path");
+                return;
+            }
+            var tried = dir is null ? ModelFolders() : [dir];
+            dir = tried.FirstOrDefault(folder => System.IO.Directory.Exists(System.IO.Path.Combine(folder, model)));
+            if (dir is null)
+            {
+                CircleAI.Core.Logging.CircleLog.Warn(area, $"engine check: no {model} folder in " + string.Join(" or ", tried));
                 return;
             }
 
-            using var generator = CircleAI.Inference.Managed.ManagedChatGenerator.Load(path, new() { ContextLength = 2048 });
-            var timing = new CircleAI.Inference.TurnTimingRecorder();
-            var response = await generator.GenerateResponseAsync(
-                [new("system", CircleAI.Assistant.AssistantPersona.Prompt), new("user", question ?? "Hello! Who are you?")],
-                new CircleAI.Inference.GenerationOptions
-                {
-                    Temperature = 0,
-                    MaxTokens = maxTokens,
-                    Budget = CircleAI.Inference.PowerBudget.None,
-                    Timing = timing,
-                }).ConfigureAwait(false);
-            CircleAI.Core.Logging.CircleLog.Info(area,
-                $"engine check: {response.TokensIn} prompt tokens in {timing.PrefillMs} ms, {response.TokensOut} tokens in {timing.DecodeMs} ms, {response.FinishReason}: {response.Text}");
+            CircleAI.Core.Logging.CircleLog.Info(area, $"engine check ({name}): {model} from {dir}");
+            var (text, timing, loadMs) = await ask(model, dir, engine, question, maxTokens).ConfigureAwait(false);
+            CircleAI.Core.Logging.CircleLog.Info(area, timing is null
+                ? $"engine check ({name}): loaded in {loadMs} ms, no timing came back: {text}"
+                : $"engine check ({name}): loaded in {loadMs} ms; {timing.PromptTokens} prompt tokens in {timing.PrefillMs} ms, "
+                  + $"{timing.OutputTokens} tokens in {timing.DecodeMs} ms, {timing.KvPath}, {timing.Finish}: {text}");
         }
         catch (Exception ex)
         {
-            CircleAI.Core.Logging.CircleLog.Error(area, "engine check failed", ex);
+            CircleAI.Core.Logging.CircleLog.Error(area, $"engine check ({name}) failed", ex);
         }
         finally
         {

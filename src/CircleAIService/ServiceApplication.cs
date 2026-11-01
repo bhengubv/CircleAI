@@ -466,6 +466,8 @@ public sealed class ServiceApplication : Application
             });
             if (soak.Running) soak.Start(null, readiness.BootId, resume: true);
             CircleAI.Service.Droid.SoakReceiver.KillWorker = supervisor.KillForTest;
+            CircleAI.Service.Droid.SoakReceiver.AskOnce = (model, dir, engine, question, max) =>
+                supervisor.AskOnceForTestAsync(model, dir, engine, question, max, CancellationToken.None);
             CircleAI.Service.Droid.SoakReceiver.ArmTestSwitches = on =>
             {
                 var flag = TestSwitchesArmedFile(this);

@@ -18,6 +18,7 @@ using System.Text;
 using System.Text.Json;
 using CircleAI.Inference;
 using CircleAI.Inference.Managed;
+using CircleAI.Inference.Managed.Sampling;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -272,5 +273,29 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
 
         output.WriteLine($"reasoning: {full.ReasoningContent}");
         output.WriteLine($"answer: {full.Text}");
+    }
+
+    [Fact]
+    public async Task A_tool_call_comes_out_in_the_templates_form_and_ends_the_turn()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        // The system turn exactly as the template writes it when it is given this one tool.
+        const string tool = """{"type": "function", "function": {"name": "get_weather", "description": "The weather now in a city", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city"}}, "required": ["location"]}}}""";
+        var system = "# Tools\n\nYou have access to the following functions:\n\n<tools>\n" + tool + "\n</tools>"
+            + "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>";
+
+        var response = await g.GenerateResponseAsync(
+            [new("system", system), new("user", "What is the weather in Paris right now?")], Greedy(64));
+        output.WriteLine(response.Text);
+
+        var at = response.Text.IndexOf(ToolCallGrammar.Opening, StringComparison.Ordinal);
+        Assert.True(at >= 0, "the model answered without calling the tool: " + response.Text);
+        var call = response.Text[(at + ToolCallGrammar.Opening.Length)..].TrimEnd();
+        var grammar = new ToolCallGrammar(["get_weather"]);
+        Assert.True(grammar.TryAdvance(grammar.Start, Encoding.UTF8.GetBytes(call), out var state), "not in the template's form: " + call);
+        Assert.True(state.MayEnd, "the call did not close: " + call);
+        Assert.Equal(FinishReason.Stop, response.FinishReason);
     }
 }

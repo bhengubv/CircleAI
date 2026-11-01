@@ -14,7 +14,8 @@ public sealed record WorkerHello(int Pid, long StartedAtUnixMs, string? LoadedMo
 /// <param name="ModelId">The model.</param>
 /// <param name="ModelDirectory">The model store's root.</param>
 /// <param name="SkipLoadHash">The files were verified already; do not hash the weights again.</param>
-public sealed record WorkerLoadRequest(string ModelId, string ModelDirectory, bool SkipLoadHash);
+/// <param name="Engine">Open it with this engine rather than the one its catalogue row names; null keeps the row's.</param>
+public sealed record WorkerLoadRequest(string ModelId, string ModelDirectory, bool SkipLoadHash, CircleAI.Core.ModelEngine? Engine = null);
 
 /// <summary>The worker process died: when, and what it was doing.</summary>
 public sealed record WorkerDeath(int? Pid, WorkPhase Phase, string? ModelId, string? AskId, DateTimeOffset At);

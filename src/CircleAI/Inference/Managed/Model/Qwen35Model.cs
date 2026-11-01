@@ -20,8 +20,10 @@
 // recurrence repeat the fork's float operations; the attention and the products sum in their
 // own order, so the logits agree with the fork's to within rounding, not to the bit.
 //
-// One Forward at a time per model: it works in buffers it owns.
+// One Forward at a time per model: it works in buffers it owns. Each Forward's time is added up
+// by part (TakeTimes), so a phone can say where a token's second goes.
 
+using System.Diagnostics;
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Kernels;
 using CircleAI.Inference.Managed.Rotation;
@@ -42,10 +44,19 @@ public sealed class Qwen35Model
     private readonly Dictionary<int, (float[] Turned, Q8Activations Q8, Ptq1Lut Lut)> _inputs = [];
 
     // Working buffers, sized once.
-    private readonly float[] _x, _h, _qkv, _z, _conv, _delta, _o, _beta, _alpha;
+    private readonly float[] _x, _h, _qkv, _z, _conv, _o, _beta, _alpha;
     private readonly float[] _qg, _q, _k, _v, _gate, _attn, _cos, _sin;
     private readonly float[] _mixOut, _ffnGate, _ffnUp, _ffnOut;
     private readonly sbyte[] _trits = new sbyte[Ptq1.BlockWeights];
+
+    // The value heads of a DeltaNet layer, shared out to the pool's threads; each thread has its
+    // own delta buffer.
+    private readonly DeltaWork _deltaWork;
+    private readonly float[][] _deltas;
+
+    // Where the time went since the last TakeTimes, in Stopwatch ticks.
+    private long _tTotal, _tTables, _tProducts, _tRecurrence, _tAttention, _tHead;
+    private int _tokens;
 
     private Qwen35Model(GgufFile file, WorkerPool? pool)
     {
@@ -69,7 +80,6 @@ public sealed class Qwen35Model
         _qkv = new float[c.ConvChannels];
         _z = new float[c.SsmInner];
         _conv = new float[c.ConvChannels];
-        _delta = new float[c.SsmHeadDim];
         _o = new float[c.SsmInner];
         _beta = new float[c.SsmHeads];
         _alpha = new float[c.SsmHeads];
@@ -85,6 +95,10 @@ public sealed class Qwen35Model
         _ffnGate = new float[c.FeedForward];
         _ffnUp = new float[c.FeedForward];
         _ffnOut = new float[c.Embedding];
+
+        _deltaWork = new DeltaWork(this);
+        _deltas = new float[Math.Max(1, pool?.Threads ?? 1)][];
+        for (var i = 0; i < _deltas.Length; i++) _deltas[i] = new float[c.SsmHeadDim];
     }
 
     /// <summary>The model's shape.</summary>
@@ -103,6 +117,18 @@ public sealed class Qwen35Model
     /// <summary>A new, empty conversation state holding up to <paramref name="capacity"/> tokens.</summary>
     public Qwen35State NewState(int capacity) => new(Config, Math.Min(capacity, Config.ContextLength));
 
+    /// <summary>The time the Forward calls since the last call took, by part; the count starts again.</summary>
+    public ForwardTimes TakeTimes()
+    {
+        var times = new ForwardTimes(_tokens, Elapsed(_tTotal), Elapsed(_tTables), Elapsed(_tProducts),
+            Elapsed(_tRecurrence), Elapsed(_tAttention), Elapsed(_tHead));
+        _tTotal = _tTables = _tProducts = _tRecurrence = _tAttention = _tHead = 0;
+        _tokens = 0;
+        return times;
+
+        static TimeSpan Elapsed(long ticks) => TimeSpan.FromSeconds((double)ticks / Stopwatch.Frequency);
+    }
+
     /// <summary>
     /// Runs <paramref name="token"/> at the state's next position. When <paramref name="logits"/> is
     /// given (one value per vocabulary token) it receives the next-token logits; leave it empty for
@@ -116,6 +142,7 @@ public sealed class Qwen35Model
         if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
         if (logits.Length != 0 && logits.Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
 
+        var started = Stopwatch.GetTimestamp();
         Embed(token, _x);
         for (var il = 0; il < c.Layers; il++)
         {
@@ -131,9 +158,15 @@ public sealed class Qwen35Model
         }
         state.Position++;
 
-        if (logits.Length == 0) return;
-        RmsNorm(_x, _outputNorm, _h, c.RmsEps);
-        _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+        if (logits.Length != 0)
+        {
+            var head = Stopwatch.GetTimestamp();
+            RmsNorm(_x, _outputNorm, _h, c.RmsEps);
+            _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+            _tHead += Stopwatch.GetTimestamp() - head;
+        }
+        _tTotal += Stopwatch.GetTimestamp() - started;
+        _tokens++;
     }
 
     // ---- the parts of a token ----
@@ -156,9 +189,11 @@ public sealed class Qwen35Model
     private void DeltaNet(int il, Layer layer, Qwen35State state)
     {
         var c = Config;
-        var lut = Prepare(_h, layer.Qkv!.Input);
-        layer.Qkv.MatVec(lut, _qkv, _pool);
-        layer.Z!.MatVec(lut, _z, _pool);
+        var lut = Tables(_h, layer.Qkv!.Input);
+        Product(layer.Qkv, lut, _qkv);
+        Product(layer.Z!, lut, _z);
+
+        var started = Stopwatch.GetTimestamp();
         F32MatVec(layer.Beta!, _h, _beta); // beta and alpha read h unturned: they are not folded
         F32MatVec(layer.Alpha!, _h, _alpha);
 
@@ -182,53 +217,75 @@ public sealed class Qwen35Model
         var hk = c.SsmState;
         for (var head = 0; head < 2 * c.SsmGroups; head++) L2Norm(_conv.AsSpan(head * hk, hk), c.RmsEps);
 
-        // The delta rule per value head, as the fork's fused op runs it with raw gates.
-        var ssm = state.Ssm[il];
-        var scale = 1.0f / MathF.Sqrt(hk);
-        for (var h = 0; h < c.SsmHeads; h++)
+        // The delta rule and the gated norm, value head by value head, on the pool's threads.
+        _deltaWork.Set(layer, state.Ssm[il]);
+        try
         {
-            var group = h % c.SsmGroups;
-            var q = _conv.AsSpan(group * hk, hk);
-            var k = _conv.AsSpan((c.SsmGroups + group) * hk, hk);
-            var v = _conv.AsSpan(2 * c.SsmGroups * hk + h * hk, hk);
-            var beta = 1.0f / (1.0f + MathF.Exp(-_beta[h]));
-            var x = _alpha[h] + layer.DtBias![h];
-            var g = layer.A![h] * (x > 20.0f ? x : MathF.Log(1.0f + MathF.Exp(x)));
+            if (_pool is null) _deltaWork.Execute(0, 1);
+            else _pool.Run(_deltaWork);
+        }
+        finally
+        {
+            _deltaWork.Clear();
+        }
+        _tRecurrence += Stopwatch.GetTimestamp() - started;
 
-            var m = ssm.AsSpan(h * hk * hk, hk * hk); // row j of m is column j of the state
-            var decay = MathF.Exp(g);
-            for (var i = 0; i < m.Length; i++) m[i] *= decay;
-            for (var j = 0; j < hk; j++) _delta[j] = (v[j] - Dot(m.Slice(j * hk, hk), k)) * beta;
+        Product(layer.SsmOut!, Tables(_o, layer.SsmOut!.Input), _mixOut);
+    }
+
+    // One value head of a DeltaNet layer: the delta rule as the fork's fused op runs it with raw
+    // gates, then the gated RMS norm - rms(o) * ssm_norm, times silu(z). Heads touch disjoint
+    // parts of the state and of the output, so any thread may take any head; each head's sums run
+    // in the same order whichever thread takes it.
+    private unsafe void DeltaHead(Layer layer, float[] ssm, int h, float[] deltaBuffer)
+    {
+        var c = Config;
+        var hk = c.SsmState;
+        var group = h % c.SsmGroups;
+        var beta = 1.0f / (1.0f + MathF.Exp(-_beta[h]));
+        var x = _alpha[h] + layer.DtBias![h];
+        var g = layer.A![h] * (x > 20.0f ? x : MathF.Log(1.0f + MathF.Exp(x)));
+        var decay = MathF.Exp(g);
+        var scale = 1.0f / MathF.Sqrt(hk);
+
+        fixed (float* conv = _conv)
+        fixed (float* states = ssm)
+        fixed (float* delta = deltaBuffer)
+        fixed (float* output = _o)
+        {
+            var q = conv + group * hk;
+            var k = conv + (c.SsmGroups + group) * hk;
+            var v = conv + 2 * c.SsmGroups * hk + h * hk;
+            var m = states + (long)h * hk * hk; // row j of m is column j of the state
+            var cells = hk * hk;
+            for (var i = 0; i < cells; i++) m[i] *= decay;
+            for (var j = 0; j < hk; j++) delta[j] = (v[j] - Dot(m + j * hk, k, hk)) * beta;
             for (var j = 0; j < hk; j++)
             {
-                var row = m.Slice(j * hk, hk);
-                var d = _delta[j];
+                var row = m + j * hk;
+                var d = delta[j];
                 for (var i = 0; i < hk; i++) row[i] += k[i] * d;
             }
-            for (var j = 0; j < hk; j++) _o[h * hk + j] = Dot(m.Slice(j * hk, hk), q) * scale;
+            var o = output + h * hk;
+            for (var j = 0; j < hk; j++) o[j] = Dot(m + j * hk, q, hk) * scale;
         }
 
-        // Gated RMS norm per value head: rms(o) * ssm_norm, times silu(z).
-        for (var h = 0; h < c.SsmHeads; h++)
-        {
-            var o = _o.AsSpan(h * hk, hk);
-            RmsNorm(o, layer.SsmNorm!, o, c.RmsEps);
-            var z = _z.AsSpan(h * hk, hk);
-            for (var j = 0; j < hk; j++) o[j] = Silu(z[j]) * o[j];
-        }
-
-        layer.SsmOut!.MatVec(Prepare(_o, layer.SsmOut.Input), _mixOut, _pool);
+        var head = _o.AsSpan(h * hk, hk);
+        RmsNorm(head, layer.SsmNorm!, head, c.RmsEps);
+        var z = _z.AsSpan(h * hk, hk);
+        for (var j = 0; j < hk; j++) head[j] = Silu(z[j]) * head[j];
     }
 
     private void Attention(int il, Layer layer, Qwen35State state)
     {
         var c = Config;
         var hd = c.HeadDim;
-        var lut = Prepare(_h, layer.Q!.Input);
-        layer.Q.MatVec(lut, _qg, _pool);
-        layer.K!.MatVec(lut, _k, _pool);
-        layer.V!.MatVec(lut, _v, _pool);
+        var lut = Tables(_h, layer.Q!.Input);
+        Product(layer.Q, lut, _qg);
+        Product(layer.K!, lut, _k);
+        Product(layer.V!, lut, _v);
 
+        var started = Stopwatch.GetTimestamp();
         // attn_q gives each head [q | gate]; q and k are RMS-normalised per head.
         for (var h = 0; h < c.Heads; h++)
         {
@@ -294,27 +351,47 @@ public sealed class Qwen35Model
         }
 
         for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
-        layer.Output!.MatVec(Prepare(_attn, layer.Output.Input), _mixOut, _pool);
+        _tAttention += Stopwatch.GetTimestamp() - started;
+        Product(layer.Output!, Tables(_attn, layer.Output!.Input), _mixOut);
     }
 
     private void FeedForward(Layer layer)
     {
-        var lut = Prepare(_h, layer.FfnGate.Input);
-        layer.FfnGate.MatVec(lut, _ffnGate, _pool);
-        layer.FfnUp.MatVec(lut, _ffnUp, _pool);
+        var lut = Tables(_h, layer.FfnGate.Input);
+        Product(layer.FfnGate, lut, _ffnGate);
+        Product(layer.FfnUp, lut, _ffnUp);
         for (var i = 0; i < _ffnGate.Length; i++) _ffnGate[i] = Silu(_ffnGate[i]) * _ffnUp[i];
-        layer.FfnDown.MatVec(Prepare(_ffnGate, layer.FfnDown.Input), _ffnOut, _pool);
+        Product(layer.FfnDown, Tables(_ffnGate, layer.FfnDown.Input), _ffnOut);
     }
 
-    // An activation ready for the ternary products that read it: turned, quantised, tabled.
+    // An activation ready for the ternary products that read it: turned, quantised, tabled - the
+    // tables built on the pool's threads.
     private Ptq1Lut Prepare(ReadOnlySpan<float> x, InputTransform? transform)
     {
         var (turned, q8, lut) = _inputs[x.Length];
         if (transform is null) x.CopyTo(turned);
         else transform.Apply(x, turned);
         q8.Quantize(turned);
-        lut.Build(q8);
+        if (_pool is null) lut.Build(q8);
+        else lut.Build(q8, _pool);
         return lut;
+    }
+
+    // Prepare, its time counted as the tables'.
+    private Ptq1Lut Tables(ReadOnlySpan<float> x, InputTransform? transform)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var lut = Prepare(x, transform);
+        _tTables += Stopwatch.GetTimestamp() - started;
+        return lut;
+    }
+
+    // A ternary product, its time counted as the products'.
+    private void Product(TernaryMatrix matrix, Ptq1Lut lut, Span<float> output)
+    {
+        var started = Stopwatch.GetTimestamp();
+        matrix.MatVec(lut, output, _pool);
+        _tProducts += Stopwatch.GetTimestamp() - started;
     }
 
     private float[] Scores(int count)
@@ -386,6 +463,15 @@ public sealed class Qwen35Model
         return s;
     }
 
+    // The same sum through pointers: Mono checks every span index, and the delta rule takes
+    // four of these passes over a 128x128 state per head.
+    private static unsafe float Dot(float* a, float* b, int n)
+    {
+        var s = 0f;
+        for (var i = 0; i < n; i++) s += a[i] * b[i];
+        return s;
+    }
+
     // A small F32 weight (rows of the input width) times x.
     private static void F32MatVec(float[] weight, ReadOnlySpan<float> x, Span<float> y)
     {
@@ -398,6 +484,34 @@ public sealed class Qwen35Model
         if (tensor.Type != GgmlType.F32) throw new NotSupportedException($"{name} is {tensor.Type}; it is read as F32.");
         if (tensor.Elements != length) throw new InvalidDataException($"{name} holds {tensor.Elements} values, not {length}.");
         return file.Floats(tensor).ToArray();
+    }
+
+    // One DeltaNet layer's value heads, handed out one at a time to whichever thread is free.
+    private sealed class DeltaWork(Qwen35Model model) : WorkerPool.IWork
+    {
+        private Layer? _layer;
+        private float[]? _ssm;
+        private int _next;
+
+        public void Set(Layer layer, float[] ssm)
+        {
+            _layer = layer;
+            _ssm = ssm;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _layer = null;
+            _ssm = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            int h;
+            while ((h = Interlocked.Increment(ref _next) - 1) < model.Config.SsmHeads)
+                model.DeltaHead(_layer!, _ssm!, h, model._deltas[worker]);
+        }
     }
 
     // ---- weights ----
@@ -493,4 +607,23 @@ public sealed class Qwen35Model
         public float[]? QNorm { get; }
         public float[]? KNorm { get; }
     }
+}
+
+/// <summary>Where the time of some <see cref="Qwen35Model.Forward"/> calls went.</summary>
+/// <param name="Tokens">Forward calls counted.</param>
+/// <param name="Total">All of it.</param>
+/// <param name="Tables">Turning, quantising and tabling the activations the ternary products read.</param>
+/// <param name="Products">The ternary products, but for the output head's.</param>
+/// <param name="Recurrence">The DeltaNet layers' gates, conv, delta rule and gated norm.</param>
+/// <param name="Attention">The full-attention layers' norms, RoPE, cache and attention.</param>
+/// <param name="Head">The output head, its table included.</param>
+public readonly record struct ForwardTimes(int Tokens, TimeSpan Total, TimeSpan Tables, TimeSpan Products,
+    TimeSpan Recurrence, TimeSpan Attention, TimeSpan Head)
+{
+    /// <summary>Everything else: the embedding row, the layer norms, the residual adds, the feed-forward gate.</summary>
+    public TimeSpan Rest => Total - Tables - Products - Recurrence - Attention - Head;
+
+    /// <inheritdoc/>
+    public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+        $"{Tokens} tokens in {Total.TotalMilliseconds:F0} ms: products {Products.TotalMilliseconds:F0}, tables {Tables.TotalMilliseconds:F0}, recurrence {Recurrence.TotalMilliseconds:F0}, attention {Attention.TotalMilliseconds:F0}, head {Head.TotalMilliseconds:F0}, rest {Rest.TotalMilliseconds:F0}");
 }

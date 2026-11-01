@@ -207,6 +207,44 @@ public sealed class Ptq1KernelTests
         }
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(7)]
+    public void Tables_built_across_threads_equal_the_one_thread_tables(int threads)
+    {
+        // Every block's tables are built by one thread, whichever; the products read through
+        // them must not move by a bit. 6144 is the 2B's widest input (48 blocks), and the
+        // tables are rebuilt over an older input so nothing of it may survive.
+        const int cols = 6144, rows = 300;
+        var blocks = cols / Ptq1.BlockWeights;
+        var rowBytes = blocks * Ptq1.BlockBytes;
+        var matrix = new byte[rows * rowBytes];
+        for (var r = 0; r < rows; r++) RandomRow(blocks, 900 + r).CopyTo(matrix, r * rowBytes);
+        var scales = Ptq1.BlockScales(matrix);
+        var x = new Q8Activations(cols);
+        x.Quantize(RandomActivations(cols, 11));
+
+        var one = new Ptq1Lut(cols);
+        one.Build(x);
+        var expected = new float[rows];
+        one.MatVec(matrix, scales, expected);
+
+        using var pool = new WorkerPool(threads);
+        var shared = new Ptq1Lut(cols);
+        var older = new Q8Activations(cols);
+        older.Quantize(RandomActivations(cols, 12));
+        shared.Build(older, pool);
+        for (var round = 0; round < 3; round++)
+        {
+            shared.Build(x, pool);
+            var actual = new float[rows];
+            shared.MatVec(matrix, scales, actual);
+            for (var r = 0; r < rows; r++)
+                Assert.Equal(BitConverter.SingleToInt32Bits(expected[r]), BitConverter.SingleToInt32Bits(actual[r]));
+        }
+    }
+
     [Fact]
     public void Activations_round_half_to_even_like_the_x86_reference()
     {

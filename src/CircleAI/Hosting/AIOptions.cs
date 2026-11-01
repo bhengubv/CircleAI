@@ -79,6 +79,15 @@ public sealed class AIOptions
     /// </summary>
     public string? ModelPath { get; init; }
 
+    /// <summary>
+    /// The engine that opens the model, instead of the one its catalogue row names; null
+    /// (default) keeps the row's. The file has to be one that engine reads - a Bonsai 2 GGUF
+    /// opens with llama.cpp or with the C# engine (<see cref="ModelEngine.Managed"/>), which is
+    /// how the two are compared on one phone through one path.
+    /// </summary>
+    /// <remarks>Settable for the same reason as <see cref="ModelId"/>: a host decides it after building the options.</remarks>
+    public ModelEngine? Engine { get; set; }
+
     // ------------------------------------------------------------------
     // Inference
     // ------------------------------------------------------------------

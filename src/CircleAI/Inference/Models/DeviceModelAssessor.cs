@@ -206,7 +206,8 @@ public sealed class DeviceModelAssessor : IModelAssessor
 
     /// <summary>
     /// The engines this BUILD can actually load, probed at runtime rather than
-    /// declared. MNN is always present; llama.cpp counts only when its native
+    /// declared. MNN is always present, and so is the C# engine, which is part of this
+    /// library; llama.cpp counts only when its native
     /// library really loaded, which is what <see cref="LlamaGenerator.IsAvailable"/>
     /// answers (it is <c>NativeVersion is not null</c>, not a compile-time flag).
     /// </summary>
@@ -219,7 +220,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// </remarks>
     public static IReadOnlyCollection<ModelEngine> ShippedEngines()
     {
-        var set = new HashSet<ModelEngine> { ModelEngine.Mnn };
+        var set = new HashSet<ModelEngine> { ModelEngine.Mnn, ModelEngine.Managed };
         if (LlamaGenerator.IsAvailable) set.Add(ModelEngine.LlamaCpp);
         return set;
     }
@@ -290,6 +291,11 @@ public sealed class DeviceModelAssessor : IModelAssessor
         //     Bonsai on a stock build and fail at load. Only applies to GGUF rows;
         //     MNN quantisation strings are left to the engine gate.
         if (e.Engine == ModelEngine.LlamaCpp && !LlamaQuantSupport.CanRead(e.Quantization))
+            return false;
+
+        // 1c. The same question for the C# engine, which ships in every build: it reads
+        //     qwen35 in PTQ1_0 and nothing else yet.
+        if (e.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(e.Architecture, e.Quantization))
             return false;
 
         // 2. SHARE OF THE DEVICE. 30% of TOTAL disk, ahead of the RAM and free-storage

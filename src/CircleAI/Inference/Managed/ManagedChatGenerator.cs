@@ -16,6 +16,11 @@
 // Thinking is off unless the generator is made with it on, as QwenTextGenerator keeps it off:
 // on the P30 one factual question once spent its whole budget thinking and never answered.
 //
+// A TOOL CALL IS HELD TO ITS FORM. Once the model writes "<tool_call>" in its answer, each next
+// token is drawn only from those that keep the call in the XML form the model's own template
+// teaches (ToolCallGrammar) - the model card names malformed and looping calls as a known limit,
+// and the logits are ours to mask.
+//
 // THE STATE IS KEPT BETWEEN CALLS AND REUSED ONLY WHERE THE TOKENS MATCH. A prompt runs from
 // the first token the state does not already hold: after all of it, when the state holds the
 // start of the new prompt; else after the mark the state took where the last turn began (a
@@ -84,6 +89,8 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private readonly float[] _logits;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<int> _history = []; // the tokens the state holds, in order
+    private readonly ToolCallGrammar _toolCalls = new();
+    private readonly ToolCallGrammar.PieceOf _callPiece;
     private Qwen35State _state;
     private int _disposed;
 
@@ -111,6 +118,10 @@ public sealed class ManagedChatGenerator : IChatGenerator
         _turnStart = tokenizer.TryGetSpecial("<|im_start|>", out var turn) ? turn : -1;
         _thinkStart = tokenizer.TryGetSpecial("<think>", out var start) ? start : -1;
         _thinkEnd = tokenizer.TryGetSpecial("</think>", out var end) ? end : -1;
+
+        // Inside a tool call a token counts by the text it writes: a control token writes none, and
+        // a thinking token would turn the call into reasoning, so neither can carry a call on.
+        _callPiece = token => token == _thinkStart || token == _thinkEnd ? default : _tokenizer.Piece(token, special: false);
     }
 
     /// <summary>The model's shape.</summary>
@@ -123,6 +134,15 @@ public sealed class ManagedChatGenerator : IChatGenerator
     public int ContextLength => _state.Capacity;
 
     internal ByteLevelBpe Tokenizer => _tokenizer;
+
+    /// <summary>
+    /// Whether this engine reads a model of <paramref name="architecture"/> packed as
+    /// <paramref name="quantization"/>, as a catalogue row names them: qwen35 in PTQ1_0 (Bonsai 2).
+    /// The file itself is checked again when it is opened.
+    /// </summary>
+    public static bool Reads(string? architecture, string? quantization) =>
+        string.Equals(architecture, "qwen35", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(quantization, "PTQ1_0", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
@@ -334,6 +354,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
             var path = Resume(prompt);
             if (timing is not null) timing.KvPath = path;
             var reused = _history.Count;
+            _model.TakeTimes(); // whatever an abandoned call left counted
             for (var i = reused; i < prompt.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -342,6 +363,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 _history.Add(prompt[i]);
             }
             var prefilled = Stopwatch.GetTimestamp();
+            var prefillTimes = _model.TakeTimes();
 
             var sampler = new TokenSampler(Settings(options), options.Seed);
             var generated = new List<int>();
@@ -394,9 +416,24 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 return cut >= 0;
             }
 
+            // A tool call the model opens in its answer is held to the template's XML form until it
+            // closes: from the token after "<tool_call>", only tokens that keep it well formed are drawn.
+            ToolCallGrammar.State? call = null;
+            var overruled = 0;
+
             while (generated.Count < maxTokens)
             {
                 ct.ThrowIfCancellationRequested();
+                if (call is { } held)
+                {
+                    var masked = _toolCalls.Mask(_logits, held, _callPiece, _endOfGeneration);
+                    if (masked == ToolCallGrammar.Masked.Overruled) overruled++;
+                    if (masked == ToolCallGrammar.Masked.Nothing)
+                    {
+                        CircleLog.Warn(Area, "no token can carry the tool call on; it is no longer held to its form");
+                        call = null;
+                    }
+                }
                 var token = sampler.Sample(_logits, generated);
                 if (firstAt == 0) firstAt = Stopwatch.GetTimestamp();
                 if (_endOfGeneration.Contains(token))
@@ -405,6 +442,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
                     break;
                 }
                 generated.Add(token);
+                if (call is { } open) call = _toolCalls.TryAdvance(open, _callPiece(token), out var next) ? next : null;
 
                 if (token == _thinkStart || token == _thinkEnd)
                 {
@@ -414,6 +452,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 else
                 {
                     Text(Decode(decoder, _tokenizer.Piece(token, special: false)));
+                    if (call is null && !reasoning && EndsWith(content, ToolCallGrammar.Opening)) call = _toolCalls.Start;
                     if (!reasoning && Release(final: false))
                     {
                         finish = FinishReason.Stop;
@@ -445,6 +484,8 @@ public sealed class ManagedChatGenerator : IChatGenerator
             var decodeSeconds = Stopwatch.GetElapsedTime(prefilled, done).TotalSeconds;
             var rate = decodeSeconds > 0 ? generated.Count / decodeSeconds : 0;
             CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
+            CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}"));
+            if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
 
             return new Outcome(content.ToString(), options.IncludeReasoning && thought.Length > 0 ? thought.ToString().Trim() : null,
                 prompt.Count, generated.Count, finish, Stopwatch.GetElapsedTime(started, done));
@@ -553,6 +594,16 @@ public sealed class ManagedChatGenerator : IChatGenerator
             TopK = options.TopK > 0 ? Math.Min(options.TopK, card.TopK) : card.TopK,
             TopP = options.TopP > 0 ? Math.Min(options.TopP, card.TopP) : card.TopP,
         };
+    }
+
+    private static bool EndsWith(StringBuilder text, string tail)
+    {
+        if (text.Length < tail.Length) return false;
+        for (var i = 0; i < tail.Length; i++)
+        {
+            if (text[text.Length - tail.Length + i] != tail[i]) return false;
+        }
+        return true;
     }
 
     // The text a token's bytes complete; a character split across tokens waits in the decoder.

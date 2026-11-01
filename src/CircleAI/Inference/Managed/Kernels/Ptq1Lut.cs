@@ -51,6 +51,7 @@ public sealed class Ptq1Lut
     private readonly float[] _y;
     private readonly float[] _sums;
     private readonly RowsWork _rows;
+    private readonly BuildWork _build;
 
     /// <summary>Tables for an input of <paramref name="cols"/> values (a multiple of 128).</summary>
     public Ptq1Lut(int cols)
@@ -62,26 +63,62 @@ public sealed class Ptq1Lut
         _y = new float[Ptq1.BlockWeights];
         _sums = new float[243];
         _rows = new RowsWork(this);
+        _build = new BuildWork(this);
     }
 
     /// <summary>Blocks per row.</summary>
     public int Blocks { get; }
 
     /// <summary>Builds every position's table for one input vector.</summary>
-    public unsafe void Build(Q8Activations x)
+    public void Build(Q8Activations x)
+    {
+        CheckInput(x);
+        BuildBlocks(x, 0, Blocks, _y, _sums);
+    }
+
+    /// <summary>
+    /// The same tables built across <paramref name="pool"/>'s threads, a block at a time as each
+    /// thread is free: every block is built by one thread exactly as <see cref="Build(Q8Activations)"/>
+    /// builds it, so the tables are the same to the last bit. One build at a time per instance.
+    /// </summary>
+    /// <remarks>
+    /// A token builds a table for every activation its products read - about 0.9 ms a 2048-wide
+    /// input on one P30 core (S0.2), a hundred or so a token - and on one thread the pool's
+    /// other threads only waited for it.
+    /// </remarks>
+    public void Build(Q8Activations x, WorkerPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        CheckInput(x);
+        _build.Set(x, pool.Threads);
+        try
+        {
+            pool.Run(_build);
+        }
+        finally
+        {
+            _build.Clear();
+        }
+    }
+
+    private void CheckInput(Q8Activations x)
     {
         if (x.Length != Blocks * Ptq1.BlockWeights)
             throw new ArgumentException($"Expected {Blocks * Ptq1.BlockWeights} activations, got {x.Length}.", nameof(x));
+    }
 
+    // Blocks [first, end) of the tables, in the caller's scratch for one block's activations and sums.
+    private unsafe void BuildBlocks(Q8Activations x, int first, int end, float[] yScratch, float[] sumsScratch)
+    {
         fixed (float* table = _table)
-        fixed (float* y = _y)
-        fixed (float* sums = _sums)
+        fixed (float* y = yScratch)
+        fixed (float* sums = sumsScratch)
         fixed (sbyte* q = x.Quants)
         fixed (float* d = x.Scales)
         fixed (byte* q5 = QOf.Five)
         fixed (byte* q4 = QOf.Four)
         {
-            for (var b = 0; b < Blocks; b++)
+            for (var b = first; b < end; b++)
             {
                 // The block's activations as the reference sees them: value times its scale.
                 for (var k = 0; k < Ptq1.BlockWeights; k++)
@@ -219,6 +256,41 @@ public sealed class Ptq1Lut
             long first;
             while ((first = (long)(Interlocked.Increment(ref _next) - 1) * _chunk) < _count)
                 lut.MatVecRows(_matrix, _scales, _output, (int)first, (int)Math.Min(_count, first + _chunk));
+        }
+    }
+
+    // One pooled table build: the blocks go out one at a time to whichever thread is free, each
+    // thread with scratch of its own.
+    private sealed class BuildWork(Ptq1Lut lut) : WorkerPool.IWork
+    {
+        private Q8Activations? _x;
+        private float[][] _y = [];
+        private float[][] _sums = [];
+        private int _next;
+
+        public void Set(Q8Activations x, int workers)
+        {
+            if (_y.Length < workers)
+            {
+                _y = new float[workers][];
+                _sums = new float[workers][];
+                for (var i = 0; i < workers; i++)
+                {
+                    _y[i] = new float[Ptq1.BlockWeights];
+                    _sums[i] = new float[243];
+                }
+            }
+            _x = x;
+            _next = 0;
+        }
+
+        public void Clear() => _x = null;
+
+        public void Execute(int worker, int workers)
+        {
+            int b;
+            while ((b = Interlocked.Increment(ref _next) - 1) < lut.Blocks)
+                lut.BuildBlocks(_x!, b, b + 1, _y[worker], _sums[worker]);
         }
     }
 

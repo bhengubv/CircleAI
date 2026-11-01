@@ -38,7 +38,8 @@ public static class WorkerWire
                         Job = "job", MaxTokens = "max", Spoken = "spoken", Retrieval = "rq", DeadlineMs = "deadline",
                         Since = "since", WaitMs = "wait", Text = "text", Length = "len", Final = "final",
                         Pid = "pid", StartedMs = "started", Phase = "phase", Step = "step", RetryS = "retry",
-                        RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim";
+                        RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim",
+                        Engine = "engine";
 
     // ── messages ─────────────────────────────────────────────────────────────
 

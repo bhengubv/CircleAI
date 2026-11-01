@@ -37,4 +37,11 @@ public enum ModelEngine
 
     /// <summary>ggml — whisper.cpp-style ASR bundles that are ggml but not llama.cpp.</summary>
     Ggml = 3,
+
+    /// <summary>
+    /// CircleAI's own C# engine (<c>Inference/Managed</c>), which reads GGUF files itself: the
+    /// qwen35 architecture packed as PTQ1_0, which is Bonsai 2. It is part of this library, so
+    /// every build ships it and nothing native has to load.
+    /// </summary>
+    Managed = 4,
 }

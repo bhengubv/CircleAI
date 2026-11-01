@@ -152,12 +152,14 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(dir))
             throw new ArgumentException("a load needs a model and a directory");
 
-        var request = new WorkerLoadRequest(model!, dir!, WorkerWire.Flag(req, WorkerWire.SkipHash));
+        CircleAI.Core.ModelEngine? engine = req.TryGetValue(WorkerWire.Engine, out var named)
+            && Enum.TryParse<CircleAI.Core.ModelEngine>(named, ignoreCase: true, out var parsed) ? parsed : null;
+        var request = new WorkerLoadRequest(model!, dir!, WorkerWire.Flag(req, WorkerWire.SkipHash), engine);
         InProcessBrainWorker brain;
         InProcessBrainWorker? previous = null;
         lock (Gate)
         {
-            if (_brain is not null && _loaded?.ModelId == request.ModelId)
+            if (_brain is not null && _loaded?.ModelId == request.ModelId && _loaded.Engine == request.Engine)
             {
                 brain = _brain;
             }
@@ -184,6 +186,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         var factory = OptionsFactory ?? throw new InvalidOperationException("the inference process has no options");
         var options = factory(request);
         options.ModelId = request.ModelId;
+        options.Engine = request.Engine;
 
         var registry = new ModelRegistryService();
         var loader = new BundleModelLoader(request.ModelDirectory, registry);

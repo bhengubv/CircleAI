@@ -716,6 +716,7 @@ public static class Program
                 {
                     ModelEngine.Mnn      => "MNN",
                     ModelEngine.LlamaCpp => "llama.cpp",
+                    ModelEngine.Managed  => "C#",
                     _                    => e.ToString(),
                 }));
 

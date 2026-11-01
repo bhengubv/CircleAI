@@ -66,6 +66,10 @@ public static class EngineChoice
         if (entry.Engine == ModelEngine.LlamaCpp && !LlamaQuantSupport.CanRead(entry.Quantization))
             return null;
 
+        // The C# engine ships everywhere, so for it the pack is the whole question.
+        if (entry.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(entry.Architecture, entry.Quantization))
+            return null;
+
         return entry.Engine;
     }
 
@@ -149,6 +153,10 @@ public static class EngineChoice
         if (entry.Engine == ModelEngine.LlamaCpp && !LlamaQuantSupport.CanRead(entry.Quantization))
             return $"{entry.Name} is packed as {entry.Quantization}, which the loaded "
                  + $"{LlamaQuantSupport.Loaded?.Id ?? "llama.cpp"} cannot read";
+
+        if (entry.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(entry.Architecture, entry.Quantization))
+            return $"{entry.Name} is {entry.Architecture ?? "an unnamed architecture"} packed as {entry.Quantization}, "
+                 + "which the C# engine does not read yet (it reads qwen35 in PTQ1_0)";
 
         return $"{entry.Name} opens here with {entry.Engine}";
     }

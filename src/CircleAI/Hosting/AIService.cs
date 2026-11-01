@@ -1293,19 +1293,42 @@ public sealed class AIService : IAIService
     /// Run". It had no caller either.
     /// </para>
     /// </remarks>
-    private IChatGenerator BuildByEngine(
+    // internal, not private: the seam test builds through it directly.
+    internal IChatGenerator BuildByEngine(
         string? modelId, string modelPath, int contextSize, ChatCapability capability)
     {
         var entry = modelId is { Length: > 0 } ? _modelRegistry?.GetLatestModel(modelId) : null;
 
-        if (entry?.Engine == ModelEngine.LlamaCpp)
+        // THE ROW'S ENGINE UNLESS THE HOST CHOSE ONE. A Bonsai 2 GGUF opens with llama.cpp or
+        // with the C# engine; the choice is checked as if the row had named it.
+        var engine = _options.Engine ?? entry?.Engine;
+        if (entry is not null && engine is { } chosen && chosen != entry.Engine) entry = entry with { Engine = chosen };
+
+        if (engine == ModelEngine.Managed)
+        {
+            // THE C# ENGINE (S2), on the same terms as llama.cpp below: refused here with the
+            // reason when it cannot read the pack. The persona needs nothing at load - it
+            // arrives with each turn as the system message, which this engine renders as the
+            // model's own system turn.
+            if (entry is not null && EngineChoice.Run(entry) is null)
+                throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
+
+            Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={modelId} cap={capability}");
+            return CircleAI.Inference.Managed.ManagedChatGenerator.Load(modelPath, new CircleAI.Inference.Managed.ManagedGeneratorOptions
+            {
+                ContextLength = Math.Max(1, contextSize),
+                Threads = _options.ThreadCount ?? 0,
+            });
+        }
+
+        if (engine == ModelEngine.LlamaCpp)
         {
             // REFUSED HERE WITH THE REASON, rather than inside MNN with a parse error.
             // "We ship llama.cpp" does not mean "this llama.cpp reads THIS pack": stock
             // rejects Bonsai's PTQ1_0 as an unknown type, so a build carrying upstream
             // would otherwise fail somewhere far from the cause. Explain names whether it
             // was the ABI or the pack.
-            if (EngineChoice.Run(entry) is null)
+            if (entry is not null && EngineChoice.Run(entry) is null)
                 throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
 
             Console.WriteLine($"CIRCLEAI-SLOT built=Llama model={modelId} cap={capability}");
