@@ -28,6 +28,19 @@ the library carries its licence beside it instead (for example
   Xu Xiang, Yanlei Deng and Yanmin Qian, "WeSpeaker: A research and production oriented
   speaker embedding learning toolkit", ICASSP 2023; and Hervé Bredin, pyannote.audio.
 
+## Granite-Embedding-107M-Multilingual: search by meaning
+
+- **What it does here:** turns a line of a kept recording, and a search, into vectors so a
+  line can be found by what it means (`OnnxTextEmbedder`, `MeaningIndex`).
+- **Files fetched:** `model.onnx` and `sentencepiece.bpe.model` from
+  [ibm-granite/granite-embedding-107m-multilingual](https://huggingface.co/ibm-granite/granite-embedding-107m-multilingual),
+  by IBM.
+- **Licence:** [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Its model
+  card states the training data is permissively licensed or IBM's own, and that MS-MARCO was
+  left out for its non-commercial licence.
+- **Changes:** none. The files are fetched as published, checked against their hashes, and
+  run unmodified.
+
 ## Kokoro-82M: the Italian voice
 
 - **What it does here:** speaks Italian, the one of its languages no other voice in the

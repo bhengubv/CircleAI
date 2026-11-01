@@ -815,6 +815,13 @@ public sealed class CircleAISession : IAsyncDisposable
     /// </remarks>
     public static IRemembers? Remembers { get; set; }
 
+    /// <summary>Transcript lines by meaning, when a head has an embedding model to ask (OPEN-GAPS A7).</summary>
+    /// <remarks>
+    /// Settable for the same reason as <see cref="Remembers"/>. Null searches by words alone,
+    /// which is what a phone without the model gets - the search still answers.
+    /// </remarks>
+    public static CircleAI.Search.MeaningIndex? Meaning { get; set; }
+
     /// <summary>Look for something across what this device holds.</summary>
     /// <param name="query">What was typed.</param>
     /// <param name="take">How many results.</param>
@@ -893,48 +900,13 @@ public sealed class CircleAISession : IAsyncDisposable
             }
         }
 
-        // ── Transcripts, through BM25 ───────────────────────────────────
+        // ── Transcripts, by their words and - with a model - their meaning ──
+        // TranscriptSearch is the one owner, shared with the app's Find screen.
         try
         {
-            var kept = await Transcripts.AllAsync(ct).ConfigureAwait(false);
-            if (kept.Count > 0)
-            {
-                var index = new CircleAI.Search.LexicalIndex();
-
-                // A LINE AT A TIME, NOT A TRANSCRIPT AT A TIME. Indexing a
-                // forty-minute meeting as one document buries the sentence
-                // somebody is looking for in ten thousand words, and BM25 length
-                // normalisation cannot rescue a needle that size. A line is also
-                // what a result should SHOW.
-                foreach (var t in kept)
-                {
-                    if (t.Transcript.Lines.Count > 0)
-                    {
-                        foreach (var line in t.Transcript.Lines)
-                            index.Add(new CircleAI.Search.SearchDocument(
-                                new CircleAI.Search.SearchOrigin("transcript", t.Id),
-                                line.Speaker is null ? line.Text : $"{line.Speaker}: {line.Text}",
-                                t.When));
-                    }
-                    else
-                    {
-                        // An engine that reported no timings still produced text.
-                        index.Add(new CircleAI.Search.SearchDocument(
-                            new CircleAI.Search.SearchOrigin("transcript", t.Id),
-                            t.Transcript.Text, t.When));
-                    }
-                }
-
-                var titles = kept.ToDictionary(t => t.Id, t => t.Title, StringComparer.Ordinal);
-
-                foreach (var hit in index.Search(query, take))
-                    fromTranscripts.Add(new Found(
-                        "transcript",
-                        hit.Document.Origin.Id,
-                        titles.GetValueOrDefault(hit.Document.Origin.Id, "Recording"),
-                        hit.Document.Text,
-                        hit.Document.When));
-            }
+            fromTranscripts.AddRange(await TranscriptSearch
+                .SearchAsync(Transcripts, query, take, Meaning, ct)
+                .ConfigureAwait(false));
         }
         catch (OperationCanceledException) { throw; }
         catch

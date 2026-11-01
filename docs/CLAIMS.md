@@ -232,6 +232,28 @@ Kokoro, for the language of its that no other voice in the catalogue speaks (OPE
 | Kokoro is handed the symbols its own G2P trained it on, not espeak's raw spelling | tested | An_untied_affricate_becomes_the_one_symbol_kokoro_was_trained_on |
 | The Italian voice speaks on a phone, and how fast | unproven | built 2026-11-01; Kokoro has never run here or on the P30 |
 
+## Search by meaning
+
+Kept recordings, found by their words and - with an embedding model - their meaning (OPEN-GAPS A7, A12).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A line with no word in common with the query is found by its meaning | tested | A_line_with_no_word_in_common_is_found_by_meaning |
+| A search without the model, or with one that fails, still answers by words | tested | A_meaning_leg_that_fails_leaves_the_words |
+| Lines are embedded once, kept on disk, and again only when they change | tested | Lines_are_embedded_once_kept_on_disk_and_again_only_when_they_change |
+| The vector store finds the nearest on its codes without decoding | tested | The_store_finds_the_nearest_on_its_codes_without_decoding |
+| The embedding model runs on a phone, and how long a first search waits | unproven | built 2026-11-01; the model has never run here or on the P30 |
+
+## Domain packs
+
+What a capability tile's chat knows about its subject (OPEN-GAPS A9).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Every domain pack in the library is reachable by name, with its own framing | tested | Every_pack_in_the_library_is_in_the_table_with_its_own_framing |
+| A tile's chat frames each question the way its pack's adapter does, and an ordinary chat is untouched | tested | A_question_is_framed_the_way_the_packs_own_adapter_frames_it |
+| The framing makes a small model's answers better | unproven | built 2026-11-01; not yet compared on a phone |
+
 ## Other databases
 
 | Claim | Status | Evidence |

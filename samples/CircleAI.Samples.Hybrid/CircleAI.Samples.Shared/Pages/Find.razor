@@ -20,15 +20,18 @@
     So this page asks the injected IRemembers, which IS the store the app writes
     to, and does not go near the session.
 
-    TRANSCRIPTS ARE NOT SEARCHED HERE, AND THAT IS AN HONEST GAP RATHER THAN A
-    DESIGN. This head never registers IKeepsTranscripts at all: Transcribe
-    transcribes a recording and throws the text away when you leave the screen.
-    The native head kept them. Until this head keeps them there is nothing to
-    search, and a second empty source would only make the result look thin for a
-    reason nobody could see.
+    TRANSCRIPTS ARE SEARCHED TOO, NOW THAT THIS HEAD KEEPS THEM (OPEN-GAPS A7).
+    This said they were not, because nothing registered IKeepsTranscripts; the
+    app head registers FileTranscriptStore now, so a line from a kept recording
+    is found here - by its words always, and by its meaning when the service has
+    an embedding model (TranscriptSearch, the same search CircleAISession uses).
+    Memory still leads when both answer, by CircleAISession.Merge's rule. Both
+    are asked for, not required: a head that keeps no transcripts, or has no
+    meaning index, simply searches what it has.
 *@
 @page "/find"
 @inject IRemembers Remembers
+@inject IServiceProvider Services
 
 <div class="find">
 
@@ -59,6 +62,10 @@
             @foreach (var hit in _hits)
             {
                 <li class="find-hit">
+                    @if (hit.From is { Length: > 0 } from)
+                    {
+                        <span class="find-hit-from">@from</span>
+                    }
                     <span class="find-hit-text">@hit.Text</span>
                     @*
                         HOW SURE, NOT WHEN. Remembered carries Text and Confidence
@@ -88,7 +95,8 @@
     bool Blank => string.IsNullOrWhiteSpace(_query);
 
     /// <summary>One thing found, flattened so the markup needs no store types.</summary>
-    sealed record Hit(string Text, double Confidence);
+    /// <param name="From">The recording a transcript line came from; null for a memory.</param>
+    sealed record Hit(string Text, double Confidence, string? From = null);
 
     async Task OnKey(KeyboardEventArgs e)
     {
@@ -114,10 +122,25 @@
 
         try
         {
-            var found = await Remembers.RecallAsync(_query.Trim(), 20);
+            var query = _query.Trim();
+            var found = await Remembers.RecallAsync(query, 20);
 
-            foreach (var r in found)
-                _hits.Add(new Hit(r.Text, r.Confidence));
+            // The recordings this head keeps, by their words and - with the service's
+            // embedding model - their meaning. Optional: not every head keeps any.
+            var lines = Services.GetService(typeof(IKeepsTranscripts)) is IKeepsTranscripts kept
+                ? await TranscriptSearch.SearchAsync(kept, query, 20,
+                      Services.GetService(typeof(CircleAI.Search.MeaningIndex)) as CircleAI.Search.MeaningIndex)
+                : [];
+
+            // Memory leads when both answer, capped so the recordings still show.
+            var sure = found.GroupBy(r => r.Text).ToDictionary(g => g.Key, g => g.First().Confidence);
+            var merged = CircleAI.Assistant.CircleAISession.Merge(
+                [.. found.Select(r => new Found("memory", "", "Remembered", r.Text))], lines, 20);
+
+            foreach (var f in merged)
+                _hits.Add(f.Kind == "memory"
+                    ? new Hit(f.Text, sure.GetValueOrDefault(f.Text, 1.0))
+                    : new Hit(f.Text, 1.0, f.Title));
 
             _status = _hits.Count == 0
                 ? "Nothing matched yet. Things you tell it show up here."

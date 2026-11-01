@@ -43,6 +43,10 @@ public sealed class SentencePieceUnigram
     private readonly Dictionary<string, float> _scores;
     private readonly int _maxPieceLength;
 
+    // What a character no piece covers becomes when the model has no byte pieces -
+    // XLM-R's has none, so without this such a character would vanish.
+    private int? _unknownId;
+
     /// <summary>Cost charged for falling back to raw bytes.</summary>
     /// <remarks>
     /// Any finite penalty works, because fallback only ever competes with "no
@@ -84,6 +88,93 @@ public sealed class SentencePieceUnigram
     }
 
     /// <summary>Encode text to token ids.</summary>
+    /// <summary>
+    /// Reads a SentencePiece <c>.model</c> - the protobuf the trainer writes - keeping each
+    /// normal, user-defined and byte piece with its score at its own index (OPEN-GAPS A7).
+    /// </summary>
+    /// <remarks>
+    /// THE FILE A MODEL'S LISTING PINS. XLM-R's <c>tokenizer.json</c> is nine megabytes Hugging
+    /// Face keeps outside LFS, so the catalogue could only hash it by downloading it; the
+    /// <c>.model</c> beside it carries a published SHA-256. Control pieces never match text and
+    /// stay out of the lattice; the unknown piece is what an uncovered character becomes.
+    /// </remarks>
+    public static SentencePieceUnigram FromModelProto(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var bytes = File.ReadAllBytes(path);
+        var ids = new Dictionary<string, int>(StringComparer.Ordinal);
+        var scores = new Dictionary<string, float>(StringComparer.Ordinal);
+        int? unknown = null;
+        var index = 0;
+
+        for (var pos = 0; pos < bytes.Length;)
+        {
+            var (field, wire) = Tag(bytes, ref pos);
+            if (field == 1 && wire == 2)                       // ModelProto.pieces
+            {
+                var end = (int)Varint(bytes, ref pos) + pos;
+                string? piece = null;
+                float score = 0f;
+                var type = 1L;                                  // NORMAL when unstated
+                while (pos < end)
+                {
+                    var (f, w) = Tag(bytes, ref pos);
+                    if (f == 1 && w == 2) { var n = (int)Varint(bytes, ref pos); piece = Encoding.UTF8.GetString(bytes, pos, n); pos += n; }
+                    else if (f == 2 && w == 5) { score = BitConverter.ToSingle(bytes, pos); pos += 4; }
+                    else if (f == 3 && w == 0) type = Varint(bytes, ref pos);
+                    else Skip(bytes, ref pos, w);
+                }
+                pos = end;
+
+                // NORMAL, USER_DEFINED and BYTE go in the lattice; UNKNOWN is remembered.
+                if (piece is not null && type is 1 or 4 or 6) { ids.TryAdd(piece, index); scores[piece] = score; }
+                else if (type == 2) unknown = index;
+                index++;
+            }
+            else Skip(bytes, ref pos, wire);
+        }
+
+        if (ids.Count == 0) throw new InvalidDataException($"'{path}' holds no SentencePiece pieces.");
+        return new SentencePieceUnigram(ids, scores) { _unknownId = unknown };
+    }
+
+    private static (int Field, int Wire) Tag(byte[] b, ref int pos)
+    {
+        var key = Varint(b, ref pos);
+        return ((int)(key >> 3), (int)(key & 7));
+    }
+
+    private static long Varint(byte[] b, ref int pos)
+    {
+        long value = 0;
+        for (var shift = 0; pos < b.Length; shift += 7)
+        {
+            var x = b[pos++];
+            value |= (long)(x & 0x7F) << shift;
+            if (x < 0x80) return value;
+        }
+        throw new InvalidDataException("A varint ran past the end of the SentencePiece model.");
+    }
+
+    private static void Skip(byte[] b, ref int pos, int wire)
+    {
+        switch (wire)
+        {
+            case 0: Varint(b, ref pos); break;
+            case 1: pos += 8; break;
+            case 2:
+            {
+                // NOT `pos += Varint(b, ref pos)`: that reads pos before the call moves it past
+                // the length, and lands the length's own bytes short of the field's end.
+                var length = (int)Varint(b, ref pos);
+                pos += length;
+                break;
+            }
+            case 5: pos += 4; break;
+            default: throw new InvalidDataException($"Protobuf wire type {wire} in a SentencePiece model.");
+        }
+    }
+
     public IReadOnlyList<int> Encode(string text)
     {
         if (string.IsNullOrEmpty(text)) return [];
@@ -155,10 +246,12 @@ public sealed class SentencePieceUnigram
                 // languages this catalogue exists for.
                 var raw = s.Substring(start, i - start);
                 var bytes = Encoding.UTF8.GetBytes(raw);
+                var spoken = false;
                 for (var b = bytes.Length - 1; b >= 0; b--)
                 {
-                    if (_ids.TryGetValue($"<0x{bytes[b]:X2}>", out var byteId)) reversed.Add(byteId);
+                    if (_ids.TryGetValue($"<0x{bytes[b]:X2}>", out var byteId)) { reversed.Add(byteId); spoken = true; }
                 }
+                if (!spoken && _unknownId is { } unknown) reversed.Add(unknown);
             }
             i = start;
         }

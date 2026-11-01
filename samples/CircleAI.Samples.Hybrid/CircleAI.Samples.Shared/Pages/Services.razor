@@ -82,5 +82,7 @@
     /// </para>
     /// </remarks>
     void Open(Capability c)
-        => Nav.NavigateTo(c.Route ?? $"chat?ask={Uri.EscapeDataString(c.Opener)}");
+        => Nav.NavigateTo(c.Route ?? $"chat?ask={Uri.EscapeDataString(c.Opener)}" +
+                          // The tile's domain pack rides along, so the chat frames it (OPEN-GAPS A9).
+                          (c.Domain is { } pack ? $"&domain={Uri.EscapeDataString(pack)}" : ""));
 }

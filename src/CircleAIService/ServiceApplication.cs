@@ -822,6 +822,12 @@ public sealed class ServiceApplication : Application
             // fixed. Same shape as the LiveSkillStore accessor above.
             catalogue: () => CircleAI.Device.CircleNeuronService.Catalogue);
 
+        // SEARCH BY MEANING (OPEN-GAPS A7). The embedding model is opened where the models are,
+        // and only once setup has put it there; until then an app asking for a vector hears
+        // "no embedding model on this phone" and searches by words. Nothing downloads here.
+        CircleNeuronLinkService.Embedder = () =>
+            CircleAI.Embeddings.MeaningModel.Installed(ModelStore.Path);
+
         // THE BRAIN ITSELF, AND NOTHING HAS EVER ASKED FOR ONE. CircleNeuronService
         // hosts a NeuronNode only when a host sets OptionsFactory; left null it runs,
         // holds the microphone, and reports "listening only — no brain was asked for".

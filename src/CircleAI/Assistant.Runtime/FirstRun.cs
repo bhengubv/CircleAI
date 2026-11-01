@@ -460,6 +460,7 @@ public static class FirstRun
         ModelModality.Vision   => "better eyes",
         ModelModality.Chat     => "another brain",
         ModelModality.SpeakerEmbedding => "another way to tell voices apart",
+        ModelModality.Embedding => "another way to search by meaning",
         _                      => m.Name,
     };
 
@@ -521,6 +522,12 @@ public static class FirstRun
         // wake word and the brain without being asked. A list of abilities where
         // one of them is a chore is a list with a hole in it.
         wanted.Add(new("the eyes", ModelModality.Vision, null));
+
+        // AND SEARCH THAT KNOWS WHAT A LINE MEANS (OPEN-GAPS A7). Words already work with
+        // nothing installed, so this is the second opinion - and at 433 MB it is fetched only
+        // where it fits with room to spare: its catalogue row asks for 3 GB free, so a phone
+        // short of space keeps its words-only search rather than giving the space up.
+        wanted.Add(new("search by meaning", ModelModality.Embedding, null));
 
         // AND WHO SAID WHAT IN A RECORDING (OPEN-GAPS A3). Diarisation was written, tested and
         // had no model, so every transcript of a meeting came back as one voice. Last, because

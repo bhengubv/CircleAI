@@ -201,10 +201,30 @@ public static class TurboQuantCodec
             return dot;
         }
         if (payload.Norm == 0f) return 0f;
+        return InnerProductRotated(Rotated(query), payload, bitsPerDim);
+    }
 
-        var stageBits = StageBits(bitsPerDim, payload.Form);
-        var rotated = new float[dim];
+    /// <summary>The query in the rotated space version-2 codes live in: rotate once, score many.</summary>
+    public static float[] Rotated(ReadOnlySpan<float> query)
+    {
+        var rotated = new float[query.Length];
         HadamardRotation.Rotate(query, rotated);
+        return rotated;
+    }
+
+    /// <summary>
+    /// <see cref="InnerProduct"/> for a query already <see cref="Rotated"/> - what a search over
+    /// many payloads uses, so the rotation is paid once rather than once an entry (OPEN-GAPS A12).
+    /// </summary>
+    public static float InnerProductRotated(ReadOnlySpan<float> rotated, TurboQuantPayload payload, int bitsPerDim)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        if (payload.Version != 2)
+            throw new ArgumentException("Only a version-2 payload's codes live in the rotated space.", nameof(payload));
+        if (payload.Norm == 0f) return 0f;
+
+        var dim = rotated.Length;
+        var stageBits = StageBits(bitsPerDim, payload.Form);
         var indices = BitPacker.Unpack(payload.PackedIndices, dim, stageBits);
         var centroids = BetaLloydMaxCodebook.Get(stageBits, dim).Centroids;
         float sum = 0f;

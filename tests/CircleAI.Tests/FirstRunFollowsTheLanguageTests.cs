@@ -151,7 +151,9 @@ public class FirstRunFollowsTheLanguageTests
         // brain" - this test's whole job is to catch something new being
         // downloaded onto somebody's phone without a decision, and a loosened
         // assertion would stop doing that.
-        Assert.Equal(["the brain", "the eyes"], titles);
+        // "search by meaning" is such a decision (OPEN-GAPS A7, 2026-11-01): searching is not
+        // speech, so a chat-only build gets it too - and only where it fits with 3 GB to spare.
+        Assert.Equal(["the brain", "the eyes", "search by meaning"], titles);
 
         // And the thing the name actually promises, checked directly.
         Assert.DoesNotContain(wanted, w => w.Modality == ModelModality.Tts);

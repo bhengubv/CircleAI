@@ -861,6 +861,9 @@ public sealed class BundleModelLoader : IModelLoader
             // ONE GRAPH, NO config.json (OPEN-GAPS A3): the default arm below would refuse a
             // speaker model whole on disk with "no loadable model file".
             ModelModality.SpeakerEmbedding => Find("*.onnx"),
+            // An ONNX text encoder first (OPEN-GAPS A7); an MNN embedding bundle from a live
+            // catalogue refresh still opens at its config.json.
+            ModelModality.Embedding => Find("*.onnx", ConfigFileName),
             _                      => Find(ConfigFileName),   // Chat: MNN config.json
         };
 

@@ -35,7 +35,9 @@ namespace CircleAI.Embeddings.Local;
 public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
 {
     private const int    FileMagic     = 0x4C455143; // "CELQ" little-endian
-    private const ushort FileVersion   = 1;
+    // 2 records each entry's payload version: entries are written in version 2 now, which is
+    // what lets a search score them on their codes (OPEN-GAPS A12). A version-1 file still loads.
+    private const ushort FileVersion   = 2;
     private const int    DefaultBitsPerDim = 4;
 
     private readonly IEmbeddingEncoder _encoder;
@@ -51,6 +53,9 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
 
     /// <inheritdoc/>
     public int Count => _entries.Count;
+
+    /// <summary>The ids held now, so a caller keeping the store in step with a source can see what is there.</summary>
+    public IReadOnlyList<string> Ids => [.. _entries.Keys];
 
     /// <summary>
     /// Construct with a caller-supplied encoder. <paramref name="bitsPerDim"/>
@@ -88,7 +93,7 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
                 nameof(vector));
 
         var span = vector.Span;
-        var payload = TurboQuantCodec.Encode(span, _bitsPerDim);
+        var payload = TurboQuantCodec.Encode(span, _bitsPerDim, TurboQuantForm.Mse);
         _entries[document.Id] = new Entry(document, payload);
         return ValueTask.CompletedTask;
     }
@@ -126,17 +131,29 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
         if (qNorm > 0)
             for (var i = 0; i < q.Length; i++) q[i] /= qNorm;
 
-        // Brute-force cosine. Each entry is decoded on demand. We carry a
-        // running top-K via SortedSet to avoid O(N log N).
+        // Brute-force cosine, ON THE CODES (OPEN-GAPS A12): the query is rotated once and
+        // meets each entry's centroids where they are, with nothing decoded. Only a
+        // version-1 entry, read from an older file, is still decoded. We carry a running
+        // top-K via SortedSet to avoid O(N log N).
+        var turned = TurboQuantCodec.Rotated(q);
         var heap = new SortedSet<(float Score, string Id)>(ScoreComparer.Instance);
         foreach (var (id, entry) in _entries)
         {
             ct.ThrowIfCancellationRequested();
-            var decoded = TurboQuantCodec.Decode(entry.Payload, Dimension, _bitsPerDim);
-            var entryNorm = NormSafe(decoded);
-            if (entryNorm <= 0) continue;
             float dot = 0;
-            for (var i = 0; i < Dimension; i++) dot += q[i] * (decoded[i] / entryNorm);
+            if (entry.Payload.Version == 2)
+            {
+                if (entry.Payload.Norm <= 0) continue;
+                // The payload keeps the vector's norm; the unit query against the codes is the cosine.
+                dot = TurboQuantCodec.InnerProductRotated(turned, entry.Payload, _bitsPerDim) / entry.Payload.Norm;
+            }
+            else
+            {
+                var decoded = TurboQuantCodec.Decode(entry.Payload, Dimension, _bitsPerDim);
+                var entryNorm = NormSafe(decoded);
+                if (entryNorm <= 0) continue;
+                for (var i = 0; i < Dimension; i++) dot += q[i] * (decoded[i] / entryNorm);
+            }
 
             if (heap.Count < topK)
                 heap.Add((dot, id));
@@ -188,6 +205,7 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
                         }
                     }
                     bw.Write(entry.Payload.Norm);
+                    bw.Write((byte)entry.Payload.Version);
                     bw.Write(entry.Payload.PackedIndices.Length);
                     bw.Write(entry.Payload.PackedIndices);
                 }
@@ -215,7 +233,7 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
             var magic = br.ReadInt32();
             if (magic != FileMagic) throw new InvalidDataException("Not a CircleAI embedding store file.");
             var version = br.ReadUInt16();
-            if (version != FileVersion) throw new InvalidDataException($"Unsupported file version {version}.");
+            if (version is not (1 or FileVersion)) throw new InvalidDataException($"Unsupported file version {version}.");
             var fileBits = br.ReadUInt16();
             if (fileBits != _bitsPerDim)
                 throw new InvalidDataException(
@@ -241,11 +259,13 @@ public sealed class InMemoryEmbeddingStore : ICircleEmbeddingStore
                         metadata[br.ReadString()] = br.ReadString();
                 }
                 var norm = br.ReadSingle();
+                // A version-1 file predates the field: every entry in it is a version-1 payload.
+                var payloadVersion = version == 1 ? 1 : br.ReadByte();
                 var packedLen = br.ReadInt32();
                 var packed = br.ReadBytes(packedLen);
                 _entries[id] = new Entry(
                     new EmbeddingDocument(id, text, metadata),
-                    new TurboQuantPayload(norm, packed));
+                    new TurboQuantPayload(norm, packed) { Version = payloadVersion });
             }
         }
         finally { _gate.Release(); }

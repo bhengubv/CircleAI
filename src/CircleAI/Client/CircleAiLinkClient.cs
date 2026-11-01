@@ -469,6 +469,11 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> CapabilitiesAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Capabilities), ct);
 
+    /// <summary>The service's vector for a text, from its embedding model (OPEN-GAPS A7). The
+    /// chat floor is enough. One row, <c>[width, base64]</c> - see <see cref="LinkEmbedRows"/>.</summary>
+    public Task<LinkRowsReply> EmbedAsync(string text, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Embed, Text: text), ct);
+
     /// <summary>Whether the service can hold a conversation yet, and what it waits on.</summary>
     /// <remarks>
     /// THE FIVE SETUP VERBS ARE HOW A SERVICE WITH NO SCREENS GETS CONFIGURED. Every

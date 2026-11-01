@@ -254,6 +254,24 @@
 @code {
     readonly List<Utterance> _turns = [];
     string _draft = "";
+
+    // The domain pack a tile opened this chat with; null for an ordinary chat.
+    string? _domain;
+
+    /// <summary>One query parameter's value, unescaped; null when it is not there.</summary>
+    static string? Query(string query, string name)
+    {
+        var key = name + "=";
+        var at = query.IndexOf(key, StringComparison.Ordinal);
+        // At the start of a parameter only: "domain=" must not match inside "subdomain=".
+        while (at > 0 && query[at - 1] is not ('?' or '&'))
+            at = query.IndexOf(key, at + 1, StringComparison.Ordinal);
+        if (at < 0) return null;
+        var value = query[(at + key.Length)..];
+        var amp = value.IndexOf('&');
+        if (amp >= 0) value = value[..amp];
+        return Uri.UnescapeDataString(value);
+    }
     string _status = "Getting ready…";
     bool _ready;
     bool _busy;
@@ -285,15 +303,12 @@
         // Microsoft.AspNetCore.WebUtilities, which this Razor library does not
         // reference, and one query parameter is not worth a package.
         var q = new Uri(Nav.Uri).Query;
-        const string key = "ask=";
-        var at = q.IndexOf(key, StringComparison.Ordinal);
-        if (at >= 0)
-        {
-            var value = q[(at + key.Length)..];
-            var amp = value.IndexOf('&');
-            if (amp >= 0) value = value[..amp];
-            _draft = Uri.UnescapeDataString(value);
-        }
+        if (Query(q, "ask") is { } opener) _draft = opener;
+
+        // AND THE DOMAIN PACK THE TILE NAMED (OPEN-GAPS A9): each question in this chat is
+        // framed the way that pack's own adapter frames a message. An unknown name frames
+        // nothing, so a stale link cannot put words in front of a question.
+        _domain = Query(q, "domain");
 
         // The reason, not "unavailable": "Answering needs a 548 MB model" tells
         // somebody what to do next.
@@ -341,7 +356,7 @@
             // preamble the spoken turn uses, so the two paths cannot answer the
             // same question differently.
             var known = await Recalling.AboutAsync(Remembers, text);
-            var asked = Recalling.Ask(text, known);
+            var asked = DomainPacks.Frame(_domain, Recalling.Ask(text, known));
 
             // STREAM, BUT ROUTE A TOOL CALL THROUGH THE EXECUTOR - the same shared
             // flow the spoken turn uses (BrainToolFlow). Without this the typed

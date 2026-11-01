@@ -99,6 +99,13 @@ public sealed class CircleNeuronLinkService : Service
     public static ISetup? Setup { get; set; }
 
     /// <summary>
+    /// The text-embedding model, once setup has fetched one (OPEN-GAPS A7). Set by the host;
+    /// null - or a function answering null - refuses the Embed verb, and the app searches by
+    /// words alone.
+    /// </summary>
+    public static Func<CircleAI.Embeddings.OnnxTextEmbedder?>? Embedder { get; set; }
+
+    /// <summary>
     /// The wake phrases this device listens for. Set by the host; null refuses.
     /// </summary>
     /// <remarks>
@@ -996,6 +1003,15 @@ public sealed class CircleNeuronLinkService : Service
                 await memory.RememberAsync(new MemoryAtom { Text = req.Text!, Subject = req.Subject })
                     .ConfigureAwait(false);
                 return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+            }
+
+            case LinkVerb.Embed:
+            {
+                if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("nothing to embed");
+                var embedder = Embedder?.Invoke();
+                if (embedder is null) return LinkRowsReply.Failure("no embedding model on this phone");
+                var vector = await Task.Run(() => embedder.Embed(req.Text!)).ConfigureAwait(false);
+                return LinkRowsReply.Success(new[] { LinkEmbedRows.Row(vector) });
             }
 
             default:

@@ -3489,6 +3489,34 @@
       "MinRamGb": 0.5,
       "MinStorageGb": 0.1,
       "Capabilities": []
+    },
+    {
+      "Name": "Granite-Embedding-107M-Multilingual",
+      "Version": "1.0",
+      "Quantization": "fp32",
+      "Repo": "ibm-granite/granite-embedding-107m-multilingual",
+      "Source": "HuggingFace",
+      "Modality": "Embedding",
+      "Architecture": "xlm-roberta",
+      "TotalBytes": 433172019,
+      "BundleFiles": [
+        {
+          "Name": "model.onnx",
+          "Sha256": "387e6f91dce3c651cb3dc06661d74fb1d3947f20ed9c3ecf49d2b3b77086b954",
+          "SizeBytes": 428102968
+        },
+        {
+          "Name": "sentencepiece.bpe.model",
+          "Sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+          "SizeBytes": 5069051
+        }
+      ],
+      "License": "Apache-2.0",
+      "Language": "en,de,es,fr,ja,pt,ar,cs,it,ko,nl,zh",
+      "QualityRank": 5,
+      "MinRamGb": 0.9,
+      "MinStorageGb": 3.0,
+      "Capabilities": []
     }
   ]
 }

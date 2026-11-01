@@ -33,7 +33,11 @@ namespace CircleAI.Assistant;
 /// answered by asking, and forty screens for forty capabilities is how an
 /// assistant becomes a menu system.
 /// </param>
-public sealed record Capability(string Title, string Icon, string Opener, string? Route = null);
+/// <param name="Domain">
+/// The domain pack behind the tile (<see cref="DomainPacks"/>), whose framing the chat it opens
+/// puts in front of each question (OPEN-GAPS A9). Null for a tile no pack covers.
+/// </param>
+public sealed record Capability(string Title, string Icon, string Opener, string? Route = null, string? Domain = null);
 
 /// <summary>A section of the grid.</summary>
 public sealed record CapabilityGroup(string Title, Capability[] Items);
@@ -56,11 +60,11 @@ public static class Capabilities
             // src/CircleAI.Career
             new("Your CV", "📄", "Help me build my CV", "career"),
             // src/CircleAI.HR
-            new("Work rights", "📋", "I have a question about my job or my rights at work"),
+            new("Work rights", "📋", "I have a question about my job or my rights at work", Domain: "HR"),
             // src/CircleAI.Banking
             new("Banking", "🏦", "Help me understand my bank account"),
             // src/CircleAI.Personal.Finance
-            new("Money", "💰", "Help me plan my money this month"),
+            new("Money", "💰", "Help me plan my money this month", Domain: "Personal.Finance"),
             // src/CircleAI.Markets
             new("Markets", "📈", "Explain what is happening in the markets"),
         ]),
@@ -68,13 +72,13 @@ public static class Capabilities
         new("Work and business",
         [
             // src/CircleAI.Commerce
-            new("Buying and selling", "🛒", "Help me sell something"),
+            new("Buying and selling", "🛒", "Help me sell something", Domain: "Commerce"),
             // src/CircleAI.Commerce.Accounting
-            new("Bookkeeping", "🧮", "Help me keep my books"),
+            new("Bookkeeping", "🧮", "Help me keep my books", Domain: "Commerce.Accounting"),
             // src/CircleAI.Commerce.Finance
-            new("Invoices", "🧾", "Help me write an invoice"),
+            new("Invoices", "🧾", "Help me write an invoice", Domain: "Commerce.Finance"),
             // src/CircleAI.Business
-            new("My business", "💼", "Help me run my small business"),
+            new("My business", "💼", "Help me run my small business", Domain: "Business"),
             // src/CircleAI.BusinessOps
             new("Running it", "⚙", "Help me organise my business"),
             // src/CircleAI.AutonomousBiz
@@ -86,61 +90,61 @@ public static class Capabilities
         new("Trades and land",
         [
             // src/CircleAI.Retail
-            new("Shop", "🏪", "Help me run my shop"),
+            new("Shop", "🏪", "Help me run my shop", Domain: "Retail"),
             // src/CircleAI.Logistics
-            new("Deliveries", "🚚", "Help me plan deliveries"),
+            new("Deliveries", "🚚", "Help me plan deliveries", Domain: "Logistics"),
             // src/CircleAI.Construction
-            new("Building", "🏗", "Help me with a building job"),
+            new("Building", "🏗", "Help me with a building job", Domain: "Construction"),
             // src/CircleAI.Agriculture
-            new("Farming", "🌱", "Help me with my crops or livestock"),
+            new("Farming", "🌱", "Help me with my crops or livestock", Domain: "Agriculture"),
             // src/CircleAI.Hospitality
-            new("Hosting", "🍴", "Help me run a place that feeds people"),
+            new("Hosting", "🍴", "Help me run a place that feeds people", Domain: "Hospitality"),
             // src/CircleAI.Beauty
-            new("Hair and beauty", "💅", "Help me with my salon"),
+            new("Hair and beauty", "💅", "Help me with my salon", Domain: "Beauty"),
         ]),
 
         new("Health",
         [
             // src/CircleAI.Healthcare
-            new("Health", "❤", "I have a health question"),
+            new("Health", "❤", "I have a health question", Domain: "Healthcare"),
             // src/CircleAI.Personal.Health
-            new("My health", "🩺", "Help me keep track of my health"),
+            new("My health", "🩺", "Help me keep track of my health", Domain: "Personal.Health"),
             // src/CircleAI.Personal.Mental
-            new("How I feel", "🧠", "I want to talk about how I am feeling"),
+            new("How I feel", "🧠", "I want to talk about how I am feeling", Domain: "Personal.Mental"),
             // src/CircleAI.Fitness
-            new("Fitness", "🏃", "Help me get fitter"),
+            new("Fitness", "🏃", "Help me get fitter", Domain: "Fitness"),
             // src/CircleAI.Food
-            new("Food", "🍛", "Help me plan meals"),
+            new("Food", "🍛", "Help me plan meals", Domain: "Food"),
             // src/CircleAI.Safety
-            new("Staying safe", "🛡", "Help me stay safe"),
+            new("Staying safe", "🛡", "Help me stay safe", Domain: "Safety"),
             // src/CircleAI.Elderly
-            new("Older family", "🧓", "Help me care for an older relative"),
+            new("Older family", "🧓", "Help me care for an older relative", Domain: "Elderly"),
             // src/CircleAI.Pets
-            new("Pets", "🐕", "I have a question about my pet"),
+            new("Pets", "🐕", "I have a question about my pet", Domain: "Pets"),
         ]),
 
         new("Family and home",
         [
             // src/CircleAI.Family
-            new("Family", "👪", "Help me with something at home"),
+            new("Family", "👪", "Help me with something at home", Domain: "Family"),
             // src/CircleAI.Kids
-            new("Children", "🧒", "Help me with my children"),
+            new("Children", "🧒", "Help me with my children", Domain: "Kids"),
             // src/CircleAI.Parenting
-            new("Parenting", "🍼", "I have a parenting question"),
+            new("Parenting", "🍼", "I have a parenting question", Domain: "Parenting"),
             // src/CircleAI.Relationships
-            new("Relationships", "💞", "I want to talk about a relationship"),
+            new("Relationships", "💞", "I want to talk about a relationship", Domain: "Relationships"),
             // src/CircleAI.Home
-            new("Home", "🏠", "Help me sort something out at home"),
+            new("Home", "🏠", "Help me sort something out at home", Domain: "Home"),
             // src/CircleAI.Energy
-            new("Electricity", "⚡", "Help me with electricity and load shedding"),
+            new("Electricity", "⚡", "Help me with electricity and load shedding", Domain: "Energy"),
             // src/CircleAI.RealEstate
-            new("Housing", "🔑", "I have a question about renting or housing"),
+            new("Housing", "🔑", "I have a question about renting or housing", Domain: "RealEstate"),
         ]),
 
         new("Learning",
         [
             // src/CircleAI.Education
-            new("Study help", "📚", "Help me study"),
+            new("Study help", "📚", "Help me study", Domain: "Education"),
             // src/CircleAI.Languages
             new("Languages", "🌐", "Help me with a language", "languages"),
             // src/CircleAI.Languages.Translation
@@ -166,25 +170,25 @@ public static class Capabilities
             // src/CircleAI.Search
             new("Look it up", "🔍", "Look something up for me"),
             // src/CircleAI.Creative
-            new("Make something up", "✨", "Help me write something creative"),
+            new("Make something up", "✨", "Help me write something creative", Domain: "Creative"),
         ]),
 
         new("Getting by",
         [
             // src/CircleAI.Legal
-            new("Legal", "⚖", "I have a legal question"),
+            new("Legal", "⚖", "I have a legal question", Domain: "Legal"),
             // src/CircleAI.Civic
-            new("Government", "🏛", "Help me deal with a government office"),
+            new("Government", "🏛", "Help me deal with a government office", Domain: "Civic"),
             // src/CircleAI.Community
-            new("Community", "🤝", "Help me with something in my community"),
+            new("Community", "🤝", "Help me with something in my community", Domain: "Community"),
             // src/CircleAI.Faith
-            new("Faith", "🕊", "I want to talk about my faith"),
+            new("Faith", "🕊", "I want to talk about my faith", Domain: "Faith"),
             // src/CircleAI.Social
-            new("People", "💬", "Help me write a message to somebody"),
+            new("People", "💬", "Help me write a message to somebody", Domain: "Social"),
             // src/CircleAI.Travel
-            new("Travel", "🚌", "Help me plan a trip"),
+            new("Travel", "🚌", "Help me plan a trip", Domain: "Travel"),
             // src/CircleAI.Tourism
-            new("Places to go", "🗺", "Tell me about a place"),
+            new("Places to go", "🗺", "Tell me about a place", Domain: "Tourism"),
         ]),
 
         new("For enjoyment",
@@ -192,15 +196,15 @@ public static class Capabilities
             // src/CircleAI.Music
             new("Music", "🎵", "Talk to me about music"),
             // src/CircleAI.Sports
-            new("Sport", "⚽", "Talk to me about sport"),
+            new("Sport", "⚽", "Talk to me about sport", Domain: "Sports"),
             // src/CircleAI.Media
-            new("Watch and read", "📺", "Recommend me something to watch or read"),
+            new("Watch and read", "📺", "Recommend me something to watch or read", Domain: "Media"),
             // src/CircleAI.Video
             new("Video", "🎬", "Help me with a video"),
             // src/CircleAI.Games
             new("Games", "🎲", "Play a game with me"),
             // src/CircleAI.Gaming
-            new("Gaming", "🕹", "Talk to me about gaming"),
+            new("Gaming", "🕹", "Talk to me about gaming", Domain: "Gaming"),
         ]),
 
     ];

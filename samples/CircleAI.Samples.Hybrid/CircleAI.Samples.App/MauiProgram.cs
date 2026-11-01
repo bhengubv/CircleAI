@@ -183,6 +183,14 @@ public static class MauiProgram
             new CircleAI.Client.LinkedMemory(
                 (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
+        // SEARCH BY MEANING (OPEN-GAPS A7). The vectors come from the service's embedding
+        // model over the link; the index of this app's own transcripts stays in this app's
+        // private storage, beside them. A service without the model refuses, and Find goes
+        // on searching by words.
+        builder.Services.AddSingleton(sp => new CircleAI.Search.MeaningIndex(
+            new CircleAI.Client.LinkedMeaning((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()),
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "Transcripts", "meaning.celq")));
+
         // ONE OWNER FOR THE CONVERSATION. Registered after IRemembers so the
         // effects get the real memory rather than the do-nothing fallback.
         builder.Services.AddConversationStore();

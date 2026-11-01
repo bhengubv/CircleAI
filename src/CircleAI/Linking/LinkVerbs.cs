@@ -206,6 +206,13 @@ public enum LinkVerb
 
     /// <summary>Stop the setup run started by <see cref="SetupStart"/>. Downloaded bytes are kept.</summary>
     SetupCancel,
+
+    /// <summary>
+    /// The vector for <see cref="LinkVerbRequest.Text"/> from the service's embedding model, as one
+    /// <see cref="LinkEmbedRows"/> row (OPEN-GAPS A7): the model lives where the models live, and
+    /// the app searches its own transcripts with what comes back.
+    /// </summary>
+    Embed,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -306,6 +313,8 @@ public static class LinkVerbs
         LinkVerb.ResidentResume => LinkScope.Voice,
         LinkVerb.Abilities      => LinkScope.Chat,
         LinkVerb.Footprint      => LinkScope.Chat,
+        // The chat floor: it computes on text the caller sends and reads nothing of the person's.
+        LinkVerb.Embed          => LinkScope.Chat,
         _                     => LinkScope.Chat,
     };
 
@@ -318,6 +327,40 @@ public static class LinkVerbs
     /// the brain with it.
     /// </remarks>
     public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun;
+}
+
+/// <summary>A vector across the wire: one row of <c>[width, base64 of little-endian float32]</c>.</summary>
+/// <remarks>
+/// THE WIDTH TRAVELS WITH IT. A row of text with no width would decode a truncated vector as a
+/// shorter one without complaint, and a search would then compare it against vectors of the
+/// right length and fail somewhere far from here.
+/// </remarks>
+public static class LinkEmbedRows
+{
+    /// <summary>The row for a vector.</summary>
+    public static IReadOnlyList<string> Row(ReadOnlySpan<float> vector)
+    {
+        var bytes = new byte[vector.Length * sizeof(float)];
+        for (var i = 0; i < vector.Length; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(i * sizeof(float)), vector[i]);
+        return new[] { vector.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), Convert.ToBase64String(bytes) };
+    }
+
+    /// <summary>The vector a row carries; throws when the row and its width disagree.</summary>
+    public static float[] Vector(IReadOnlyList<string> row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (row.Count < 2 || !int.TryParse(row[0], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var width))
+            throw new FormatException("An embedding row is [width, base64].");
+        var bytes = Convert.FromBase64String(row[1]);
+        if (bytes.Length != width * sizeof(float))
+            throw new FormatException($"An embedding row says {width} floats and carries {bytes.Length} bytes.");
+        var vector = new float[width];
+        for (var i = 0; i < width; i++)
+            vector[i] = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(i * sizeof(float)));
+        return vector;
+    }
 }
 
 /// <summary>
