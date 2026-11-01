@@ -56,7 +56,10 @@ by `QwenTextGenerator` over `MnnInterop` - and by `ManagedChatGenerator`,
 CircleAI's own C# engine (`Inference/Managed`, `ModelEngine.Managed`), which
 runs Bonsai 2 (qwen35 packed as PTQ1_0) with no native code at all.
 `AIService.BuildByEngine` picks the generator by the catalogue row's engine, or
-by `AIOptions.Engine` when the host names one.
+by `AIOptions.Engine` when the host names one. The C# engine holds its attention
+keys and values as TurboQuant codes - 4 bits by default (`KvCompressionMode`) -
+and keeps the state after a system turn as a primed start, so a conversation
+that opens with the same persona does not read it again.
 
 ```csharp
 public interface IChatGenerator : IDisposable

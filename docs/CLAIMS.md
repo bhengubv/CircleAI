@@ -186,6 +186,13 @@ against the pinned llama.cpp fork the repo already ships.
 | AIService builds the C# engine when the row or the host names it | tested | AIServices_build_site_makes_the_CSharp_engine_when_the_host_names_it |
 | A question through AIService comes back with the persona | tested | A_question_through_AIService_is_answered_by_the_CSharp_engine_with_the_persona |
 | A tool call comes out in the template's XML form | tested | A_tool_call_comes_out_in_the_templates_form_and_ends_the_turn |
+| TurboQuant's fast Hadamard rotation reconstructs as well as the dense rotation | tested | Version_2_reconstructs_as_closely_as_version_1 |
+| TurboQuant's second stage leaves inner products unbiased where the first shrinks them | tested | At_equal_bits_Prod_leaves_inner_products_unbiased_where_Mse_shrinks_them |
+| Attention on the working memory's codes follows exact attention | tested | Attention_on_the_codes_follows_exact_attention |
+| At 4 bits the working memory keeps the fork's tokens, and the MSE form beats the second stage at every width | tested | Each_working_memory_mode_measured_against_the_forks_tokens |
+| A compressed working memory survives a session | tested | A_compressed_state_survives_a_session |
+| A conversation that opens with the same system turn starts primed, and answers as a cold start does | tested | A_conversation_with_the_same_system_turn_starts_primed_and_answers_as_a_cold_start_does |
+| A primed start shortens the first answer on the phone | unproven | not yet run on the P30 |
 | The 2B answers on the phone in C#, the desktop's words exactly: 81 prompt tokens in 78 s, 0.94 tokens a second | measured | P30 Lite MAR-LX1M, 2026-10-31 (through the soak broadcast, not the app's own path) |
 | It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
 | It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
