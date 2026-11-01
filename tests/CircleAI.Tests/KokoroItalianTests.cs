@@ -41,6 +41,11 @@ public sealed class KokoroItalianTests
         Assert.Equal("Apache-2.0", row.License);
         Assert.Equal("it", row.Language);
 
+        // From our own store, as every voice is (VOICE_PROVENANCE.md) - not from the
+        // repository that first published it.
+        Assert.Equal(ModelSource.GitHubRelease, row.Source);
+        Assert.Equal("bhengubv/circleai-voices@kokoro-82m-v1.0", row.Repo);
+
         // Everything FromDirectory reads: the graph, the IPA vocabulary and one voice pack.
         var files = row.BundleFiles!.Select(f => f.Name).ToList();
         Assert.Single(files, f => f.EndsWith(".onnx", StringComparison.Ordinal));

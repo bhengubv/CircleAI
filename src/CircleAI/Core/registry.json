@@ -219,8 +219,8 @@
     ]
   },
   "Kokoro-82M-Italian": {
-    "Repo": "onnx-community/Kokoro-82M-v1.0-ONNX",
-    "Source": "HuggingFace",
+    "Repo": "bhengubv/circleai-voices@kokoro-82m-v1.0",
+    "Source": "GitHubRelease",
     "Modality": "Tts",
     "Architecture": "kokoro",
     "QuantizationType": "int8",

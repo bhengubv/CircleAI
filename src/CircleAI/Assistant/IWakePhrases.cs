@@ -14,7 +14,7 @@
 //   ビーさん, ビーさま and Bee san; picking one silently, as the app used to, means
 //   the phone answers to a name nobody told the owner.
 //
-//   AND IF THERE IS NONE, what then. Forty of the seventy-eight languages the
+//   AND IF THERE IS NONE, what then. Forty-one of the seventy-nine languages the
 //   app speaks have no wake phrase, and the old screen let you choose them anyway
 //   and went on listening for "Hey B". The honest answer is to say so and let the
 //   owner add one - it is their phone and their language, and the engine can
@@ -81,7 +81,7 @@ public interface IWakePhrases
     /// Every phrase this language can be woken with, best first.
     /// </summary>
     /// <remarks>
-    /// EMPTY IS A REAL AND COMMON ANSWER - forty of seventy-eight languages -
+    /// EMPTY IS A REAL AND COMMON ANSWER - forty-one of seventy-nine languages -
     /// and the screen must say so rather than fall back to English behind the
     /// owner's back, which is what the app did before.
     /// </remarks>

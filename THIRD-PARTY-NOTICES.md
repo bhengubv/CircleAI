@@ -45,10 +45,12 @@ the library carries its licence beside it instead (for example
 
 - **What it does here:** speaks Italian, the one of its languages no other voice in the
   catalogue covers (`KokoroTtsEngine`).
-- **Files fetched:** `onnx/model_quantized.onnx`, `tokenizer.json` and
-  `voices/if_sara.bin` from
+- **Files fetched:** `model_quantized.onnx`, `tokenizer.json` and `if_sara.bin` from
+  release [`kokoro-82m-v1.0`](https://github.com/bhengubv/circleai-voices/releases/tag/kokoro-82m-v1.0)
+  of our own voice store, `bhengubv/circleai-voices` - unmodified copies of
   [onnx-community/Kokoro-82M-v1.0-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX),
   an ONNX conversion of [hexgrad/Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M).
+  That repository's README carries the same attribution.
 - **Licence:** [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
-- **Changes:** none. The files are fetched as published, checked against their hashes, and
-  run unmodified.
+- **Changes:** none. The files are mirrored as published, checked against their hashes,
+  and run unmodified.

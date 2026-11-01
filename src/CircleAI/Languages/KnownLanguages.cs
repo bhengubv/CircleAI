@@ -93,6 +93,7 @@ public static class KnownLanguages
         new("gu", "Gujarati", "ગુજરાતી", WritingSystem.Gujarati, false, "IN"),   // icu-likely-subtags
         new("ht", "Haitian Creole", "Kreyòl", WritingSystem.Latin, false, "HT"),   // icu-confirmed
         new("id", "Indonesian", "Bahasa Indonesia", WritingSystem.Latin, false, "ID"),   // icu-likely-subtags
+        new("it", "Italian", "Italiano", WritingSystem.Latin, false, "IT"),   // icu-likely-subtags; joined with SampleLanguages for Kokoro's voice (OPEN-GAPS A8)
         new("ja", "Japanese", "日本語", WritingSystem.Japanese, false, "JP"),   // icu-likely-subtags; script corrected Han -> Japanese (ISO 15924 Jpan)
         new("jv", "Javanese", "Basa Jawa", WritingSystem.Latin, false, "ID"),   // icu-likely-subtags
         new("ki", "Kikuyu", "Gĩkũyũ", WritingSystem.Latin, false, "KE"),   // icu-likely-subtags

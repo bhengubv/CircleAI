@@ -34,9 +34,10 @@ public sealed class DocumentedCountTests
     [Fact]
     public void The_picker_holds_the_number_the_comments_say_it_does()
     {
-        Assert.Equal(78, SampleLanguages.All.Count);
+        // Seventy-nine since Italian joined for Kokoro's voice (OPEN-GAPS A8, 2026-11-01).
+        Assert.Equal(79, SampleLanguages.All.Count);
 
-        // If this moved, these say seventy-eight and now do not:
+        // If this moved, these say seventy-nine and now do not:
         //   src/CircleAI/Assistant/BuiltInWakePhrases.cs   - header
         //   src/CircleAI/Assistant/IWakePhrases.cs         - header and the
         //                                                    <remarks> on Phrases
@@ -79,7 +80,8 @@ public sealed class DocumentedCountTests
             }
         }
 
-        Assert.Equal(78 - 40, withPhrase);
+        // Italian came without a measured wake phrase, so the languages with none went to 41.
+        Assert.Equal(79 - 41, withPhrase);
 
         // 38, from 32 entries: the six regional tags inherit their root, which
         // is why the table size and the coverage are different numbers and why

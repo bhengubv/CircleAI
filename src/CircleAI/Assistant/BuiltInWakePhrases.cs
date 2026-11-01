@@ -2,7 +2,7 @@
 //
 // The wake phrases that ship with the app, by language.
 //
-// THIRTY-TWO ENTRIES, THIRTY-EIGHT OF SEVENTY-EIGHT LANGUAGES. The two numbers
+// THIRTY-TWO ENTRIES, THIRTY-EIGHT OF SEVENTY-NINE LANGUAGES. The two numbers
 // differ because this table keys on the LANGUAGE and the picker offers regional
 // tags as well - es-ES, es-MX, nl-BE, nl-NL, pt-BR and pt-PT all inherit their
 // root's phrase, so six picker rows are covered by three entries here.
