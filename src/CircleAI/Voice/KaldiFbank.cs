@@ -74,6 +74,11 @@ namespace CircleAI.Voice;
 /// the decoder above had been rewritten three times looking for the fault.
 /// </para>
 /// </param>
+/// <param name="Window">
+/// Kaldi's <c>window_type</c>. Povey for sherpa's models; the WeSpeaker speaker
+/// model was trained on Hamming (OPEN-GAPS A3), and a window the model was not
+/// trained on is the same silent wrong-numbers failure as the rest of this list.
+/// </param>
 public sealed record KaldiFbankOptions(
     int   SampleRateHz            = 16_000,
     int   NumMelBins              = 80,
@@ -84,7 +89,8 @@ public sealed record KaldiFbankOptions(
     float PreemphasisCoefficient  = 0.97f,
     bool  RemoveDcOffset          = true,
     bool  SnipEdges               = false,
-    bool  ScaleToInt16            = false)
+    bool  ScaleToInt16            = false,
+    KaldiWindow Window            = KaldiWindow.Povey)
 {
     /// <summary>Window length in samples — 400 at the defaults.</summary>
     public int FrameLength => (int)(SampleRateHz * FrameLengthMs / 1000f);
@@ -103,6 +109,16 @@ public sealed record KaldiFbankOptions(
         HighFreqHz > 0 ? HighFreqHz : SampleRateHz / 2f + HighFreqHz;
 }
 
+/// <summary>Kaldi's analysis windows - the two the models on this phone were trained with.</summary>
+public enum KaldiWindow
+{
+    /// <summary>(0.5 - 0.5cos)^0.85, Kaldi's default and sherpa's.</summary>
+    Povey,
+
+    /// <summary>0.54 - 0.46cos, symmetric - what WeSpeaker's recipe asks for.</summary>
+    Hamming,
+}
+
 /// <summary>
 /// Streaming Kaldi-compatible fbank. Push samples, pull frames.
 /// </summary>
@@ -119,7 +135,9 @@ public sealed class KaldiFbank
     public KaldiFbank(KaldiFbankOptions? options = null)
     {
         _o = options ?? new KaldiFbankOptions();
-        _window = PoveyWindow(_o.FrameLength);
+        _window = _o.Window == KaldiWindow.Hamming
+            ? HammingWindow(_o.FrameLength)
+            : PoveyWindow(_o.FrameLength);
         (_melBanks, _melStart) = MelBanks(_o);
     }
 
@@ -274,6 +292,15 @@ public sealed class KaldiFbank
         var a = 2 * Math.PI / (n - 1);
         for (var i = 0; i < n; i++)
             w[i] = (float)Math.Pow(0.5 - 0.5 * Math.Cos(a * i), 0.85);
+        return w;
+    }
+
+    private static float[] HammingWindow(int n)
+    {
+        var w = new float[n];
+        var a = 2 * Math.PI / (n - 1);
+        for (var i = 0; i < n; i++)
+            w[i] = (float)(0.54 - 0.46 * Math.Cos(a * i));
         return w;
     }
 

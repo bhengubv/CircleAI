@@ -68,6 +68,11 @@ public static class Transcribing
     /// <param name="progress">
     /// Fraction done, 0 to 1, reported after each chunk.
     /// </param>
+    /// <param name="speakers">
+    /// Tells the voices apart (OPEN-GAPS A3), so each segment says who spoke it. Null
+    /// leaves every segment unlabelled - what a phone without the speaker model gets, with
+    /// the same words and timings either way.
+    /// </param>
     /// <param name="ct">Cancels between chunks and inside a decode.</param>
     public static async Task<TranscriptionResult> FileAsync(
         IVoiceTranscriber transcriber,
@@ -75,6 +80,7 @@ public static class Transcribing
         IAudioDecoder? decoder = null,
         string? language = null,
         IProgress<double>? progress = null,
+        ISpeakerEmbedder? speakers = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(transcriber);
@@ -97,6 +103,7 @@ public static class Transcribing
             var whole = await transcriber
                 .TranscribeAsync(WavIo.ToPcm16(samples), ct, language)
                 .ConfigureAwait(false);
+            whole = await LabelledAsync(whole, samples, speakers, ct).ConfigureAwait(false);
             progress?.Report(1.0);
             return whole;
         }
@@ -129,8 +136,26 @@ public static class Transcribing
             if (start + length >= samples.Length) break;
         }
 
+        var merged = await LabelledAsync(Merge(parts, offsets), samples, speakers, ct).ConfigureAwait(false);
         progress?.Report(1.0);
-        return Merge(parts, offsets);
+        return merged;
+    }
+
+    /// <summary>The result with each segment's speaker filled in, when there is a speaker model.</summary>
+    /// <remarks>
+    /// AFTER THE MERGE, OVER THE WHOLE RECORDING. Labelling chunk by chunk would number the
+    /// voices afresh in every five minutes, so "Speaker 1" at 04:50 and at 05:10 could be two
+    /// different people. Run once over the merged segments, a voice keeps its number.
+    /// </remarks>
+    private static async Task<TranscriptionResult> LabelledAsync(
+        TranscriptionResult result, float[] samples, ISpeakerEmbedder? speakers, CancellationToken ct)
+    {
+        if (speakers is null || result.Timed.Count == 0) return result;
+
+        var named = await Diarisation
+            .OfAsync(result.Timed, samples, WhisperRate, speakers, ct: ct)
+            .ConfigureAwait(false);
+        return result with { Segments = named };
     }
 
     /// <summary>

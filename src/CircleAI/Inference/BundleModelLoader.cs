@@ -858,6 +858,9 @@ public sealed class BundleModelLoader : IModelLoader
             ModelModality.Asr      => Find("*.bin", "*.onnx"),
             ModelModality.Vad      => Find("*.onnx"),
             ModelModality.WakeWord => ResolveWakeWord(modelDir) ?? Find("*.onnx", "*.tflite"),
+            // ONE GRAPH, NO config.json (OPEN-GAPS A3): the default arm below would refuse a
+            // speaker model whole on disk with "no loadable model file".
+            ModelModality.SpeakerEmbedding => Find("*.onnx"),
             _                      => Find(ConfigFileName),   // Chat: MNN config.json
         };
 

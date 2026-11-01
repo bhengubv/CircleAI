@@ -8,7 +8,8 @@
 //
 // Model contract:
 //   - Input:  log-mel spectrogram tensor [1, NMelBins, NFrames]
-//             OR raw waveform [1, SampleCount] (configurable).
+//             OR raw waveform [1, SampleCount]
+//             OR WeSpeaker's centred Kaldi fbank [1, NFrames, NMelBins] (configurable).
 //   - Output: embedding tensor [1, EmbeddingDim] (commonly 192-D or 256-D).
 //
 // Enrollment: averages all observed embeddings per user, persisting
@@ -35,7 +36,25 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace CircleAI.Voice;
 
-public enum SpeakerEmbedderInputKind { LogMel, RawWaveform }
+public enum SpeakerEmbedderInputKind
+{
+    /// <summary>This class's own log-mel, [1, NMelBins, NFrames].</summary>
+    LogMel,
+
+    /// <summary>The samples as they are, [1, SampleCount].</summary>
+    RawWaveform,
+
+    /// <summary>
+    /// WeSpeaker's recipe (OPEN-GAPS A3): Kaldi fbank with a Hamming window, int16-scaled
+    /// samples, snipped edges, the utterance's mean taken off each bin; [1, NFrames, NMelBins].
+    /// </summary>
+    /// <remarks>
+    /// TIME FIRST, AND THE MEAN TAKEN OFF. LogMel is the right size for this model and the
+    /// wrong numbers for it in four places - window, scale, layout and centring - and a
+    /// model fed the wrong numbers still returns a vector, so nothing would have said so.
+    /// </remarks>
+    WeSpeakerFbank,
+}
 
 /// <summary>(Phase E5) Per-user enrollment record used for cosine-similarity ID.</summary>
 public sealed record EnrolledSpeaker(string UserId, float[] Centroid, int SampleCount);
@@ -202,9 +221,13 @@ public sealed class OnnxSpeakerIdentity : ISpeakerIdentity, ISpeakerEmbedder
                 window[i] = s / 32768f;
             }
 
-            DenseTensor<float> tensor = _config.InputKind == SpeakerEmbedderInputKind.RawWaveform
-                ? new DenseTensor<float>(window, new[] { 1, nSamples })
-                : LogMelTensor(window);
+            DenseTensor<float> tensor = _config.InputKind switch
+            {
+                SpeakerEmbedderInputKind.RawWaveform    => new DenseTensor<float>(window, new[] { 1, nSamples }),
+                SpeakerEmbedderInputKind.WeSpeakerFbank => WeSpeakerFeatures(
+                    window, _config.NMelBins, _config.SampleRateHz, _config.MelFrameMs, _config.MelHopMs),
+                _                                       => LogMelTensor(window),
+            };
 
             using var results = _session.Run(new[] { NamedOnnxValue.CreateFromTensor(_inputName, tensor) });
             var output = results.First().AsTensor<float>().ToArray();
@@ -216,6 +239,60 @@ public sealed class OnnxSpeakerIdentity : ISpeakerIdentity, ISpeakerEmbedder
             System.Diagnostics.Debug.WriteLine($"[OnnxSpeakerIdentity] embedding failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>The input a catalogued speaker model wants, read from its row's architecture.</summary>
+    /// <remarks>
+    /// THE MODEL DECIDES ITS FEATURES, NOT THE CALLER. A caller opening a speaker model asks
+    /// the row it opened, so a WeSpeaker row is never handed the LogMel default.
+    /// </remarks>
+    public static SpeakerEmbedderInputKind InputFor(string? architecture) =>
+        architecture is not null && architecture.StartsWith("wespeaker", StringComparison.OrdinalIgnoreCase)
+            ? SpeakerEmbedderInputKind.WeSpeakerFbank
+            : SpeakerEmbedderInputKind.LogMel;
+
+    /// <summary>
+    /// WeSpeaker's features for samples in [-1, 1]: [1, frames, bins], each bin's mean over
+    /// the utterance subtracted.
+    /// </summary>
+    /// <remarks>
+    /// The existing <see cref="KaldiFbank"/>, set to the recipe the model card's feature
+    /// extractor states - torchaudio's <c>kaldi.fbank</c> over <c>waveform * 32768</c>, Hamming,
+    /// <c>snip_edges</c>, top of the mel range at nyquist (Kaldi's 0, not sherpa's -400), no
+    /// dither - and then centred over the whole utterance (<c>fbank_centering_span</c> null).
+    /// </remarks>
+    internal static DenseTensor<float> WeSpeakerFeatures(
+        float[] samples, int bins, int sampleRateHz, int frameMs, int hopMs)
+    {
+        var fbank = new KaldiFbank(new KaldiFbankOptions(
+            SampleRateHz:  sampleRateHz,
+            NumMelBins:    bins,
+            HighFreqHz:    0f,
+            FrameLengthMs: frameMs,
+            FrameShiftMs:  hopMs,
+            SnipEdges:     true,
+            ScaleToInt16:  true,
+            Window:        KaldiWindow.Hamming));
+        fbank.AcceptWaveform(samples);
+        fbank.Flush();
+
+        var frames = fbank.FramesReady;
+        var tensor = new DenseTensor<float>(new[] { 1, frames, bins });
+        if (frames == 0) return tensor;
+
+        var rows = new float[frames][];
+        var mean = new double[bins];
+        for (var f = 0; f < frames; f++)
+        {
+            rows[f] = fbank.GetFrame(f);
+            for (var b = 0; b < bins; b++) mean[b] += rows[f][b];
+        }
+        for (var b = 0; b < bins; b++) mean[b] /= frames;
+
+        for (var f = 0; f < frames; f++)
+            for (var b = 0; b < bins; b++)
+                tensor[0, f, b] = (float)(rows[f][b] - mean[b]);
+        return tensor;
     }
 
     private DenseTensor<float> LogMelTensor(float[] window)

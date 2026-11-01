@@ -459,6 +459,7 @@ public static class FirstRun
         ModelModality.WakeWord => "another wake word",
         ModelModality.Vision   => "better eyes",
         ModelModality.Chat     => "another brain",
+        ModelModality.SpeakerEmbedding => "another way to tell voices apart",
         _                      => m.Name,
     };
 
@@ -520,6 +521,13 @@ public static class FirstRun
         // wake word and the brain without being asked. A list of abilities where
         // one of them is a chore is a list with a hole in it.
         wanted.Add(new("the eyes", ModelModality.Vision, null));
+
+        // AND WHO SAID WHAT IN A RECORDING (OPEN-GAPS A3). Diarisation was written, tested and
+        // had no model, so every transcript of a meeting came back as one voice. Last, because
+        // it is 27 MB that only a transcribed recording uses; speech builds only, because the
+        // chat-only APK cannot transcribe at all.
+        if (speech)
+            wanted.Add(new("who said what", ModelModality.SpeakerEmbedding, null));
 
         return wanted;
     }

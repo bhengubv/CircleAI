@@ -132,12 +132,10 @@ public enum ModelModality
     /// transcriber a model that produces no text at all.
     /// </para>
     /// <para>
-    /// NOTHING IS CATALOGUED UNDER IT YET, and that is the honest state. The
-    /// diarisation path is complete and tested and has no model to run; adding
-    /// the modality is what makes it possible to catalogue one, and
-    /// <c>ModelChoice.AnyCatalogued</c> already distinguishes "nothing exists
-    /// yet" from "nothing that runs on this phone" so an empty modality is a
-    /// state the app can describe rather than trip over.
+    /// ONE ROW SINCE OPEN-GAPS A3: WeSpeaker-ResNet34-LM (CC-BY-4.0), fed WeSpeaker's
+    /// own features by <c>OnnxSpeakerIdentity</c> and fetched by setup as "who said
+    /// what". Before it the modality was empty, and <c>ModelChoice.AnyCatalogued</c>
+    /// is what kept "nothing exists yet" apart from "nothing that runs on this phone".
     /// </para>
     /// </remarks>
     SpeakerEmbedding,

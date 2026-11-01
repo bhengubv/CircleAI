@@ -157,6 +157,52 @@ public static class Diarisation
         ArgumentNullException.ThrowIfNull(embedder);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRateHz);
 
+        return await LabelAsync(
+            segments, s => Slice(pcm16, s, sampleRateHz), sampleRateHz, embedder, threshold, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The same, over float samples in [-1, 1] - what a transcription already holds.
+    /// </summary>
+    /// <remarks>
+    /// ONE SEGMENT AT A TIME, NOT THE WHOLE RECORDING AS PCM-16. Transcribing a file holds it
+    /// as floats - an hour is 230 MB - and turning all of it into bytes to cut it up would add
+    /// another 115 MB on a phone that is also holding the ears. Only the stretch being
+    /// characterised is converted, and the embedder reads at most eight seconds of it.
+    /// </remarks>
+    public static async Task<IReadOnlyList<TranscriptSegment>> OfAsync(
+        IReadOnlyList<TranscriptSegment> segments,
+        float[] samples,
+        int sampleRateHz,
+        ISpeakerEmbedder embedder,
+        double threshold = SameVoice,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(samples);
+        ArgumentNullException.ThrowIfNull(embedder);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRateHz);
+
+        return await LabelAsync(segments, s =>
+        {
+            // The byte overload's clamping, in samples: whole samples by construction.
+            var from = (int)Math.Clamp((long)(s.Start.TotalSeconds * sampleRateHz), 0, samples.Length);
+            var to   = (int)Math.Clamp((long)(s.End.TotalSeconds   * sampleRateHz), from, samples.Length);
+            return to <= from
+                ? ReadOnlyMemory<byte>.Empty
+                : WavIo.ToPcm16(new ArraySegment<float>(samples, from, to - from));
+        }, sampleRateHz, embedder, threshold, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<TranscriptSegment>> LabelAsync(
+        IReadOnlyList<TranscriptSegment> segments,
+        Func<TranscriptSegment, ReadOnlyMemory<byte>> cut,
+        int sampleRateHz,
+        ISpeakerEmbedder embedder,
+        double threshold,
+        CancellationToken ct)
+    {
         if (segments.Count == 0) return segments;
 
         var embeddings = new List<float[]?>(segments.Count);
@@ -164,7 +210,7 @@ public static class Diarisation
         foreach (var segment in segments)
         {
             ct.ThrowIfCancellationRequested();
-            var slice = Slice(pcm16, segment, sampleRateHz);
+            var slice = cut(segment);
             embeddings.Add(slice.IsEmpty
                 ? null
                 : await embedder.EmbedAsync(slice, sampleRateHz, ct).ConfigureAwait(false));

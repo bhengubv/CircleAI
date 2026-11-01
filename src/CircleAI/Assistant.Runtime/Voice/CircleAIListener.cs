@@ -25,8 +25,14 @@ namespace CircleAI.Assistant.Voice;
 public sealed class CircleAIListener : IAsyncDisposable
 {
     private readonly WhisperNetTranscriber _transcriber;
+    private readonly string _storageDir;
+    private OnnxSpeakerIdentity? _speakers;
 
-    private CircleAIListener(WhisperNetTranscriber t) => _transcriber = t;
+    private CircleAIListener(WhisperNetTranscriber t, string storageDir)
+    {
+        _transcriber = t;
+        _storageDir  = storageDir;
+    }
 
     /// <summary>
     /// The underlying transcriber, so a caller can build a full
@@ -94,7 +100,7 @@ public sealed class CircleAIListener : IAsyncDisposable
 
         var transcriber = new WhisperNetTranscriber(ggml, "en");
         log?.Invoke($"engine  : WhisperNetTranscriber on {Path.GetFileName(ggml)}");
-        return (new CircleAIListener(transcriber), "ready");
+        return (new CircleAIListener(transcriber, storageDir), "ready");
     }
 
     /// <summary>
@@ -257,8 +263,52 @@ public sealed class CircleAIListener : IAsyncDisposable
         string? language = null,
         IProgress<double>? progress = null,
         CancellationToken ct = default)
-        => Transcribing.FileAsync(_transcriber, path, decoder, language, progress, ct);
+        => Transcribing.FileAsync(_transcriber, path, decoder, language, progress, Speakers(), ct);
 
-    public ValueTask DisposeAsync() => _transcriber.DisposeAsync();
+    /// <summary>
+    /// The speaker model, once setup has fetched it; null until then (OPEN-GAPS A3).
+    /// </summary>
+    /// <remarks>
+    /// LOOKED FOR ON EVERY FILE, NOT ONCE. This listener is built on the first transcription
+    /// and kept, and setup fetches "who said what" in the background - so a phone that
+    /// transcribed before the model landed would otherwise never label a speaker again.
+    /// Never downloaded from here: the ears are fetched inline because nothing can be heard
+    /// without them, and a transcript without speaker labels is still a transcript.
+    /// </remarks>
+    private OnnxSpeakerIdentity? Speakers()
+    {
+        if (_speakers is not null) return _speakers;
+        try
+        {
+            using var registry = new ModelRegistryService();
+            var plan = new SpeechModelSelector(registry)
+                .PlanFor(DeviceProbe.Snapshot(), ModelModality.SpeakerEmbedding);
+            if (plan.Model is null) return null;
+
+            using var loader = new BundleModelLoader(_storageDir, registry);
+            if (!loader.ModelPresent(plan.Model.ModelId)) return null;
+
+            var onnx  = loader.GetModelPath(plan.Model.ModelId);
+            var entry = registry.GetLatestModel(plan.Model.ModelId);
+            _speakers = new OnnxSpeakerIdentity(new SpeakerIdentityConfig(
+                onnx,
+                Path.Combine(Path.GetDirectoryName(onnx)!, "enrolled-speakers.json"),
+                OnnxSpeakerIdentity.InputFor(entry?.Architecture)));
+            VoiceTrace.Write($"stt: telling voices apart with {plan.Model.ModelId}");
+            return _speakers;
+        }
+        catch (Exception ex)
+        {
+            // A speaker model that will not open costs the labels, never the transcript.
+            VoiceTrace.Write($"stt: speaker model unavailable, transcribing without labels: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_speakers is not null) await _speakers.DisposeAsync().ConfigureAwait(false);
+        await _transcriber.DisposeAsync().ConfigureAwait(false);
+    }
 
 }

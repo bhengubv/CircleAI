@@ -210,6 +210,18 @@ What the brain does with the phone's heat and battery, and what it says while it
 | MNN's own 4-bit working memory costs the 0.8B its answers, so an MNN brain loads with it off | measured | desktop win-x64 MNN bridge, 2026-11-01 (0 of 6 answers alike at 4 bits; off, 6 of 6 twice) |
 | The phone reads its heat and battery while it answers | unproven | built 2026-11-01; not yet run on the P30 |
 
+## Who said what
+
+Telling the voices in a transcribed recording apart (OPEN-GAPS A3).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A transcribed file says who spoke each line when the speaker model is on the phone, and invents nobody when it is not | tested | A_transcribed_file_says_who_spoke_each_line_when_there_is_a_speaker_model |
+| Setup fetches the speaker model by itself on a build that can transcribe | tested | Setup_fetches_it_on_a_build_that_can_transcribe_and_not_on_one_that_cannot |
+| The speaker model is fed its own recipe's features, time first with the utterance mean taken off | tested | The_features_are_time_first_with_the_utterance_mean_taken_off_every_bin |
+| How loud a recording was does not change the voice it is read as | tested | How_loud_the_recording_was_does_not_change_the_voice |
+| The speaker model tells real voices apart on a phone | unproven | built 2026-11-01; the model has never run here or on the P30 |
+
 ## Other databases
 
 | Claim | Status | Evidence |

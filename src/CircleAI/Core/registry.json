@@ -170,6 +170,27 @@
       }
     ]
   },
+  "WeSpeaker-ResNet34-LM": {
+    "Repo": "onnx-community/wespeaker-voxceleb-resnet34-LM",
+    "Source": "HuggingFace",
+    "Modality": "SpeakerEmbedding",
+    "Architecture": "wespeaker-resnet34",
+    "QuantizationType": "fp32",
+    "Version": "1.0",
+    "License": "CC-BY-4.0",
+    "QualityRank": 5,
+    "MinRamGb": 0.15,
+    "MinStorageGb": 0.03,
+    "Capabilities": [],
+    "TotalBytes": 26535549,
+    "BundleFiles": [
+      {
+        "Name": "onnx/model.onnx",
+        "Sha256": "3955447b0499dc9e0a4541a895df08b03c69098eba4e56c02b5603e9f7f4fcbb",
+        "SizeBytes": 26535549
+      }
+    ]
+  },
   "Qwen3-0.6B-MNN": {
     "Repo": "taobao-mnn/Qwen3-0.6B-MNN",
     "Architecture": "qwen3",
