@@ -52,7 +52,11 @@ All inference flows through two contracts. There are no parallel paths.
 ### `CircleAI.Inference.IChatGenerator`
 
 The low-level "give me tokens for these messages" contract, implemented
-by `QwenTextGenerator` over `MnnInterop`.
+by `QwenTextGenerator` over `MnnInterop` - and by `ManagedChatGenerator`,
+CircleAI's own C# engine (`Inference/Managed`, `ModelEngine.Managed`), which
+runs Bonsai 2 (qwen35 packed as PTQ1_0) with no native code at all.
+`AIService.BuildByEngine` picks the generator by the catalogue row's engine, or
+by `AIOptions.Engine` when the host names one.
 
 ```csharp
 public interface IChatGenerator : IDisposable

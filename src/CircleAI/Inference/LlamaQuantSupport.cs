@@ -67,11 +67,14 @@ public static class LlamaQuantSupport
     /// <remarks>
     /// A SUPERSET, which is why shipping it costs nothing in coverage. PTQ1_0 packs
     /// trits densely at 1.75 bpw (5.95 GB for Bonsai 2 27B); PQ2_0 gives each trit a
-    /// 2-bit slot at 2.13 bpw (7.21 GB) and decodes cheaper. Q2_0 and PQ1_0 appear
-    /// on the fork's own branches beside them.
+    /// 2-bit slot at 2.13 bpw (7.21 GB) and decodes cheaper. Q2_0 sits beside them.
+    /// THERE IS NO PQ1_0, though this list once named one: the pinned build's ggml_type
+    /// (prism-b10743-adfffbe, read 2026-11-01) has PQ2_0 = 142 and PTQ1_0 = 143 and
+    /// nothing else of the kind, so a row packed "PQ1_0" would have been offered here and
+    /// failed at load.
     /// </remarks>
     public static readonly LlamaBackend Prism = new("prism-llama.cpp",
-        Set(Stock.Quants.Concat(new[] { "PTQ1_0", "PQ2_0", "PQ1_0", "Q2_0" }).ToArray()));
+        Set(Stock.Quants.Concat(new[] { "PTQ1_0", "PQ2_0", "Q2_0" }).ToArray()));
 
     /// <summary>Every backend this code knows how to recognise.</summary>
     public static IReadOnlyList<LlamaBackend> Known => new[] { Prism, Stock };

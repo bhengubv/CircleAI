@@ -172,6 +172,24 @@ can and cannot do. Measured on the P30 Lite.
 | This phone's real RAM is measured, not the managed heap limit | measured | P30 Lite MAR-LX1M, 2026-08-30 (1.3 GB free of 3.6 GB, source PlatformMeasured) |
 | The language count is what is installed, not what is catalogued | measured | P30 Lite MAR-LX1M, 2026-08-30 (10 SA languages + English, not the marketing 78) |
 
+## The C# engine — Bonsai 2 in CircleAI's own code
+
+The 2B (qwen35, PTQ1_0) run by `Inference/Managed`, with no native code, judged
+against the pinned llama.cpp fork the repo already ships.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| The 2B's file reads exactly as the pinned fork reads it | tested | The_2B_reads_as_the_pinned_fork_read_it |
+| The 2B predicts the fork's tokens, its logits within the fork's own spread | tested | The_2B_predicts_the_forks_tokens_and_logits |
+| A conversation gets the fork's prompt and the fork's greedy reply | tested | Each_conversation_gets_the_forks_prompt_and_the_forks_greedy_reply |
+| Thinking never leaks into the answer | tested | With_thinking_on_the_reasoning_and_the_answer_come_apart |
+| AIService builds the C# engine when the row or the host names it | tested | AIServices_build_site_makes_the_CSharp_engine_when_the_host_names_it |
+| A question through AIService comes back with the persona | tested | A_question_through_AIService_is_answered_by_the_CSharp_engine_with_the_persona |
+| A tool call comes out in the template's XML form | tested | A_tool_call_comes_out_in_the_templates_form_and_ends_the_turn |
+| The 2B answers on the phone in C#, the desktop's words exactly: 81 prompt tokens in 78 s, 0.94 tokens a second | measured | P30 Lite MAR-LX1M, 2026-10-31 (through the soak broadcast, not the app's own path) |
+| It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
+| It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
+
 ## Other databases
 
 | Claim | Status | Evidence |

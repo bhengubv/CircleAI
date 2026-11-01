@@ -45,6 +45,23 @@ The OS + EMUI + cached apps hold ~2 GB. Most of that is **reclaimable cache** (A
 
 **Practical model ceiling on a 3.6 GB phone: ~1.5–2B parameters.** Downloads of 400–900 MB are practical over Wi-Fi; multi-GB is slow and won't fit free RAM anyway.
 
+## CircleAI's own C# engine: Bonsai 2 2B (measured 2026-10-30 to 31)
+
+The 2B (`Ternary-Bonsai-2-2B-PTQ1_0.gguf`, 429 MB, qwen35 packed as ternary PTQ1_0) run by `Inference/Managed` inside the Release service — no native code on its path.
+
+| What | On the P30 Lite |
+|---|---|
+| The runtime | Mono AOT without LLVM (.NET 10.0.14). **No ARM vector intrinsics** (`AdvSimd.IsSupported` is false); `Vector128` reports itself accelerated, yet a byte shuffle or an add costs 7.4 ns |
+| Mono's LLVM AOT | **Crash-loops the service at start** (`aot-runtime.c:5341`, `plt_entry`), so it is not used |
+| One 6144×2048 ternary product, one thread | scalar 384 ms · `Vector128` 226 ms · byte table 43 ms · **lookup table 8.2–9.8 ms** (the bitnet.cpp idea) |
+| The lookup table on 1–8 threads | 10.8 · 4.4 · **3.65** · 4.5 · 3.9 · 4.3 · 5.1 · 4.7 ms — three threads are the best, and more make it slower |
+| Loading the 2B | 3.8–4.6 s (the file is memory-mapped) |
+| Reading the prompt | 81 tokens in 78–96 s (about 1 token a second), one token at a time |
+| Writing the answer | 0.94 tokens a second — 0.50 until the output head's 248,320 rows were cut into chunks small enough to stay in the cache |
+| The answer | Word for word the desktop's: "I am an AI assistant designed to provide helpful information and support." |
+
+**Not yet measured:** the native fork on the same phone (the number the C# engine has to beat), and the C# engine through the app's own path — the inference process builds it now, but on 2026-11-01 the phone was not connected to run it.
+
 ## Bugs this testing found (and fixed)
 
 1. **GC-heap-limit misread.** `DeviceProbe.Snapshot()` read RAM from `GC.GetGCMemoryInfo()` — the per-app **GC heap limit (~100 MB)** in an Android sandbox, not physical RAM. The phone classified as a **Wearable** and *every* model came back `NothingFits`. Chat hid it (silent fallback to the smallest model); the per-modality capability sweep surfaced it. **Fix:** a `PlatformMemoryProbe` hook the Android head sets from `ActivityManager` + `StatFs`.
