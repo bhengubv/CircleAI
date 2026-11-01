@@ -12,7 +12,9 @@ namespace CircleAI.Core
 {
     public sealed class LocalModelLoader : IModelLoader
     {
-        private const string RegistryResourceName = "CircleAI.Core.registry.json";
+        // THE LIVE CATALOGUE, the one the app chooses from (OPEN-GAPS C3): this read a second copy,
+        // registry.json, which drifted from it once already.
+        private const string RegistryResourceName = EmbeddedCatalogue.ResourceName;
 
         // For bundle entries we identify the model by the canonical weight file
         // ("llm.mnn.weight"). It's present in every MNN-LLM model bundle and
@@ -161,45 +163,9 @@ namespace CircleAI.Core
             }
         }
 
-        private Dictionary<string, ModelInfo> LoadEmbeddedRegistry()
-        {
-            var assembly = typeof(LocalModelLoader).Assembly;
-            using var stream = assembly.GetManifestResourceStream(RegistryResourceName)
-                ?? throw new FileNotFoundException("Embedded registry not found");
-
-            // Walk top-level properties; skip non-object values so free-text metadata
-            // (e.g. a "Notes" field) can coexist with model entries without blowing up
-            // the loader.
-            var registry = new Dictionary<string, ModelInfo>(StringComparer.OrdinalIgnoreCase);
-            using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
-            {
-                CommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true,
-            });
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return registry;
-            }
-
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            };
-            foreach (var property in doc.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                var entry = property.Value.Deserialize<ModelInfo>(options);
-                if (entry is not null)
-                {
-                    registry[property.Name] = entry;
-                }
-            }
-            return registry;
-        }
+        // The live catalogue's entries by name (EmbeddedCatalogue reads RegistryResourceName).
+        private static Dictionary<string, ModelInfo> LoadEmbeddedRegistry() =>
+            EmbeddedCatalogue.Read<ModelInfo>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         private bool VerifyChecksum(string filePath, string expectedChecksum)
         {

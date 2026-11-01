@@ -33,7 +33,9 @@ namespace CircleAI.Core
         public delegate void DownloadProgressHandler(DownloadProgressReport progress);
         public event DownloadProgressHandler? ProgressChanged;
 
-        private const string RegistryResourceName = "CircleAI.Core.registry.json";
+        // THE LIVE CATALOGUE, the one the app chooses from (OPEN-GAPS C3): this read a second copy,
+        // registry.json, which drifted from it once already.
+        private const string RegistryResourceName = EmbeddedCatalogue.ResourceName;
 
         private readonly IReadOnlyList<IModelSource> _sources;
         private readonly bool _ownsSources;
@@ -198,10 +200,9 @@ namespace CircleAI.Core
         private static IReadOnlyDictionary<string, ModelEntry> LoadEmbeddedRegistry()
         {
             var assembly = typeof(ModelDownloader).Assembly;
-            using var stream = assembly.GetManifestResourceStream(RegistryResourceName);
-            if (stream is not null)
+            if (assembly.GetManifestResourceInfo(RegistryResourceName) is not null)
             {
-                return ParseRegistry(stream);
+                return EmbeddedCatalogue.Read<ModelEntry>(JsonOpts());
             }
 
             // Registry isn't embedded — fall back to a sibling registry.json next to the assembly.
