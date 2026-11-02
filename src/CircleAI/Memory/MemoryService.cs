@@ -232,14 +232,32 @@ public sealed class MemoryService : IMemoryService, IDisposable
     public void Save() => _wear.Flush();
 
     /// <inheritdoc />
+    /// <remarks>
+    /// NOT UNDER A CALL IN FLIGHT. Every call holds <c>_one</c> while it uses the store's
+    /// connection, and this did not: closing the connection under a write rolled that write's
+    /// transaction back from this thread and tore it - SqliteTransaction.Complete threw a
+    /// NullReferenceException in a test's teardown on 2026-11-02, a learned lesson still being
+    /// written as the test ended, and a host shutting down mid-write is the same race. So the
+    /// call in flight finishes first - for a few seconds at most, so a host that is going away
+    /// is never held up for long. The gate itself is not disposed: a call already queued on it
+    /// would never wake; left alive, each gets its turn and is told the memory is gone.
+    /// </remarks>
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
 
-        _wear.Flush();
-        _store.Dispose();
-        _one.Dispose();
+        var held = _one.Wait(TimeSpan.FromSeconds(5));
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _wear.Flush();
+            _store.Dispose();
+        }
+        finally
+        {
+            if (held) _one.Release();
+        }
     }
 
     private void ThrowIfDisposed() =>
