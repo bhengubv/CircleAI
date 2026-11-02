@@ -115,4 +115,5 @@ internal static unsafe class Llama
     [DllImport(Lib)] public static extern float* llama_get_logits_ith(nint ctx, int i);
     [DllImport(Lib)] public static extern nint llama_get_memory(nint ctx);
     [DllImport(Lib)] public static extern void llama_memory_clear(nint mem, byte data);
+    [DllImport(Lib)] public static extern nint llama_print_system_info();
 }

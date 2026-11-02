@@ -96,8 +96,9 @@ if (!File.Exists(resolvedPath))
     failures.Add($"returned path does not exist: {resolvedPath}");
 
 // What the path must point at depends on the engine that loads it: MNN opens the
-// bundle's config.json, a GGUF engine opens the single .gguf weights file.
-var expectedAnchor = entry.Engine == CircleAI.Core.ModelEngine.LlamaCpp ? ".gguf" : "config.json";
+// bundle's config.json, a GGUF engine - llama.cpp or the C# engine - opens the single
+// .gguf weights file (the loader's own IsGguf rule).
+var expectedAnchor = entry.Engine is CircleAI.Core.ModelEngine.LlamaCpp or CircleAI.Core.ModelEngine.Managed ? ".gguf" : "config.json";
 if (!resolvedPath.EndsWith(expectedAnchor, StringComparison.OrdinalIgnoreCase))
     failures.Add($"expected {expectedAnchor} (what the {entry.Engine} engine loads), got '{Path.GetFileName(resolvedPath)}'");
 
