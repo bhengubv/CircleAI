@@ -434,7 +434,7 @@ public static class Program
                         foreach (var item in would) Say($"  {item.Id}: {item.Reason}");
 
                         Say("setup: " + ModelSetup.Describe(loader));
-                        foreach (var (name, have, need) in ModelSetup.Unfinished(loader))
+                        foreach (var (name, have, need) in ModelSetup.Unfinished(loader, declined: declined))
                             Say($"would carry on with {name}: {have} of {need} bytes");
                         foreach (var (name, need) in ModelSetup.NotStarted(loader, plan, brainFirst: wanted))
                             Say($"would fetch {name} ({need} bytes)");
