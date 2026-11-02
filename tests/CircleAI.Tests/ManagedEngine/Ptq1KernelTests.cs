@@ -245,8 +245,11 @@ public sealed class Ptq1KernelTests
         }
     }
 
+    // The fixtures' ruler is the shipped win-x64 llama.dll, built without AVX, so its Q8_0
+    // quantiser is quantize_row_q8_0_ref: id = 1 / d and C's roundf. (This test pinned the AVX
+    // branch's half-to-even until S5, which that build never runs.)
     [Fact]
-    public void Activations_round_half_to_even_like_the_x86_reference()
+    public void Activations_round_midpoints_away_from_zero_like_the_reference_build()
     {
         // amax 127 makes id exactly 1, so each value lands on its own midpoint.
         var x = new float[Q8Activations.BlockSize];
@@ -259,11 +262,29 @@ public sealed class Ptq1KernelTests
         q.Quantize(x);
 
         Assert.Equal(127, q.Quants[0]);
-        Assert.Equal(2, q.Quants[1]);
+        Assert.Equal(3, q.Quants[1]);
         Assert.Equal(4, q.Quants[2]);
-        Assert.Equal(-2, q.Quants[3]);
-        Assert.Equal(0, q.Quants[4]);
+        Assert.Equal(-3, q.Quants[3]);
+        Assert.Equal(1, q.Quants[4]);
         Assert.Equal((float)(Half)1f, q.Scales[0]);
+    }
+
+    [Theory]
+    // Found by search: for these, 1 / (amax / 127) and 127 / amax differ in the last bit and put
+    // x * id either side of the midpoint - the reference's integer first, the AVX branch's second.
+    [InlineData(1.4285147190093994f, 1.1304388046264648f, 101, 100)]
+    [InlineData(5.481141567230225f, 2.7405707836151123f, 64, 63)]
+    public void Activations_scale_by_one_over_d_like_the_reference_build(float amax, float value, int reference, int avx)
+    {
+        var x = new float[Q8Activations.BlockSize];
+        x[0] = amax;
+        x[1] = value;
+        var q = new Q8Activations(Q8Activations.BlockSize);
+        q.Quantize(x);
+
+        Assert.Equal(reference, q.Quants[1]);
+        Assert.NotEqual(avx, q.Quants[1]);
+        Assert.Equal(127, q.Quants[0]);
     }
 
     [Fact]

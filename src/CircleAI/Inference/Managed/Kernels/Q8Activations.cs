@@ -2,17 +2,21 @@
 //
 // The int8 form an activation vector takes before it meets ternary weights. Bonsai's
 // PTQ1_0 pairs with Q8_0: blocks of 32 values, one scale each. The rounding follows
-// the pinned fork's x86 path (ggml-cpu/arch/x86/quants.c, quantize_row_q8_0) exactly,
-// because that build made the S0 fixtures this engine is held to:
+// the quantiser the build that made the fixtures actually runs, exactly:
 //
 //   d  = amax / 127, stored as fp16
-//   id = 127 / amax            (NOT 1/d - the reference quantiser and the x86 path
-//                               differ here, and the x86 path is the ruler)
-//   q  = round-half-to-even(x * id)
+//   id = 1 / d                 (d before its fp16 rounding)
+//   q  = roundf(x * id)        (a midpoint goes away from zero)
 //
-// Two values at a rounding midpoint go to different integers under half-away-from-
-// zero, which is what C's roundf does; MathF.Round's default is half-to-even, which
-// is what _mm256_round_ps(_MM_ROUND_NEAREST) does.
+// THAT IS THE REFERENCE QUANTISER, quantize_row_q8_0_ref, AND THIS FILE SAID OTHERWISE until
+// S5. It followed the AVX branch of ggml-cpu/arch/x86/quants.c (id = 127 / amax, midpoints to
+// even), on the belief that the shipped win-x64 llama.dll takes it. It does not: that build is
+// MSVC for x64 without /arch:AVX - its system info reads "BMI2 | LLAMAFILE | OPENMP | REPACK",
+// no AVX - so quantize_row_q8_0 falls through its `#if defined(__AVX2__) || defined(__AVX__)`
+// to the reference. 127 / amax and 1 / (amax / 127) differ in the last bit for 27% of blocks
+// (200,000 random scales), and where x * id sits that close to a midpoint the two put a value on different
+// integers: amax 1.4285147, x 1.1304388 is 101 here and was 100 (Ptq1KernelTests pins it).
+// The fork on the phone (the NEON branch) also takes id = 1 / d; only its midpoints go to even.
 
 using System.Runtime.CompilerServices;
 
@@ -55,13 +59,15 @@ public sealed class Q8Activations
             var amax = 0f;
             for (var j = 0; j < BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(block[j]));
 
-            Scales[b] = (float)(Half)(amax / 127f);
-            var id = amax != 0f ? 127f / amax : 0f;
+            var d = amax / 127f;
+            Scales[b] = (float)(Half)d;
+            var id = d != 0f ? 1f / d : 0f;
             var q = Quants.AsSpan(b * BlockSize, BlockSize);
             for (var j = 0; j < BlockSize; j++) q[j] = RoundToInt8(block[j] * id);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static sbyte RoundToInt8(float v) => (sbyte)Math.Clamp((int)MathF.Round(v), -128, 127);
+    private static sbyte RoundToInt8(float v) =>
+        (sbyte)Math.Clamp((int)MathF.Round(v, MidpointRounding.AwayFromZero), -128, 127);
 }
