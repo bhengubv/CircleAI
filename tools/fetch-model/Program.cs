@@ -19,10 +19,25 @@
 //   4. ModelExists() is true after — which re-hashes the weight anchor, so this
 //      is a real SHA-256 verification of the downloaded bytes, not a file check.
 //   5. installed.json was stamped for upgrade detection.
+//
+// ONE FILE THE REGISTRY DOES NOT NAME YET:
+//
+//   dotnet run --project tools/fetch-model -- --file <repo> <file> <sha256> <bytes> <folder> [storageDir]
+//
+// fetches <file> from the Hugging Face repo <repo> into <storageDir>/<folder>/ through the
+// same ModelDownloadService (resume, retry, the fallback URL, the SHA-256 check), then hashes
+// the file again here. It writes no installed.json: that manifest describes a registry
+// entry's whole bundle, and a file fetched beside one - a model's vision tower in the model's
+// own folder - must not replace it.
 
 using System.Diagnostics;
+using System.Globalization;
+using System.Security.Cryptography;
+using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
+
+if (args.Length > 0 && args[0] == "--file") return await FetchOneFile(args[1..]);
 
 var modelName = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
     ? args[0]
@@ -132,3 +147,63 @@ if (failures.Count > 0)
 
 Console.WriteLine($"PASS: fetched, SHA-256 verified, and returned the path the {entry.Engine} engine loads.");
 return 0;
+
+static async Task<int> FetchOneFile(string[] a)
+{
+    if (a.Length < 5 || !long.TryParse(a[3], NumberStyles.None, CultureInfo.InvariantCulture, out var bytes) || bytes <= 0
+        || a[2].Length != 64 || !a[2].All(Uri.IsHexDigit))
+    {
+        Console.Error.WriteLine("usage: fetch-model --file <repo> <file> <sha256> <bytes> <folder> [storageDir]");
+        return 2;
+    }
+    var (repo, name, sha, folder) = (a[0], a[1], a[2].ToLowerInvariant(), a[4]);
+    var storage = ModelPaths.Resolve(a.Length > 5 ? a[5] : null);
+    var path = Path.Combine(storage, folder, name);
+    Console.WriteLine($"repo    : {repo}");
+    Console.WriteLine($"file    : {name}, {bytes:N0} bytes, sha256 {sha}");
+    Console.WriteLine($"into    : {path}");
+    Console.WriteLine($"present : {File.Exists(path)}");
+    Console.WriteLine();
+
+    var sw = Stopwatch.StartNew();
+    var last = -1;
+    var progress = new Progress<DownloadProgress>(p =>
+    {
+        var pct = (int)(p.Ratio * 100);
+        if (pct <= last || pct % 5 != 0) return;
+        last = pct;
+        Console.WriteLine($"  {pct,3}%  {sw.Elapsed:mm\\:ss}  {p.Phase}");
+    });
+    using var downloads = new ModelDownloadService(storage);
+    try
+    {
+        await downloads.EnsureBundleAsync(folder, repo, ModelSource.HuggingFace, [new BundleFileSpec(name, sha, bytes)], progress, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"FAIL after {sw.Elapsed:mm\\:ss}: {ex.GetType().Name}: {ex.Message}");
+        return 1;
+    }
+
+    // The service checked the hash; this checks the file it left, by its own reading.
+    var failures = new List<string>();
+    if (!File.Exists(path)) failures.Add($"nothing at {path}");
+    else
+    {
+        var length = new FileInfo(path).Length;
+        if (length != bytes) failures.Add($"{length:N0} bytes on disk, not {bytes:N0}");
+        await using var stream = File.OpenRead(path);
+        var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream)).ToLowerInvariant();
+        Console.WriteLine($"sha256  : {actual}");
+        if (actual != sha) failures.Add($"the file hashes to {actual}");
+    }
+    Console.WriteLine($"elapsed : {sw.Elapsed:mm\\:ss}");
+    if (failures.Count > 0)
+    {
+        Console.Error.WriteLine("FAIL:");
+        foreach (var f in failures) Console.Error.WriteLine($"  - {f}");
+        return 1;
+    }
+    Console.WriteLine("PASS: the file is in place and its SHA-256 is the one asked for.");
+    return 0;
+}

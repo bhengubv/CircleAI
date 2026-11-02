@@ -60,6 +60,10 @@
     <None Include="..\..\fixtures\bonsai2\**\*.json"
           CopyToOutputDirectory="PreserveNewest"
           Link="fixtures\bonsai2\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The picture the vision fixture was made from: the C# tower reads the same bytes. -->
+    <None Include="..\..\fixtures\bonsai2\**\*.png"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="fixtures\bonsai2\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- jinja2's own renders of small templates: JinjaLite's ruler beyond the 2B's template. -->
     <None Include="..\..\fixtures\jinja\*.json"
           CopyToOutputDirectory="PreserveNewest"
