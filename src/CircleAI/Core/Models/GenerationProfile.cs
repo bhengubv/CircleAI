@@ -14,31 +14,42 @@ using System.Text.Json;
 
 namespace CircleAI.Core.Models;
 
-/// <summary>The sampler MNN builds at load.</summary>
-/// <param name="SamplerType">MNN's sampler_type: "greedy" or "mixed".</param>
+/// <summary>The sampler MNN builds at load, and the C# engine samples with.</summary>
+/// <param name="SamplerType">MNN's sampler_type: "greedy", "penalty" or "mixed".</param>
 /// <param name="Temperature">Sampling temperature.</param>
 /// <param name="TopP">Nucleus cutoff.</param>
 /// <param name="TopK">Top-k cutoff.</param>
 /// <param name="MinP">Min-p cutoff.</param>
 /// <param name="Penalty">Repetition penalty (1.0 = none).</param>
+/// <param name="PresencePenalty">
+/// Subtracted once from every token already in the penalty window (0 = none): the Qwen3.5 and
+/// Bonsai 2 cards' penalty, which MNN has no knob for and the C# engine applies.
+/// </param>
 public sealed record SamplerProfile(
     string SamplerType = "mixed",
     double Temperature = 0.7,
     double TopP = 0.8,
     int TopK = 20,
     double MinP = 0.0,
-    double Penalty = 1.05);
+    double Penalty = 1.05,
+    double PresencePenalty = 0.0);
 
 /// <summary>Thinking, sampler and answer lengths for one model.</summary>
 /// <param name="EnableThinking">Whether the model may think out loud. Always false for the brain.</param>
 /// <param name="Sampler">The sampler, or null for the bundle's own.</param>
 /// <param name="MaxTokensSpoken">The longest answer to a spoken question.</param>
 /// <param name="MaxTokensTyped">The longest answer to a typed question.</param>
+/// <param name="ThinkingSampler">
+/// The sampler when thinking is on, where the model card gives other numbers for it (Bonsai 2:
+/// temperature 1.0, top-p 0.95, presence 1.0 against 0.7, 0.8 and 1.5); null uses
+/// <paramref name="Sampler"/> either way.
+/// </param>
 public sealed record GenerationProfile(
     bool EnableThinking = false,
     SamplerProfile? Sampler = null,
     int MaxTokensSpoken = 160,
-    int MaxTokensTyped = 512)
+    int MaxTokensTyped = 512,
+    SamplerProfile? ThinkingSampler = null)
 {
     /// <summary>The MNN config JSON for the sampler, or null when the bundle's own is kept.</summary>
     /// <remarks>

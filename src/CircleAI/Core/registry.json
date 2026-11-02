@@ -1249,6 +1249,39 @@
     "QuantizationType": "PTQ1_0",
     "Engine": "Managed",
     "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 15,
+    "MinRamGb": 7.5,
+    "MinStorageGb": 6.0,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
     "TotalBytes": 5946648928,
     "BundleFiles": [
       {
@@ -1257,6 +1290,80 @@
         "SizeBytes": 5946648928
       }
     ]
+  },
+  "Ternary-Bonsai-2-27B-PQ2_0": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 15,
+    "MinRamGb": 9.0,
+    "MinStorageGb": 7.3,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 7206168928,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-27B-PQ2_0.gguf",
+        "Sha256": "3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1",
+        "SizeBytes": 7206168928
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-27B-Vision": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+    "Modality": "Vision",
+    "Architecture": "clip",
+    "Quantization": "Q8_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 15,
+    "MinRamGb": 0.8,
+    "MinStorageGb": 0.7,
+    "Capabilities": [
+      "Vision"
+    ],
+    "TotalBytes": 629246976,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf",
+        "Sha256": "6807ede61d570bb86ba34b756a0fa109edc33668604de867c6ea6d8f1d631903",
+        "SizeBytes": 629246976
+      }
+    ],
+    "Source": "HuggingFace"
   },
   "Qwen-Image-2.1-UC": {
     "Repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
@@ -2989,14 +3096,186 @@
     "MinRamGb": 2.5,
     "MinStorageGb": 2.0,
     "Capabilities": [
-      "Default"
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
     ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
     "TotalBytes": 1997486976,
     "BundleFiles": [
       {
         "Name": "Ternary-Bonsai-2-9B-PTQ1_0.gguf",
         "Sha256": "3561df7ac7d26a71ffa991ac2db740b10841c3a350aa2676ccd3ff5d428b4e8b",
         "SizeBytes": 1997486976
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-9B-PQ2_0": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-9B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 13,
+    "MinRamGb": 3.1,
+    "MinStorageGb": 2.5,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 2416851840,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-9B-PQ2_0.gguf",
+        "Sha256": "7a89ab48f5038c704480f60781f9b8d4035351f5f6beb7d11fad80001fde23f9",
+        "SizeBytes": 2416851840
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-9B-PQ2_0-MTP": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-9B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0-MTP",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 13,
+    "MinRamGb": 3.4,
+    "MinStorageGb": 2.7,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 2675410720,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf",
+        "Sha256": "c79fcdfaf6b7bf47089b50dadcfd11f9ce7d3e96adf3bbefde7912e5ef69e22b",
+        "SizeBytes": 2675410720
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-9B-DFlash2": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-9B-gguf",
+    "Modality": "Chat",
+    "Architecture": "dflash",
+    "Quantization": "Q8_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 0,
+    "MinRamGb": 2.0,
+    "MinStorageGb": 1.6,
+    "Capabilities": [],
+    "TotalBytes": 1574233856,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-9B-DFlash2-Q8_0.gguf",
+        "Sha256": "95149abdd584f7a69ea5ead38790d5481454428d2c1616527ff0d45422a762b4",
+        "SizeBytes": 1574233856
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-9B-Vision": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-9B-gguf",
+    "Modality": "Vision",
+    "Architecture": "clip",
+    "Quantization": "Q8_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 13,
+    "MinRamGb": 0.8,
+    "MinStorageGb": 0.7,
+    "Capabilities": [
+      "Vision"
+    ],
+    "TotalBytes": 624229664,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-9B-mmproj-Q8_0.gguf",
+        "Sha256": "e0cb6f6988cea323ef798cd77d019bbb819af75582f034eaab0e7232314953db",
+        "SizeBytes": 624229664
       }
     ],
     "Source": "HuggingFace"
@@ -3013,14 +3292,186 @@
     "MinRamGb": 1.2,
     "MinStorageGb": 1.0,
     "Capabilities": [
-      "Default"
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
     ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
     "TotalBytes": 949549920,
     "BundleFiles": [
       {
         "Name": "Ternary-Bonsai-2-4B-PTQ1_0.gguf",
         "Sha256": "56711263ec9a9ffeaa74a3a0e58dece8127cf9268404746c721113ca76994d60",
         "SizeBytes": 949549920
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-4B-PQ2_0": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-4B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 11,
+    "MinRamGb": 1.5,
+    "MinStorageGb": 1.2,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 1146465120,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-4B-PQ2_0.gguf",
+        "Sha256": "d406b1e912c0d2a4c124ad10bf38a76ae662fdc4d24b176451403dc7b7f30409",
+        "SizeBytes": 1146465120
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-4B-PQ2_0-MTP": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-4B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0-MTP",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 11,
+    "MinRamGb": 1.7,
+    "MinStorageGb": 1.3,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 1274642176,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-4B-PQ2_0-MTP-Q8_0.gguf",
+        "Sha256": "0acf517de1dc3d85c403a60df6b8b07a4878ac174f368d4390be98406a4d6c0d",
+        "SizeBytes": 1274642176
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-4B-DFlash2": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-4B-gguf",
+    "Modality": "Chat",
+    "Architecture": "dflash",
+    "Quantization": "BF16",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 0,
+    "MinRamGb": 2.0,
+    "MinStorageGb": 1.6,
+    "Capabilities": [],
+    "TotalBytes": 1575278208,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-4B-DFlash2-BF16.gguf",
+        "Sha256": "4402be311018d01e31ecd0a894326e2f7bd28bc27a288c5b949799fe000808d8",
+        "SizeBytes": 1575278208
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-4B-Vision": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-4B-gguf",
+    "Modality": "Vision",
+    "Architecture": "clip",
+    "Quantization": "Q8_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 11,
+    "MinRamGb": 0.5,
+    "MinStorageGb": 0.4,
+    "Capabilities": [
+      "Vision"
+    ],
+    "TotalBytes": 366894624,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-4B-mmproj-Q8_0.gguf",
+        "Sha256": "db939d5f9b7014137810205e91d05e5f54afd72b0b3af9d33bd7d82f7906a55d",
+        "SizeBytes": 366894624
       }
     ],
     "Source": "HuggingFace"
@@ -3037,14 +3488,114 @@
     "MinRamGb": 0.6,
     "MinStorageGb": 0.5,
     "Capabilities": [
-      "Default"
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
     ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
     "TotalBytes": 429183456,
     "BundleFiles": [
       {
         "Name": "Ternary-Bonsai-2-2B-PTQ1_0.gguf",
         "Sha256": "36061ad406df8a4903a6db005be350c50fabfaf717f9ef0acf4b76adcd9929fa",
         "SizeBytes": 429183456
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-2B-PQ2_0": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-2B-gguf",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "Quantization": "PQ2_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 9,
+    "MinRamGb": 0.7,
+    "MinStorageGb": 0.6,
+    "Capabilities": [
+      "Default",
+      "Tools",
+      "Reasoning",
+      "LongContext"
+    ],
+    "Generation": {
+      "EnableThinking": false,
+      "Sampler": {
+        "SamplerType": "mixed",
+        "Temperature": 0.7,
+        "TopP": 0.8,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.5
+      },
+      "ThinkingSampler": {
+        "SamplerType": "mixed",
+        "Temperature": 1.0,
+        "TopP": 0.95,
+        "TopK": 20,
+        "MinP": 0.0,
+        "Penalty": 1.0,
+        "PresencePenalty": 1.0
+      },
+      "MaxTokensSpoken": 80,
+      "MaxTokensTyped": 512
+    },
+    "TotalBytes": 517312992,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-2B-PQ2_0.gguf",
+        "Sha256": "d5f01a4ecaf49239653308ee732ad1a0c5f802c0ddb997549fc7b694c8b45928",
+        "SizeBytes": 517312992
+      }
+    ],
+    "Source": "HuggingFace"
+  },
+  "Ternary-Bonsai-2-2B-Vision": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-2B-gguf",
+    "Modality": "Vision",
+    "Architecture": "clip",
+    "Quantization": "Q8_0",
+    "Engine": "Managed",
+    "Version": "1.0",
+    "License": "Apache-2.0",
+    "QualityRank": 9,
+    "MinRamGb": 0.5,
+    "MinStorageGb": 0.4,
+    "Capabilities": [
+      "Vision"
+    ],
+    "TotalBytes": 364664352,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-2B-mmproj-Q8_0.gguf",
+        "Sha256": "ac9934e8d7966d0d62442c202ec8fdad99a045dea79366c1a4a246a46f5c0533",
+        "SizeBytes": 364664352
       }
     ],
     "Source": "HuggingFace"

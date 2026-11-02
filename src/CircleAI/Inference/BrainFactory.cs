@@ -87,7 +87,8 @@ public sealed class BrainFactory : IBrainFactory
             // THE DEVICE'S FAST CORES, ONE LEFT FOR THE PERSON (DeviceContext.BrainThreads), unless
             // the host said otherwise. Working memory at 4 bits with keys in the MSE form (S3):
             // measured on the 2B against the fork, it kept every one of 289 tokens in a quarter
-            // of fp16's memory.
+            // of fp16's memory. THE ROW'S GENERATION PROFILE samples the answers - the model
+            // card's numbers, data rather than code - and says whether it thinks.
             var threads = request.Threads is > 0 ? request.Threads.Value : DeviceContext.Read().BrainThreads;
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={request.ModelId} cap={request.Capability}");
             return Managed.ManagedChatGenerator.Load(request.ModelPath, new Managed.ManagedGeneratorOptions
@@ -96,6 +97,8 @@ public sealed class BrainFactory : IBrainFactory
                 Threads = threads,
                 KvMode = KvCompressionMode.TurboQuant4Bit,
                 KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
+                Generation = entry?.Generation,
+                Thinking = entry?.Generation?.EnableThinking ?? false,
             });
         }
 

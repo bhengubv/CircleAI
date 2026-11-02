@@ -311,9 +311,12 @@ public static class FirstRun
                 // LLM": on the P30 a complete Qwen3-0.6B counted as the brain, so this
                 // slot was done and Qwen3.5 was never fetched - the second half of why
                 // that phone ran a lesser model for a week.
+                // AND A ROW THE C# ENGINE CANNOT READ YET IS NOT ELIGIBLE, WHATEVER ITS MODALITY
+                // (EngineChoice.Opens): the Bonsai 2 fleet's vision towers and drafters are
+                // catalogued before their code lands, and the eyes slot takes any Vision row.
                 var eligible = registry.AllModels
                     .Where(m => m.Modality == modality && !m.Retired)
-                    .Where(m => m.Modality != ModelModality.Chat || brainEngines.Contains(m.Engine))
+                    .Where(m => CircleAI.Inference.EngineChoice.Opens(m, brainEngines))
                     .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
                     .ToList();
@@ -431,6 +434,7 @@ public static class FirstRun
         var rest = registry.AllModels
             .Where(m => !m.Retired)
             .Where(m => m.Modality != ModelModality.Chat)
+            .Where(m => CircleAI.Inference.EngineChoice.Opens(m, brainEngines))
             .Where(m => !planned.Contains(m.Name))
             .Where(m => declined is null || !declined(m.Name))
             .Where(m => !loader.ModelPresent(m.Name))

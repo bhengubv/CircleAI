@@ -31,12 +31,13 @@ internal static class SyntheticQwen35
     /// <param name="packing">PTQ1_0 or PQ2_0.</param>
     /// <param name="seed">The weights: the same seed gives the same trits and scales in either packing.</param>
     /// <param name="mixedPacking">Writes one weight in the other packing, which the model must refuse.</param>
-    public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false)
+    /// <param name="mtp">Adds a multi-token-prediction head after the trunk (blk.2, Q8_0), as the fleet's PQ2_0-MTP files carry.</param>
+    public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false)
     {
         var rng = new Random(seed);
         var b = new GgufBuilder()
             .String("general.architecture", "qwen35")
-            .Key("qwen35.block_count", GgufType.UInt32, w => w.Write((uint)Layers))
+            .Key("qwen35.block_count", GgufType.UInt32, w => w.Write((uint)(Layers + (mtp ? 1 : 0))))
             .Key("qwen35.embedding_length", GgufType.UInt32, w => w.Write((uint)Embedding))
             .Key("qwen35.feed_forward_length", GgufType.UInt32, w => w.Write((uint)FeedForward))
             .Key("qwen35.attention.head_count", GgufType.UInt32, w => w.Write((uint)Heads))
@@ -109,7 +110,41 @@ internal static class SyntheticQwen35
                 Floats(p + "attn_k_norm.weight", [HeadDim], _ => Near(1f, 0.1f));
             }
         }
+        if (mtp)
+        {
+            b.Key("qwen35.nextn_predict_layers", GgufType.UInt32, w => w.Write(1u));
+            var p = $"blk.{Layers}.";
+            void Q8(string name, int columns, int rows) => b.Tensor(name, [columns, rows], (uint)GgmlType.Q8_0, PackQ8(rng, columns, rows));
+            Q8(p + "nextn.eh_proj.weight", 2 * Embedding, Embedding);
+            Floats(p + "nextn.enorm.weight", [Embedding], _ => Near(1f, 0.1f));
+            Floats(p + "nextn.hnorm.weight", [Embedding], _ => Near(1f, 0.1f));
+            Floats(p + "nextn.shared_head_norm.weight", [Embedding], _ => Near(1f, 0.1f));
+            Floats(p + "attn_norm.weight", [Embedding], _ => Near(1f, 0.1f));
+            Q8(p + "attn_q.weight", Embedding, 2 * Heads * HeadDim);
+            Q8(p + "attn_k.weight", Embedding, KvHeads * HeadDim);
+            Q8(p + "attn_v.weight", Embedding, KvHeads * HeadDim);
+            Q8(p + "attn_output.weight", Heads * HeadDim, Embedding);
+            Floats(p + "attn_q_norm.weight", [HeadDim], _ => Near(1f, 0.1f));
+            Floats(p + "attn_k_norm.weight", [HeadDim], _ => Near(1f, 0.1f));
+            Floats(p + "post_attention_norm.weight", [Embedding], _ => Near(1f, 0.1f));
+            Q8(p + "ffn_gate.weight", Embedding, FeedForward);
+            Q8(p + "ffn_up.weight", Embedding, FeedForward);
+            Q8(p + "ffn_down.weight", FeedForward, Embedding);
+        }
         return b.Build();
+    }
+
+    // Q8_0 rows: per 32 weights an fp16 scale and 32 int8 values, weights of about 0.05.
+    private static byte[] PackQ8(Random rng, int columns, int rows)
+    {
+        var blocks = columns / 32 * rows;
+        var data = new byte[blocks * 34];
+        for (var i = 0; i < blocks; i++)
+        {
+            BitConverter.TryWriteBytes(data.AsSpan(i * 34, 2), (Half)(0.05f / 64f));
+            for (var j = 0; j < 32; j++) data[i * 34 + 2 + j] = (byte)(sbyte)rng.Next(-127, 128);
+        }
+        return data;
     }
 
     // Random trits and an fp16 scale per 128-weight block, packed by the fork's rule for the packing.

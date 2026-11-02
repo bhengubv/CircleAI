@@ -125,7 +125,50 @@ public static class KernelBench
         yield return $"PQ2_0 Lut tables for {cols} inputs built in {pq2BuildMs:F2} ms on one thread";
         foreach (var r in pq2Threaded)
             yield return $"PQ2_0 {r.Rows}x{r.Cols} Lut on {r.Threads} thread{(r.Threads == 1 ? " " : "s")} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecond,5:F2} tok/s (2B PQ2_0)";
+        var (singleMs, batchMs, inputs) = Pq2Batch(rows, cols);
+        yield return $"PQ2_0 {rows}x{cols} for {inputs} inputs: {batchMs:F2} ms together, {singleMs * inputs:F2} ms one by one ({singleMs * inputs / batchMs:F2}x) - what a speculative check of {inputs - 1} drafts saves";
         yield return $"bench done in {total.Elapsed.TotalSeconds:F1} s ({Environment.ProcessorCount} cores seen)";
+    }
+
+    /// <summary>
+    /// The PQ2_0 product for <paramref name="inputs"/> inputs at once (Pq2BatchLut, the verification
+    /// pass of speculative decoding) against one input's (Pq2Lut), tables built each pass, on every core.
+    /// </summary>
+    public static (double SingleMilliseconds, double BatchMilliseconds, int Inputs) Pq2Batch(int rows = 6144, int cols = 2048, int inputs = 3, int passes = 5)
+    {
+        var (weights, scales, q) = SyntheticPq2(rows, cols);
+        var x = new float[cols];
+        var rng = new Random(2);
+        using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
+        var single = new Pq2Lut(cols);
+        var output = new float[rows];
+        single.Build(q, pool);
+        single.MatVec(weights, scales, output, pool); // warm-up
+        var sw = Stopwatch.StartNew();
+        for (var p = 0; p < passes; p++)
+        {
+            single.Build(q, pool);
+            single.MatVec(weights, scales, output, pool);
+        }
+        var singleMs = sw.Elapsed.TotalMilliseconds / passes;
+
+        var batch = new Pq2BatchLut(cols, inputs);
+        var outputs = new float[inputs][];
+        for (var i = 0; i < inputs; i++)
+        {
+            for (var j = 0; j < cols; j++) x[j] = (float)(rng.NextDouble() * 2 - 1);
+            batch.Quantize(i, x);
+            outputs[i] = new float[rows];
+        }
+        batch.Build(inputs, pool);
+        batch.MatVec(weights, scales, inputs, outputs, pool); // warm-up
+        sw.Restart();
+        for (var p = 0; p < passes; p++)
+        {
+            batch.Build(inputs, pool);
+            batch.MatVec(weights, scales, inputs, outputs, pool);
+        }
+        return (singleMs, sw.Elapsed.TotalMilliseconds / passes, inputs);
     }
 
     /// <summary>

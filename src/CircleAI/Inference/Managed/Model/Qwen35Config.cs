@@ -26,7 +26,8 @@ public sealed record Qwen35Config(
     int SsmState,
     int SsmGroups,
     int SsmHeads,
-    int Vocabulary)
+    int Vocabulary,
+    int MtpLayers = 0)
 {
     /// <summary>Width of one DeltaNet value head.</summary>
     public int SsmHeadDim => SsmInner / SsmHeads;
@@ -38,6 +39,12 @@ public sealed record Qwen35Config(
     public bool IsRecurrent(int layer) => (layer + 1) % FullAttentionInterval != 0;
 
     /// <summary>The shape of <paramref name="file"/>'s qwen35 model; anything else is refused.</summary>
+    /// <remarks>
+    /// AN MTP FILE COUNTS ITS HEAD AS A BLOCK. Bonsai 2's PQ2_0-MTP files say block_count 33 and
+    /// nextn_predict_layers 1: the trunk is the first 32 (the fork's n_layer() is n_layer_all minus
+    /// the nextn layers) and blk.32 is the multi-token-prediction head. One head is read, as the
+    /// fork's qwen35 MTP graph reads one.
+    /// </remarks>
     public static Qwen35Config FromGguf(GgufFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
@@ -45,15 +52,15 @@ public sealed record Qwen35Config(
         if (arch != "qwen35") throw new NotSupportedException($"Architecture '{arch}' is not qwen35.");
         if (file.TryGetValue("qwen35.attention.recurrent_layers", out _))
             throw new NotSupportedException("An explicit recurrent-layer list is not supported; the fleet sets full_attention_interval.");
-        if (file.TryGetValue("qwen35.nextn_predict_layers", out var nextn) && nextn.AsInt64() != 0)
-            throw new NotSupportedException("A file with an MTP head is read in S5, not here.");
+        var mtp = file.TryGetValue("qwen35.nextn_predict_layers", out var nextn) ? checked((int)nextn.AsInt64()) : 0;
+        if (mtp is not (0 or 1)) throw new NotSupportedException($"{mtp} MTP heads; the qwen35 MTP head is one block.");
 
         int Int(string key) => checked((int)file["qwen35." + key].AsInt64());
         var headDim = Int("attention.key_length");
         if (Int("attention.value_length") != headDim) throw new NotSupportedException("Key and value heads of different widths are not supported.");
 
         var config = new Qwen35Config(
-            Layers: Int("block_count"),
+            Layers: Int("block_count") - mtp,
             Embedding: Int("embedding_length"),
             FeedForward: Int("feed_forward_length"),
             Heads: Int("attention.head_count"),
@@ -69,7 +76,8 @@ public sealed record Qwen35Config(
             SsmState: Int("ssm.state_size"),
             SsmGroups: Int("ssm.group_count"),
             SsmHeads: Int("ssm.time_step_rank"),
-            Vocabulary: file["tokenizer.ggml.tokens"].AsArray().Count);
+            Vocabulary: file["tokenizer.ggml.tokens"].AsArray().Count,
+            MtpLayers: mtp);
 
         if (config.Heads % config.KvHeads != 0) throw new NotSupportedException("Query heads must be whole groups of key/value heads.");
         if (config.SsmInner % config.SsmHeads != 0 || config.SsmHeadDim != config.SsmState)

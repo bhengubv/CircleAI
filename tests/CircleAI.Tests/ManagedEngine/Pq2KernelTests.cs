@@ -297,6 +297,53 @@ public sealed class Pq2KernelTests
         }
     }
 
+    [Theory]
+    [InlineData(2560, 1)]
+    [InlineData(2560, 3)]
+    [InlineData(384, 2)] // three blocks: the Q8_0 fallback
+    public void Several_inputs_at_once_give_each_its_own_product_to_the_bit(int cols, int threads)
+    {
+        // The verification pass of speculative decoding: one walk of the weights for every input.
+        const int rows = 203, inputs = 3;
+        var blocks = cols / Pq2.BlockWeights;
+        var rowBytes = blocks * Pq2.BlockBytes;
+        var matrix = new byte[rows * rowBytes];
+        for (var r = 0; r < rows; r++) RandomRow(blocks, 700 + r).CopyTo(matrix, r * rowBytes);
+        var scales = Pq2.BlockScales(matrix);
+
+        var batch = new Pq2BatchLut(cols, inputs + 1);
+        var outputs = new float[inputs][];
+        var expected = new float[inputs][];
+        for (var i = 0; i < inputs; i++)
+        {
+            var x = RandomActivations(cols, 40 + i);
+            batch.Quantize(i, x);
+            outputs[i] = new float[rows];
+            expected[i] = new float[rows];
+            var one = new Pq2Lut(cols);
+            if (cols % Q8KActivations.BlockSize == 0)
+            {
+                var q = new Q8KActivations(cols);
+                q.Quantize(x);
+                one.Build(q);
+            }
+            else
+            {
+                var q = new Q8Activations(cols);
+                q.Quantize(x);
+                one.Build(q);
+            }
+            one.MatVec(matrix, scales, expected[i]);
+        }
+
+        using var pool = new WorkerPool(threads);
+        batch.Build(inputs, pool);
+        batch.MatVec(matrix, scales, inputs, outputs, pool);
+        for (var i = 0; i < inputs; i++)
+            for (var r = 0; r < rows; r++)
+                Assert.Equal(BitConverter.SingleToInt32Bits(expected[i][r]), BitConverter.SingleToInt32Bits(outputs[i][r]));
+    }
+
     [Fact]
     public void Q8K_activations_follow_the_forks_reference_quantiser()
     {

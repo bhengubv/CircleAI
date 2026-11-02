@@ -11,6 +11,29 @@ using CircleAI.Core.Compression;
 
 namespace CircleAI.Inference.Managed.Model;
 
+/// <summary>
+/// The MTP head's key/value cache: one full-attention layer's keys and values, fp16 as the fork's
+/// default cache holds them, one slot per position of the conversation.
+/// </summary>
+public sealed class MtpState
+{
+    internal MtpState(Qwen35Config config, int capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
+        Capacity = capacity;
+        var width = config.KvHeads * config.HeadDim;
+        Keys = new Half[capacity * width];
+        Values = new Half[capacity * width];
+    }
+
+    /// <summary>Positions this cache can hold.</summary>
+    public int Capacity { get; }
+
+    internal Half[] Keys { get; }
+
+    internal Half[] Values { get; }
+}
+
 /// <summary>A conversation's state in a <see cref="Qwen35Model"/>.</summary>
 public sealed class Qwen35State
 {
@@ -98,6 +121,7 @@ public sealed class Qwen35State
         Position = 0;
         _markedPosition = -1;
         _primedPosition = -1;
+        _checkpointPosition = -1;
         foreach (var conv in Conv) Array.Clear(conv ?? []);
         foreach (var ssm in Ssm) Array.Clear(ssm ?? []);
     }
@@ -143,6 +167,37 @@ public sealed class Qwen35State
         CopyInto(_markedSsm!, Ssm);
         Position = _markedPosition;
         if (_primedPosition > _markedPosition) _primedPosition = -1;
+    }
+
+    // And a third: where a speculative verification began, so drafts the trunk rejects can be taken
+    // back out of the recurrent layers (S5). Its own copy, apart from the turn's mark and the primed
+    // start, which a conversation is still using while it speculates.
+    private int _checkpointPosition = -1;
+    private float[][]? _checkpointConv;
+    private float[][]? _checkpointSsm;
+
+    /// <summary>Remembers this point for <see cref="RestoreCheckpoint"/>: the recurrent layers and the position.</summary>
+    internal void Checkpoint()
+    {
+        _checkpointConv ??= Allocate(Conv);
+        _checkpointSsm ??= Allocate(Ssm);
+        CopyInto(Conv, _checkpointConv);
+        CopyInto(Ssm, _checkpointSsm);
+        _checkpointPosition = Position;
+    }
+
+    /// <summary>
+    /// Goes back to the checkpoint. The attention layers need no copy: what they hold past it is
+    /// written again before it is read, by the tokens that replace the rejected ones.
+    /// </summary>
+    internal void RestoreCheckpoint()
+    {
+        if (_checkpointPosition < 0) throw new InvalidOperationException("No checkpoint is held.");
+        CopyInto(_checkpointConv!, Conv);
+        CopyInto(_checkpointSsm!, Ssm);
+        Position = _checkpointPosition;
+        if (_markedPosition > Position) _markedPosition = -1;
+        if (_primedPosition > Position) _primedPosition = -1;
     }
 
     private static float[][] Allocate(float[][] like)

@@ -43,6 +43,7 @@ public sealed class Qwen35Model
     private readonly Layer[] _layers;
     private readonly float[] _outputNorm;
     private readonly TernaryMatrix _embedding; // the lookup table and, tied, the head
+    private readonly MtpHead? _mtp;            // a PQ2_0-MTP file's draft head
 
     // One turned buffer, one quantisation and one lookup table per product width.
     private readonly Dictionary<int, InputTables> _inputs = [];
@@ -76,6 +77,7 @@ public sealed class Qwen35Model
 
         _layers = new Layer[c.Layers];
         for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing);
+        if (c.MtpLayers == 1) _mtp = new MtpHead(file, c, c.Layers);
 
         foreach (var width in new[] { c.Embedding, c.SsmInner, c.Heads * c.HeadDim, c.FeedForward }.Distinct())
             _inputs[width] = new InputTables(width, Packing);
@@ -146,6 +148,87 @@ public sealed class Qwen35Model
     public Qwen35State NewState(int capacity, KvCompressionMode kvMode, TurboQuantForm keyForm) =>
         new(Config, Math.Min(capacity, Config.ContextLength), kvMode, keyForm);
 
+    /// <summary>Whether the file carries a multi-token-prediction head (Bonsai 2's PQ2_0-MTP files).</summary>
+    public bool HasMtp => _mtp is not null;
+
+    /// <summary>A new, empty key/value cache for the MTP head, up to <paramref name="capacity"/> positions.</summary>
+    public MtpState NewMtpState(int capacity)
+    {
+        if (_mtp is null) throw new InvalidOperationException("This model has no MTP head.");
+        return new MtpState(Config, Math.Min(capacity, Config.ContextLength));
+    }
+
+    /// <summary>
+    /// Runs the MTP head at <paramref name="position"/> on <paramref name="token"/> and
+    /// <paramref name="previous"/> - the h_nextn of the position before it, from the trunk (or, while
+    /// drafting further ahead, from the head itself) - as the fork's qwen35 MTP graph does: the
+    /// token's embedding and the hidden state normed and joined, eh_proj, one full-attention block
+    /// over the head's own cache, its norm and the tied head. The head's keys and values at the
+    /// position are written (or written again) into <paramref name="mtp"/>.
+    /// </summary>
+    /// <param name="token">The token at the position.</param>
+    /// <param name="previous">The hidden state of the position before.</param>
+    /// <param name="mtp">The head's cache.</param>
+    /// <param name="position">Where the token is.</param>
+    /// <param name="logits">When given, the head's logits: its guess at the token after the next.</param>
+    /// <param name="hidden">When given, the head's own h_nextn, for drafting one further.</param>
+    public void ForwardMtp(int token, ReadOnlySpan<float> previous, MtpState mtp, int position, Span<float> logits = default, Span<float> hidden = default)
+    {
+        var m = _mtp ?? throw new InvalidOperationException("This model has no MTP head.");
+        ArgumentNullException.ThrowIfNull(mtp);
+        var c = Config;
+        var e = c.Embedding;
+        if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(token), token, $"The vocabulary holds {c.Vocabulary}.");
+        if (previous.Length != e) throw new ArgumentException($"The hidden state takes {e} values.", nameof(previous));
+        if ((uint)position >= (uint)mtp.Capacity) throw new ArgumentOutOfRangeException(nameof(position), position, $"The MTP cache holds {mtp.Capacity}.");
+        if (logits.Length != 0 && logits.Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
+        if (hidden.Length != 0 && hidden.Length != e) throw new ArgumentException($"The hidden state takes {e} values.", nameof(hidden));
+
+        var started = Stopwatch.GetTimestamp();
+        Embed(token, m.Embedded);
+        RmsNorm(m.Embedded, m.ENorm, m.Concat.AsSpan(0, e), c.RmsEps);
+        RmsNorm(previous, m.HNorm, m.Concat.AsSpan(e, e), c.RmsEps);
+        m.Wide.Quantize(m.Concat);
+        m.EhProj.MatVec(m.Wide, m.Cur, _pool);
+        m.Cur.CopyTo(m.Residual, 0);
+
+        RmsNorm(m.Cur, m.AttnNorm, m.Normed, c.RmsEps);
+        m.Narrow.Quantize(m.Normed);
+        m.Q.MatVec(m.Narrow, m.Qg, _pool);
+        m.K.MatVec(m.Narrow, _k, _pool);
+        m.V.MatVec(m.Narrow, _v, _pool);
+        QueriesAndKeys(m.Qg, m.QNorm, m.KNorm, position);
+        AttendFp16(mtp.Keys, mtp.Values, position);
+        m.Heads.Quantize(_attn);
+        m.Output.MatVec(m.Heads, m.Out, _pool);
+        for (var i = 0; i < e; i++) m.Cur[i] = m.Out[i] + m.Residual[i];
+
+        m.Cur.CopyTo(m.Residual, 0);
+        RmsNorm(m.Cur, m.PostNorm, m.Normed, c.RmsEps);
+        m.Narrow.Quantize(m.Normed);
+        m.FfnGate.MatVec(m.Narrow, m.Ffn, _pool);
+        m.FfnUp.MatVec(m.Narrow, m.Up, _pool);
+        for (var i = 0; i < m.Ffn.Length; i++) m.Ffn[i] = Silu(m.Ffn[i]) * m.Up[i];
+        m.Hidden.Quantize(m.Ffn);
+        m.FfnDown.MatVec(m.Hidden, m.Out, _pool);
+        for (var i = 0; i < e; i++) m.Cur[i] = m.Out[i] + m.Residual[i];
+
+        RmsNorm(m.Cur, m.HeadNorm ?? _outputNorm, _h, c.RmsEps);
+        if (hidden.Length != 0) _h.CopyTo(hidden);
+        if (logits.Length != 0) _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+        _tMtp += Stopwatch.GetTimestamp() - started;
+    }
+
+    private long _tMtp;
+
+    /// <summary>The time the MTP head has taken since the last call, and the count starts again.</summary>
+    public TimeSpan TakeMtpTime()
+    {
+        var time = TimeSpan.FromSeconds((double)_tMtp / Stopwatch.Frequency);
+        _tMtp = 0;
+        return time;
+    }
+
     /// <summary>The time the Forward calls since the last call took, by part; the count starts again.</summary>
     public ForwardTimes TakeTimes()
     {
@@ -161,15 +244,18 @@ public sealed class Qwen35Model
     /// <summary>
     /// Runs <paramref name="token"/> at the state's next position. When <paramref name="logits"/> is
     /// given (one value per vocabulary token) it receives the next-token logits; leave it empty for
-    /// a prompt token whose logits nobody reads, and the head is not run.
+    /// a prompt token whose logits nobody reads, and the head is not run. When
+    /// <paramref name="nextn"/> is given (one value per embedding dimension) it receives the final
+    /// hidden state after the output norm - what the fork calls h_nextn, the MTP head's input.
     /// </summary>
-    public void Forward(int token, Qwen35State state, Span<float> logits = default)
+    public void Forward(int token, Qwen35State state, Span<float> logits = default, Span<float> nextn = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         var c = Config;
         if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(token), token, $"The vocabulary holds {c.Vocabulary}.");
         if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
         if (logits.Length != 0 && logits.Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
+        if (nextn.Length != 0 && nextn.Length != c.Embedding) throw new ArgumentException($"The hidden state takes {c.Embedding} values.", nameof(nextn));
 
         var started = Stopwatch.GetTimestamp();
         Embed(token, _x);
@@ -187,15 +273,208 @@ public sealed class Qwen35Model
         }
         state.Position++;
 
-        if (logits.Length != 0)
+        if (logits.Length != 0 || nextn.Length != 0)
         {
             var head = Stopwatch.GetTimestamp();
             RmsNorm(_x, _outputNorm, _h, c.RmsEps);
-            _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+            if (nextn.Length != 0) _h.CopyTo(nextn);
+            if (logits.Length != 0) _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
             _tHead += Stopwatch.GetTimestamp() - head;
         }
         _tTotal += Stopwatch.GetTimestamp() - started;
         _tokens++;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="tokens"/> at the state's next positions, as <see cref="Forward"/> would run
+    /// them one after another, but layer by layer: every product reads its weights once for all of
+    /// them. Each token's results equal its own Forward's to the last bit - the per-token steps are
+    /// the same code in the same order, and the products sum each row as the single product does.
+    /// </summary>
+    /// <param name="tokens">The tokens, in order.</param>
+    /// <param name="state">The state they extend.</param>
+    /// <param name="logits">Per token: its next-token logits, or null when nobody reads them.</param>
+    /// <param name="nextn">Per token: its h_nextn (see <see cref="Forward"/>), or null.</param>
+    public void ForwardBatch(ReadOnlySpan<int> tokens, Qwen35State state, IReadOnlyList<float[]?> logits, IReadOnlyList<float[]?>? nextn = null)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(logits);
+        var c = Config;
+        var n = tokens.Length;
+        if (n == 0) return;
+        if (logits.Count != n || (nextn is not null && nextn.Count != n)) throw new ArgumentException("One logits (and h) slot per token.");
+        if (state.Position + n > state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens; {n} more do not fit.");
+        foreach (var token in tokens)
+            if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(tokens), token, $"The vocabulary holds {c.Vocabulary}.");
+
+        var started = Stopwatch.GetTimestamp();
+        var b = Batch(n);
+        for (var i = 0; i < n; i++) Embed(tokens[i], b.X[i]);
+        var position = state.Position;
+        for (var il = 0; il < c.Layers; il++)
+        {
+            var layer = _layers[il];
+            for (var i = 0; i < n; i++) RmsNorm(b.X[i], layer.AttnNorm, b.H[i], c.RmsEps);
+            if (c.IsRecurrent(il))
+            {
+                Products(b.H, n, layer.Qkv!.Input, (layer.Qkv!, b.Qkv), (layer.Z!, b.Z));
+                for (var i = 0; i < n; i++)
+                {
+                    b.H[i].CopyTo(_h, 0);
+                    b.Qkv[i].CopyTo(_qkv, 0);
+                    b.Z[i].CopyTo(_z, 0);
+                    DeltaCore(il, layer, state);
+                    _o.CopyTo(b.O[i], 0);
+                }
+                Products(b.O, n, layer.SsmOut!.Input, (layer.SsmOut!, b.Mix));
+            }
+            else
+            {
+                Products(b.H, n, layer.Q!.Input, (layer.Q!, b.Qg), (layer.K!, b.K), (layer.V!, b.V));
+                for (var i = 0; i < n; i++)
+                {
+                    b.Qg[i].CopyTo(_qg, 0);
+                    b.K[i].CopyTo(_k, 0);
+                    b.V[i].CopyTo(_v, 0);
+                    AttentionCore(il, layer, state, position + i);
+                    _attn.CopyTo(b.Attn[i], 0);
+                }
+                Products(b.Attn, n, layer.Output!.Input, (layer.Output!, b.Mix));
+            }
+            for (var i = 0; i < n; i++)
+            {
+                Add(b.X[i], b.Mix[i]);
+                RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
+            }
+            Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
+            for (var i = 0; i < n; i++)
+            {
+                var g = b.Gate[i];
+                var u = b.Up[i];
+                for (var j = 0; j < g.Length; j++) g[j] = Silu(g[j]) * u[j];
+            }
+            Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
+            for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
+        }
+        state.Position += n;
+
+        var head = Stopwatch.GetTimestamp();
+        var heads = 0;
+        for (var i = 0; i < n; i++)
+        {
+            if (logits[i] is null && nextn?[i] is null) continue;
+            RmsNorm(b.X[i], _outputNorm, b.H[i], c.RmsEps);
+            if (nextn?[i] is { } h) b.H[i].CopyTo(h, 0);
+            if (logits[i] is not null) b.Head[heads++] = i;
+        }
+        if (heads > 0)
+        {
+            var inputs = new float[heads][];
+            var outputs = new float[heads][];
+            for (var j = 0; j < heads; j++)
+            {
+                inputs[j] = b.H[b.Head[j]];
+                outputs[j] = logits[b.Head[j]]!;
+                if (outputs[j].Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
+            }
+            Products(inputs, heads, _embedding.Input, (_embedding, outputs));
+        }
+        _tHead += Stopwatch.GetTimestamp() - head;
+        _tTotal += Stopwatch.GetTimestamp() - started;
+        _tokens += n;
+    }
+
+    // ---- the batch's buffers and products ----
+
+    private BatchBuffers? _batch;
+
+    private BatchBuffers Batch(int n)
+    {
+        if (_batch is null || _batch.Size < n) _batch = new BatchBuffers(Config, Math.Max(n, _batch?.Size ?? 0));
+        return _batch;
+    }
+
+    // Per-token working buffers for ForwardBatch, sized for the largest batch seen.
+    private sealed class BatchBuffers
+    {
+        public BatchBuffers(Qwen35Config c, int size)
+        {
+            Size = size;
+            float[][] Rows(int width)
+            {
+                var rows = new float[size][];
+                for (var i = 0; i < size; i++) rows[i] = new float[width];
+                return rows;
+            }
+            X = Rows(c.Embedding);
+            H = Rows(c.Embedding);
+            Qkv = Rows(c.ConvChannels);
+            Z = Rows(c.SsmInner);
+            O = Rows(c.SsmInner);
+            Qg = Rows(2 * c.Heads * c.HeadDim);
+            K = Rows(c.KvHeads * c.HeadDim);
+            V = Rows(c.KvHeads * c.HeadDim);
+            Attn = Rows(c.Heads * c.HeadDim);
+            Mix = Rows(c.Embedding);
+            Gate = Rows(c.FeedForward);
+            Up = Rows(c.FeedForward);
+            Head = new int[size];
+        }
+
+        public int Size { get; }
+        public float[][] X { get; }
+        public float[][] H { get; }
+        public float[][] Qkv { get; }
+        public float[][] Z { get; }
+        public float[][] O { get; }
+        public float[][] Qg { get; }
+        public float[][] K { get; }
+        public float[][] V { get; }
+        public float[][] Attn { get; }
+        public float[][] Mix { get; }
+        public float[][] Gate { get; }
+        public float[][] Up { get; }
+        public int[] Head { get; }
+    }
+
+    // The products of several weights that read the same activations, for each of the first n
+    // inputs: each input turned and quantised once, its tables shared by every weight that reads it.
+    // PQ2_0 builds one table per input and walks each weight once for all of them (Pq2BatchLut);
+    // PTQ1_0 runs the inputs one after another through its own tables.
+    private void Products(float[][] inputs, int n, InputTransform? transform, params (TernaryMatrix Matrix, float[][] Outputs)[] products)
+    {
+        var started = Stopwatch.GetTimestamp();
+        if (Packing == GgmlType.PQ2_0 && n > 1 && _inputs.ContainsKey(inputs[0].Length))
+        {
+            var batch = BatchTables(inputs[0].Length, n);
+            for (var i = 0; i < n; i++)
+            {
+                var tables = _inputs[inputs[i].Length];
+                if (transform is null) inputs[i].AsSpan(0, tables.Turned.Length).CopyTo(tables.Turned);
+                else transform.Apply(inputs[i], tables.Turned);
+                batch.Quantize(i, tables.Turned);
+            }
+            batch.Build(n, _pool);
+            _tTables += Stopwatch.GetTimestamp() - started;
+            var multiplied = Stopwatch.GetTimestamp();
+            foreach (var (matrix, outputs) in products) matrix.MatVec(batch, n, outputs, _pool);
+            _tProducts += Stopwatch.GetTimestamp() - multiplied;
+            return;
+        }
+        for (var i = 0; i < n; i++)
+        {
+            var tables = Tables(inputs[i], transform);
+            foreach (var (matrix, outputs) in products) Product(matrix, tables, outputs[i]);
+        }
+    }
+
+    private readonly Dictionary<int, Pq2BatchLut> _batchTables = [];
+
+    private Pq2BatchLut BatchTables(int width, int n)
+    {
+        if (!_batchTables.TryGetValue(width, out var tables) || tables.Inputs < n)
+            _batchTables[width] = tables = new Pq2BatchLut(width, Math.Max(n, tables?.Inputs ?? 0));
+        return tables;
     }
 
     // ---- the parts of a token ----
@@ -230,11 +509,19 @@ public sealed class Qwen35Model
 
     private void DeltaNet(int il, Layer layer, Qwen35State state)
     {
-        var c = Config;
         var lut = Tables(_h, layer.Qkv!.Input);
         Product(layer.Qkv, lut, _qkv);
         Product(layer.Z!, lut, _z);
+        DeltaCore(il, layer, state);
+        Product(layer.SsmOut!, Tables(_o, layer.SsmOut!.Input), _mixOut);
+    }
 
+    // One token's step through a DeltaNet layer, between its products: beta and alpha from _h, the
+    // conv over _qkv, the delta rule and the gated norm with _z, into _o. The batched forward runs
+    // the same step for each of its tokens in turn.
+    private void DeltaCore(int il, Layer layer, Qwen35State state)
+    {
+        var c = Config;
         var started = Stopwatch.GetTimestamp();
         F32MatVec(layer.Beta!, _h, _beta); // beta and alpha read h unturned: they are not folded
         F32MatVec(layer.Alpha!, _h, _alpha);
@@ -271,8 +558,6 @@ public sealed class Qwen35Model
             _deltaWork.Clear();
         }
         _tRecurrence += Stopwatch.GetTimestamp() - started;
-
-        Product(layer.SsmOut!, Tables(_o, layer.SsmOut!.Input), _mixOut);
     }
 
     // One value head of a DeltaNet layer: the delta rule as the fork's fused op runs it with raw
@@ -320,32 +605,23 @@ public sealed class Qwen35Model
 
     private void Attention(int il, Layer layer, Qwen35State state)
     {
-        var c = Config;
-        var hd = c.HeadDim;
         var lut = Tables(_h, layer.Q!.Input);
         Product(layer.Q, lut, _qg);
         Product(layer.K!, lut, _k);
         Product(layer.V!, lut, _v);
+        AttentionCore(il, layer, state, state.Position);
+        Product(layer.Output!, Tables(_attn, layer.Output!.Input), _mixOut);
+    }
 
+    // One token's attention at <paramref name="position"/>, between its products: q [| gate], k and v
+    // from _qg, _k, _v; norms, RoPE, this token's keys and values into the cache, attention over every
+    // position up to it, the gate - into _attn.
+    private void AttentionCore(int il, Layer layer, Qwen35State state, int position)
+    {
+        var c = Config;
+        var hd = c.HeadDim;
         var started = Stopwatch.GetTimestamp();
-        // attn_q gives each head [q | gate]; q and k are RMS-normalised per head.
-        for (var h = 0; h < c.Heads; h++)
-        {
-            var q = _q.AsSpan(h * hd, hd);
-            _qg.AsSpan(h * 2 * hd, hd).CopyTo(q);
-            RmsNorm(q, layer.QNorm!, q, c.RmsEps);
-            _qg.AsSpan(h * 2 * hd + hd, hd).CopyTo(_gate.AsSpan(h * hd, hd));
-        }
-        for (var g = 0; g < c.KvHeads; g++)
-        {
-            var k = _k.AsSpan(g * hd, hd);
-            RmsNorm(k, layer.KNorm!, k, c.RmsEps);
-        }
-
-        var position = state.Position;
-        RopeAngles(position);
-        for (var h = 0; h < c.Heads; h++) Rope(_q.AsSpan(h * hd, hd));
-        for (var g = 0; g < c.KvHeads; g++) Rope(_k.AsSpan(g * hd, hd));
+        QueriesAndKeys(_qg, layer.QNorm!, layer.KNorm!, position);
 
         var count = position + 1;
         var scores = Scores(count);
@@ -365,21 +641,55 @@ public sealed class Qwen35Model
             }
             for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
             _tAttention += Stopwatch.GetTimestamp() - started;
-            Product(layer.Output!, Tables(_attn, layer.Output!.Input), _mixOut);
             return;
         }
 
-        // This token's keys and values join the cache in fp16, as the fork's default cache keeps them.
+        AttendFp16(state.Keys[il], state.Values[il], position);
+        _tAttention += Stopwatch.GetTimestamp() - started;
+    }
+
+    // attn_q gives each head [q | gate]: q into _q and the gate into _gate; q and k (in _k) are
+    // RMS-normalised per head; RoPE turns both at the position.
+    private void QueriesAndKeys(float[] qg, float[] qNorm, float[] kNorm, int position)
+    {
+        var c = Config;
+        var hd = c.HeadDim;
+        for (var h = 0; h < c.Heads; h++)
+        {
+            var q = _q.AsSpan(h * hd, hd);
+            qg.AsSpan(h * 2 * hd, hd).CopyTo(q);
+            RmsNorm(q, qNorm, q, c.RmsEps);
+            qg.AsSpan(h * 2 * hd + hd, hd).CopyTo(_gate.AsSpan(h * hd, hd));
+        }
+        for (var g = 0; g < c.KvHeads; g++)
+        {
+            var k = _k.AsSpan(g * hd, hd);
+            RmsNorm(k, kNorm, k, c.RmsEps);
+        }
+
+        RopeAngles(position);
+        for (var h = 0; h < c.Heads; h++) Rope(_q.AsSpan(h * hd, hd));
+        for (var g = 0; g < c.KvHeads; g++) Rope(_k.AsSpan(g * hd, hd));
+    }
+
+    // This token's keys and values (_k, _v) into an fp16 cache at the position, as the fork's default
+    // cache keeps them; each query head (_q) attends over every position so far through its group's
+    // key/value head; the result, times sigmoid of the gate, into _attn.
+    private void AttendFp16(Half[] keys, Half[] values, int position)
+    {
+        var c = Config;
+        var hd = c.HeadDim;
+        var count = position + 1;
+        var scores = Scores(count);
+        var scale = 1.0f / MathF.Sqrt(hd);
+        var groupSize = c.Heads / c.KvHeads;
         var kvWidth = c.KvHeads * hd;
-        var keys = state.Keys[il];
-        var values = state.Values[il];
         for (var i = 0; i < kvWidth; i++)
         {
             keys[position * kvWidth + i] = (Half)_k[i];
             values[position * kvWidth + i] = (Half)_v[i];
         }
 
-        // Each query head attends over every position so far through its group's key/value head.
         for (var h = 0; h < c.Heads; h++)
         {
             var g = h / groupSize;
@@ -411,8 +721,6 @@ public sealed class Qwen35Model
         }
 
         for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
-        _tAttention += Stopwatch.GetTimestamp() - started;
-        Product(layer.Output!, Tables(_attn, layer.Output!.Input), _mixOut);
     }
 
     private void FeedForward(Layer layer)
@@ -682,6 +990,108 @@ public sealed class Qwen35Model
             if (pool is null) tables.Ptq1.MatVec(Bytes, Scales, output);
             else tables.Ptq1.MatVec(Bytes, Scales, output, pool);
         }
+
+        // The products with several PQ2_0 inputs at once, each equal to its own MatVec.
+        public void MatVec(Pq2BatchLut tables, int n, float[][] outputs, WorkerPool? pool) =>
+            tables.MatVec(Bytes, Scales, n, outputs, pool);
+    }
+
+    // A Q8_0 weight (the MTP head's block): its bytes stay in the mapped file; block scales decoded once.
+    private sealed class Q8Matrix
+    {
+        private readonly GgufFile _file;
+        private readonly GgufTensor _tensor;
+
+        public Q8Matrix(GgufFile file, string name, int columns, int rows)
+        {
+            _file = file;
+            _tensor = file.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
+            if (_tensor.Type != GgmlType.Q8_0) throw new NotSupportedException($"{name} is {_tensor.Type}; the MTP head is read as Q8_0.");
+            if (_tensor.RowLength != columns || _tensor.Rows != rows)
+                throw new InvalidDataException($"{name} is {_tensor.RowLength}x{_tensor.Rows}, not {columns}x{rows}.");
+            Scales = Q8Weights.BlockScales(file.Bytes(_tensor));
+        }
+
+        public float[] Scales { get; }
+
+        public void MatVec(Q8Activations x, Span<float> output, WorkerPool? pool) =>
+            Q8Weights.MatVec(_file.Bytes(_tensor), Scales, x, output, pool);
+    }
+
+    // The multi-token-prediction head of a PQ2_0-MTP file (blk.{n_layer}): a full-attention block
+    // with its own Q8_0 weights, fed [rms(embedding) * enorm | rms(h) * hnorm] through eh_proj, and
+    // the trunk's tied head after its own norm - the fork's llama_model_qwen35::graph_mtp.
+    private sealed class MtpHead
+    {
+        public MtpHead(GgufFile file, Qwen35Config c, int il)
+        {
+            string Name(string part) => $"blk.{il}.{part}";
+            var e = c.Embedding;
+            var qWidth = c.Heads * c.HeadDim;
+            ENorm = Floats(file, Name("nextn.enorm.weight"), e);
+            HNorm = Floats(file, Name("nextn.hnorm.weight"), e);
+            EhProj = new Q8Matrix(file, Name("nextn.eh_proj.weight"), 2 * e, e);
+            AttnNorm = Floats(file, Name("attn_norm.weight"), e);
+            Q = new Q8Matrix(file, Name("attn_q.weight"), e, 2 * qWidth);
+            K = new Q8Matrix(file, Name("attn_k.weight"), e, c.KvHeads * c.HeadDim);
+            V = new Q8Matrix(file, Name("attn_v.weight"), e, c.KvHeads * c.HeadDim);
+            Output = new Q8Matrix(file, Name("attn_output.weight"), qWidth, e);
+            QNorm = Floats(file, Name("attn_q_norm.weight"), c.HeadDim);
+            KNorm = Floats(file, Name("attn_k_norm.weight"), c.HeadDim);
+            PostNorm = Floats(file, Name("post_attention_norm.weight"), e);
+            FfnGate = new Q8Matrix(file, Name("ffn_gate.weight"), e, c.FeedForward);
+            FfnUp = new Q8Matrix(file, Name("ffn_up.weight"), e, c.FeedForward);
+            FfnDown = new Q8Matrix(file, Name("ffn_down.weight"), c.FeedForward, e);
+            if (file.Tensor(Name("nextn.embed_tokens.weight")) is not null || file.Tensor(Name("nextn.shared_head_head.weight")) is not null)
+                throw new NotSupportedException("An MTP head with its own embedding or output table is not read: the fleet's heads share the trunk's.");
+            HeadNorm = file.Tensor(Name("nextn.shared_head_norm.weight")) is not null
+                ? Floats(file, Name("nextn.shared_head_norm.weight"), e)
+                : null;
+
+            Concat = new float[2 * e];
+            Cur = new float[e];
+            Residual = new float[e];
+            Normed = new float[e];
+            Embedded = new float[e];
+            Qg = new float[2 * qWidth];
+            Ffn = new float[c.FeedForward];
+            Up = new float[c.FeedForward];
+            Out = new float[e];
+            Wide = new Q8Activations(2 * e);
+            Narrow = new Q8Activations(e);
+            Heads = new Q8Activations(qWidth);
+            Hidden = new Q8Activations(c.FeedForward);
+        }
+
+        public float[] ENorm { get; }
+        public float[] HNorm { get; }
+        public Q8Matrix EhProj { get; }
+        public float[] AttnNorm { get; }
+        public Q8Matrix Q { get; }
+        public Q8Matrix K { get; }
+        public Q8Matrix V { get; }
+        public Q8Matrix Output { get; }
+        public float[] QNorm { get; }
+        public float[] KNorm { get; }
+        public float[] PostNorm { get; }
+        public Q8Matrix FfnGate { get; }
+        public Q8Matrix FfnUp { get; }
+        public Q8Matrix FfnDown { get; }
+        public float[]? HeadNorm { get; }
+
+        public float[] Concat { get; }
+        public float[] Cur { get; }
+        public float[] Residual { get; }
+        public float[] Normed { get; }
+        public float[] Embedded { get; }
+        public float[] Qg { get; }
+        public float[] Ffn { get; }
+        public float[] Up { get; }
+        public float[] Out { get; }
+        public Q8Activations Wide { get; }
+        public Q8Activations Narrow { get; }
+        public Q8Activations Heads { get; }
+        public Q8Activations Hidden { get; }
     }
 
     private sealed class Layer

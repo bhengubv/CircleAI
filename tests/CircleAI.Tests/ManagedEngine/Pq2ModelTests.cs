@@ -10,7 +10,7 @@
 //   - A PQ2_0 product sums exact integers, so the model gives the same logits to the bit on one
 //     thread and on several.
 //   - A file that mixes packings is refused with its name: one packing throughout is read.
-// The real PQ2_0 files are held to the pinned fork by the parity tests (Bonsai2ParityTests).
+// The real PQ2_0 files are held to the pinned fork by the parity tests (Qwen35ModelTests).
 
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Model;

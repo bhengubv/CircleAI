@@ -654,7 +654,9 @@ public sealed class BundleModelLoader : IModelLoader
     /// A DOWNLOAD NOTHING HERE CAN OPEN IS NOT WORTH FINISHING. The Windows service on
     /// 2026-10-19 held 3.6 GB of Ternary-Bonsai-2-27B - a GGUF - in a build that ships
     /// no llama.cpp for Windows, and the resume would have spent 2.3 GB more on it.
-    /// Chat models only: the speech stack's engines are not the brain's.
+    /// Chat models only, but for the C# engine's rows of every kind: the speech stack's
+    /// engines are not the brain's, and a vision tower or drafter on the C# engine is not
+    /// fetched before the engine reads it (EngineChoice.Opens, the one rule).
     /// </remarks>
     public bool CanRunHere(string modelName, IReadOnlyCollection<ModelEngine>? engines = null)
     {
@@ -662,8 +664,8 @@ public sealed class BundleModelLoader : IModelLoader
         {
             ThrowIfDisposed();
             var entry = _registry.GetLatestModel(modelName);
-            if (entry is null || entry.Modality != ModelModality.Chat) return true;
-            return (engines ?? DeviceModelAssessor.ShippedEngines()).Contains(entry.Engine);
+            if (entry is null) return true;
+            return EngineChoice.Opens(entry, engines);
         }
         catch
         {
