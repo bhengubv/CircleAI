@@ -234,6 +234,18 @@ public sealed partial class ServiceApplication : Application
 
             // The same notes as the desktop's - see BrainSkills.
             SkillStore = CircleAI.Service.BrainSkills.Embedded(),
+
+            // TOOLS FOR A TURN THAT ALLOWS THEM (OPEN-GAPS A16). The queue carries "tools allowed"
+            // to here now; the battery, a sum and a search all run in this process - the same app,
+            // its network and its battery reading - and each that runs is said in the log by name,
+            // never its arguments or its result.
+            ToolBridge = new CircleAI.Tools.LoggedToolBridge(
+                new CircleAI.Assistant.CircleAIToolBridge(BatteryPercent),
+                line => CircleAI.Core.Logging.CircleLog.Info("Tools", line)),
+
+            // A PICTURE TO A BRAIN THAT CAN SEE (S9): the phone's eyes model, admitted beside the
+            // brain if it fits - and never the text brain answering about a picture it never got.
+            Router = new CircleAI.Hosting.Neuron.SightRouter(),
         };
     }
 
@@ -269,11 +281,18 @@ public sealed partial class ServiceApplication : Application
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<CircleAI.Hosting.ThermalThrottleService>.Instance);
             thermal.StateChanged += (_, state) => CircleAI.Core.Logging.CircleLog.Info("Balance", $"thermal state {state}");
             thermal.StartMonitoring();
-            CircleAI.Inference.PowerBudgetPolicy.Conditions = () => (BatteryPercent(), thermal.ShouldPauseInference);
+            // EACH READER ASKS PretendConditions FIRST: an adb check (S9) can pretend a low battery or
+            // a hot phone for a few minutes, and with nothing pretended these are the phone's own.
+            CircleAI.Inference.PowerBudgetPolicy.Conditions = () =>
+                (CircleAI.Service.Droid.PretendConditions.Battery(BatteryPercent()),
+                 CircleAI.Service.Droid.PretendConditions.Hot(thermal.ShouldPauseInference));
 
             // AND STEP 1 READS THE SAME DEVICE (S4): the brain plan sees the battery, the charger,
             // the heat and the kind of device this is - things Core cannot read on a phone.
-            CircleAI.Core.DeviceContext.PowerProbe = () => new CircleAI.Core.PowerState(BatteryPercent(), Plugged(), thermal.ShouldPauseInference);
+            CircleAI.Core.DeviceContext.PowerProbe = () => new CircleAI.Core.PowerState(
+                CircleAI.Service.Droid.PretendConditions.Battery(BatteryPercent()),
+                CircleAI.Service.Droid.PretendConditions.Charging(Plugged()),
+                CircleAI.Service.Droid.PretendConditions.Hot(thermal.ShouldPauseInference));
             CircleAI.Core.DeviceContext.FormFactorProbe = FormFactorHere;
         }
         catch (Exception ex)
@@ -496,7 +515,7 @@ public sealed partial class ServiceApplication : Application
             readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.AudioMaxBytes, LinkAudio.MaxAudioBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
             readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.AudioFormat, "pcm16le-16000-mono");
             readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.TurnImages, "0");
-            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.TurnAgentic, "0");
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.TurnAgentic, "1");   // tools carried to the inference process (A16)
 
             coordinator.Start();
 
@@ -541,8 +560,16 @@ public sealed partial class ServiceApplication : Application
             });
             if (soak.Running) soak.Start(null, readiness.BootId, resume: true);
             CircleAI.Service.Droid.SoakReceiver.KillWorker = supervisor.KillForTest;
-            CircleAI.Service.Droid.SoakReceiver.AskOnce = (model, dir, engine, question, max) =>
-                supervisor.AskOnceForTestAsync(model, dir, engine, question, max, CancellationToken.None);
+            CircleAI.Service.Droid.SoakReceiver.AskOnce = (model, dir, engine, question, max, image) =>
+                supervisor.AskOnceForTestAsync(model, dir, engine, question, max, CancellationToken.None, image);
+
+            // THE REST OF S9'S CHECKS, FROM ADB (SoakReceiver): a picture the way the link sends one,
+            // the log files read back, a brain pinned to be stepped down from, a model fetched as
+            // setup fetches it. Each reaches only this app, behind the DUMP permission.
+            CircleAI.Service.Droid.SoakReceiver.See = (file, question) => _ = Task.Run(() => SeeForTestAsync(coordinator, file, question));
+            CircleAI.Service.Droid.SoakReceiver.LogTail = (lines, grep) => _ = Task.Run(() => LogFilesForTest(lines, grep));
+            CircleAI.Service.Droid.SoakReceiver.Pin = (model, span) => _ = Task.Run(() => supervisor.PinForTestAsync(model, span, CancellationToken.None));
+            CircleAI.Service.Droid.SoakReceiver.Fetch = model => _ = Task.Run(() => FetchForTestAsync(model));
             CircleAI.Service.Droid.SoakReceiver.ArmTestSwitches = on =>
             {
                 var flag = TestSwitchesArmedFile(this);
@@ -558,11 +585,15 @@ public sealed partial class ServiceApplication : Application
                 }
                 catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "test switches: " + ex.GetType().Name); }
             };
-            CircleAI.Service.Droid.SoakReceiver.Ask = text =>
+            CircleAI.Service.Droid.SoakReceiver.Ask = (text, tools) =>
             {
                 var admission = coordinator.Submit(new CircleAI.Assistant.Requests.AskSubmission(
-                    "internal:adb", Guid.NewGuid().ToString("N"), "adb", CircleAI.Assistant.Requests.AskLane.Foreground, text, text));
-                global::Android.Util.Log.Info("CircleAI.Soak", admission.Accepted ? "ask " + admission.Record!.Id + " accepted" : "ask refused");
+                    "internal:adb", Guid.NewGuid().ToString("N"), "adb", CircleAI.Assistant.Requests.AskLane.Foreground, text, text,
+                    Agentic: tools));
+                global::Android.Util.Log.Info("CircleAI.Soak", admission.Accepted
+                    ? "ask " + admission.Record!.Id + " accepted" + (tools ? " (tools allowed)" : string.Empty) : "ask refused");
+                if (admission.Accepted)
+                    _ = Task.Run(() => AnsweredForTestAsync(coordinator, "internal:adb", admission.Record!.Id, "ask"));
             };
 
             // A BETTER MODEL IS TRIED ONLY WHEN NOBODY IS WAITING AND THE PHONE IS ON
@@ -1365,6 +1396,11 @@ public sealed partial class ServiceApplication : Application
                     freed > 0
                         ? $"swept {CircleAI.Assistant.MemoryBudget.Human(freed)} of abandoned downloads"
                         : "no abandoned downloads to sweep");
+
+                // AND THE EMPTY FOLDERS A DOWNLOAD STOPPED BEFORE ITS FIRST BYTE LEFT (OPEN-GAPS E29).
+                var emptied = CircleAI.Inference.CatalogueHousekeeping.SweepEmptyFolders(ModelStore.Path, TimeSpan.FromHours(1));
+                if (emptied > 0)
+                    global::Android.Util.Log.Info("CircleAI.Housekeeping", $"removed {emptied} empty model folder(s) a stopped download left");
             }
             catch (Exception ex)
             {
@@ -1380,8 +1416,14 @@ public sealed partial class ServiceApplication : Application
         // service's own restart, setup started from the app, the voice warm-up, and the voice
         // and ears fetched on demand (ServiceSpeech, for at most 30 s) - waits for both now.
         // CatalogueReady stays the brain's wait, with no sweep in it.
+        // AND THE SPEEDS THIS PHONE MEASURED, READ BACK: setup plans the brain by them (BrainSpeed),
+        // and the device's memory loads fire-and-forget - a plan made before it would fetch by rank
+        // alone. Capped, so a memory that will not open never holds the downloads back for long.
+        var selfLoaded = CircleAI.SelfKnowledge.SelfModel.Current?.Loaded
+                             .WaitAsync(TimeSpan.FromSeconds(20)).ContinueWith(_ => { }, System.Threading.Tasks.TaskScheduler.Default)
+                         ?? System.Threading.Tasks.Task.CompletedTask;
         CircleAI.Device.CircleNeuronService.HousekeepingDone = System.Threading.Tasks.Task.WhenAll(
-            sweep, CircleAI.Device.CircleNeuronService.CatalogueReady ?? System.Threading.Tasks.Task.CompletedTask);
+            sweep, CircleAI.Device.CircleNeuronService.CatalogueReady ?? System.Threading.Tasks.Task.CompletedTask, selfLoaded);
 
         System.Threading.Tasks.Task.Run(async () =>
         {

@@ -39,7 +39,7 @@ public static class WorkerWire
                         Since = "since", WaitMs = "wait", Text = "text", Length = "len", Final = "final",
                         Pid = "pid", StartedMs = "started", Phase = "phase", Step = "step", RetryS = "retry",
                         RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim",
-                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain",
+                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain", Tools = "tools",
                         // THE BALANCE'S SHAPE FOR A LOAD (Step 4): the working memory's bits and the
                         // share of the context. Absent means the brain as built.
                         KvMode = "kv", ContextShare = "ctxshare";
@@ -50,7 +50,7 @@ public static class WorkerWire
     // ── a job's own settings ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Write a job's effort, thinking budget and plainness - only what it sets, so an older
+    /// Write a job's effort, thinking budget, plainness and tools - only what it sets, so an older
     /// worker reads a job exactly as it always did.
     /// </summary>
     public static void PutJobSettings(IDictionary<string, string> map, BrainJob job)
@@ -58,7 +58,11 @@ public static class WorkerWire
         if (job.Effort is { } effort) map[Effort] = effort.ToString();
         if (job.ThinkingBudget > 0) map[Think] = I(job.ThinkingBudget);
         if (job.Plain) map[Plain] = "1";
+        if (job.Tools) map[Tools] = "1";
     }
+
+    /// <summary>Whether the job allows tools (OPEN-GAPS A16), read back.</summary>
+    public static bool GetTools(IReadOnlyDictionary<string, string> map) => Flag(map, Tools);
 
     /// <summary>A job's effort, thinking budget and plainness, read back.</summary>
     public static (ReasoningEffort? Effort, int ThinkingBudget, bool Plain) GetJobSettings(IReadOnlyDictionary<string, string> map) =>

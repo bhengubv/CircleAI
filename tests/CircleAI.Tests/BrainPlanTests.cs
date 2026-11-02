@@ -24,10 +24,19 @@ public sealed class BrainSpeedCollection;
 public sealed class BrainPlanTests : IDisposable
 {
     private readonly Dictionary<string, double> _measured = new(StringComparer.OrdinalIgnoreCase);
+    private CircleAI.Inference.Managed.Kernels.KernelThreads.Choice? _kernels;
 
-    public BrainPlanTests() => BrainSpeed.Measured = id => _measured.TryGetValue(id, out var s) ? s : null;
+    public BrainPlanTests()
+    {
+        BrainSpeed.Measured = id => _measured.TryGetValue(id, out var s) ? s : null;
+        BrainSpeed.Kernels = () => _kernels;   // never a measurement left on this machine
+    }
 
-    public void Dispose() => BrainSpeed.Measured = null;
+    public void Dispose()
+    {
+        BrainSpeed.Measured = null;
+        BrainSpeed.Kernels = null;
+    }
 
     private static ModelEntry Chat(string name, ModelEngine engine, long bytes, int rank) =>
         new(name, "1.0", engine == ModelEngine.Managed ? "PTQ1_0" : "Q4_0")
@@ -76,6 +85,63 @@ public sealed class BrainPlanTests : IDisposable
         Assert.Equal(1.47 * 429.0 / 950.0, speed!.TokensPerSecond, 3);
         Assert.Equal("Ternary-Bonsai-2-2B", speed.From);
         Assert.True(BrainSpeed.TooSlow(Bonsai4B, [SmallMnn, Bonsai2B, Bonsai4B]));
+    }
+
+    // ── packings (OPEN-GAPS C8): the same weights read at different speeds ─────────
+
+    private static ModelEntry Packed(string name, string packing, long bytes) =>
+        new(name, "1.0", packing)
+        {
+            Engine = ModelEngine.Managed,
+            Architecture = "qwen35",
+            Modality = ModelModality.Chat,
+            TotalBytes = bytes,
+            MinRamGb = bytes / 1e9 + 0.1,
+            MinStorageGb = bytes / 1e9 + 0.1,
+            QualityRank = 9,
+        };
+
+    private static readonly ModelEntry TwoBPtq1 = Packed("Ternary-Bonsai-2-2B", "PTQ1_0", 429_000_000);
+    private static readonly ModelEntry TwoBPq2 = Packed("Ternary-Bonsai-2-2B-PQ2_0", "PQ2_0", 517_000_000);
+    private static readonly ModelEntry FourBPq2 = Packed("Ternary-Bonsai-2-4B-PQ2_0", "PQ2_0", 1_146_000_000);
+
+    [Fact]
+    public void A_brain_is_estimated_from_its_own_packing_before_another()
+    {
+        // This PC: PTQ1_0 2.9 tokens a second, PQ2_0 10.5 - a PQ2_0 4B is scaled from the PQ2_0 2B.
+        _measured["Ternary-Bonsai-2-2B"] = 2.9;
+        _measured["Ternary-Bonsai-2-2B-PQ2_0"] = 10.5;
+        var speed = BrainSpeed.Of(FourBPq2, [TwoBPtq1, TwoBPq2, FourBPq2]);
+        Assert.Equal("Ternary-Bonsai-2-2B-PQ2_0", speed!.From);
+        Assert.Equal(10.5 * 517.0 / 1146.0, speed.TokensPerSecond, 3);
+    }
+
+    [Fact]
+    public void Across_packings_the_devices_own_kernels_scale_the_estimate()
+    {
+        // ON THIS PC THE PQ2_0 2B WAS RULED TOO SLOW from its PTQ1_0 twin by size (2.9 x 429/517 =
+        // 2.4) and ran at 10.5. With the kernels' rates - PQ2_0 read 4.3 times faster here - it is
+        // estimated quick enough to talk with, before anything is fetched.
+        _measured["Ternary-Bonsai-2-2B"] = 2.9;
+        _kernels = new(4, 2.4, "pc") { Ptq1GigabytesPerSecond = 0.10, Pq2GigabytesPerSecond = 0.43 };
+        var pc = BrainSpeed.Of(TwoBPq2, [TwoBPtq1, TwoBPq2]);
+        Assert.Equal(2.9 * 429.0 / 517.0 * 4.3, pc!.TokensPerSecond, 3);
+        Assert.False(BrainSpeed.TooSlow(TwoBPq2, [TwoBPtq1, TwoBPq2]));
+
+        // The P30 (S9, 2026-11-02): PTQ1_0 read at 0.377 GB/s, PQ2_0 at 0.408 - still too slow.
+        _measured["Ternary-Bonsai-2-2B"] = 1.66;
+        _kernels = new(1, 0.88, "p30") { Ptq1GigabytesPerSecond = 0.377, Pq2GigabytesPerSecond = 0.408 };
+        var p30 = BrainSpeed.Of(TwoBPq2, [TwoBPtq1, TwoBPq2]);
+        Assert.Equal(1.66 * 429.0 / 517.0 * (0.408 / 0.377), p30!.TokensPerSecond, 3);
+        Assert.True(BrainSpeed.TooSlow(TwoBPq2, [TwoBPtq1, TwoBPq2]));
+    }
+
+    [Fact]
+    public void Without_the_kernels_measured_a_packing_is_estimated_by_size_alone()
+    {
+        _measured["Ternary-Bonsai-2-2B"] = 1.66;
+        var speed = BrainSpeed.Of(TwoBPq2, [TwoBPtq1, TwoBPq2]);
+        Assert.Equal(1.66 * 429.0 / 517.0, speed!.TokensPerSecond, 3);
     }
 
     [Fact]

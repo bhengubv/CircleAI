@@ -87,6 +87,35 @@ public class HousekeepingSweepTests : IDisposable
         // Runs on first launch, before anything has been downloaded.
         Assert.Equal(0, CatalogueHousekeeping.SweepAbandoned(
             Path.Combine(_dir, "nope"), TimeSpan.FromHours(1)));
+        Assert.Equal(0, CatalogueHousekeeping.SweepEmptyFolders(
+            Path.Combine(_dir, "nope"), TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public void An_empty_model_folder_a_stopped_download_left_is_removed_and_nothing_else_is()
+    {
+        // OPEN-GAPS E29: the P30's store held an empty Ternary-Bonsai-2-2B for a download that
+        // stopped before its first byte, and the soak's engine check took it for the model.
+        var empty = Path.Combine(_dir, "Ternary-Bonsai-2-2B");
+        Directory.CreateDirectory(empty);
+        Directory.SetLastWriteTimeUtc(empty, DateTime.UtcNow - TimeSpan.FromHours(6));
+
+        // A download starting this minute: its folder is empty too, and new.
+        var starting = Path.Combine(_dir, "Ternary-Bonsai-2-4B");
+        Directory.CreateDirectory(starting);
+
+        // A resumable partial, and an installed model: never empty, never touched.
+        var partial = Leftover("llm.mnn.weight.tmp", 4096, TimeSpan.FromDays(2));
+        var installed = Path.Combine(_dir, "Qwen3.5-0.8B-MNN");
+        Directory.CreateDirectory(installed);
+        File.WriteAllBytes(Path.Combine(installed, "llm.mnn"), new byte[16]);
+        Directory.SetLastWriteTimeUtc(installed, DateTime.UtcNow - TimeSpan.FromDays(30));
+
+        Assert.Equal(1, CatalogueHousekeeping.SweepEmptyFolders(_dir, TimeSpan.FromHours(1)));
+        Assert.False(Directory.Exists(empty));
+        Assert.True(Directory.Exists(starting));
+        Assert.True(File.Exists(partial));
+        Assert.True(File.Exists(Path.Combine(installed, "llm.mnn")));
     }
 
     [Fact]

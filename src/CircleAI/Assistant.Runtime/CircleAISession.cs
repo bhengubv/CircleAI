@@ -597,56 +597,12 @@ public sealed class CircleAISession : IAsyncDisposable
     /// </summary>
     public async Task<CircleAIToolTurn> RunToolTurnAsync(string input, string? question = null)
     {
-        // THE ENGINE RUNS THE TOOL AND FORMATS THE ANSWER, when the intent is plain.
-        // The 0.6B neither emits the call nor reads the result back — measured on a
-        // P30, get_battery_level ran and returned 82 and the model still answered "I
-        // can't access this information". So for a battery or live-web question the
-        // engine runs the tool itself (no model needed) and ToolAnswer turns the
-        // result into the reply. The model is not asked to summarise what it will
-        // not read. None leaves the turn to the model. See circleai-06b-wont-toolcall.
-        var need = ToolIntent.Classify(question);
-        var invocation = InvocationFor(need, question);
+        // THE ENGINE RUNS THE TOOL FOR A PLAIN INTENT, THE MODEL FOR THE REST - decided once,
+        // in ToolTurn, which the service's inference process answers its tool turns with too.
         var before = Tools.InvocationLog.Count;
-
-        if (invocation is not null)
-        {
-            var result = await _brain.InvokeToolAsync(invocation).ConfigureAwait(false);
-            var ran = Tools.InvocationLog.Skip(before).ToList();
-            return new CircleAIToolTurn(AnswerFrom(need, result), ran);
-        }
-
-        // A bigger model that DOES emit its own calls: the agentic loop, unchanged.
-        var answer = await _brain.AgenticChatAsync(input).ConfigureAwait(false);
-        var called = Tools.InvocationLog.Skip(before).ToList();
-        return new CircleAIToolTurn(answer, called);
+        var answer = await CircleAI.Hosting.ToolTurn.RunAsync(_brain, input, question).ConfigureAwait(false);
+        return new CircleAIToolTurn(answer, Tools.InvocationLog.Skip(before).ToList());
     }
-
-    /// <summary>The concrete tool for a plain intent, or null to leave it to the model.</summary>
-    private static ToolInvocation? InvocationFor(ToolNeed need, string? question) => need switch
-    {
-        ToolNeed.Battery => new ToolInvocation
-        {
-            ToolName = "get_battery_level",
-            Arguments = new Dictionary<string, object?>(),
-        },
-        ToolNeed.Web => new ToolInvocation
-        {
-            ToolName = "web_search",
-            Arguments = new Dictionary<string, object?> { ["query"] = question! },
-        },
-        _ => null,
-    };
-
-    /// <summary>The engine's own words for a tool result — the 0.6B will not phrase it.</summary>
-    private static string AnswerFrom(ToolNeed need, ToolResult result) => need switch
-    {
-        ToolNeed.Battery => ToolAnswer.Battery(AsPercent(result)),
-        ToolNeed.Web => ToolAnswer.Web(result.Success ? result.Result?.ToString() : result.Error),
-        _ => result.Result?.ToString() ?? string.Empty,
-    };
-
-    private static int? AsPercent(ToolResult r)
-        => r.Success && r.Result is not null && int.TryParse(r.Result.ToString(), out var n) ? n : null;
 
     /// <param name="Answer">IT!'s final text.</param>
     /// <param name="ToolsCalled">

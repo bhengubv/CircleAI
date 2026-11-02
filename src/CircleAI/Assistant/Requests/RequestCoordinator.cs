@@ -575,7 +575,11 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 Spoken: ask.Spoken,
                 Deadline: started + _limits.GenerationDeadline,
                 Effort: choice?.Effort,
-                ThinkingBudget: choice?.ThinkingBudget ?? 0);
+                ThinkingBudget: choice?.ThinkingBudget ?? 0,
+                // TOOLS WHEN THE CALLER ALLOWED THEM (OPEN-GAPS A16). The flag was stored with
+                // every ask and read by nothing, so an app's tool turn through the link was
+                // answered as a plain one - the call it had already seen, written again.
+                Tools: ask.Agentic);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(_limits.GenerationDeadline);

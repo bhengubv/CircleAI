@@ -244,6 +244,49 @@ public static class CatalogueHousekeeping
     }
 
     /// <summary>
+    /// Remove the model folders under <paramref name="modelsDirectory"/> that hold nothing at all and
+    /// have not been written to for <paramref name="idleFor"/>, and report how many.
+    /// </summary>
+    /// <remarks>
+    /// A DOWNLOAD THAT STOPS BEFORE ITS FIRST BYTE LEAVES ITS FOLDER BEHIND (OPEN-GAPS E29): the
+    /// downloader makes a model's folder before it asks for anything, and nothing looked at it again.
+    /// On the P30 on 2026-11-02 the store held an empty Ternary-Bonsai-2-2B: the setup line called
+    /// it "nothing yet" though nothing was fetching it, and the soak's engine check took it for the
+    /// model and failed while the 2B sat in the sideload folder.
+    /// <para>
+    /// EMPTY MEANS NOTHING AT ALL - no file, no sidecar, no subfolder - so nothing resumable or
+    /// installed is ever touched; IDLE keeps a download that is starting this minute out of it, as
+    /// the .tmp sweep above does; and the delete itself refuses a folder that has gained a file
+    /// since it was looked at.
+    /// </para>
+    /// </remarks>
+    public static int SweepEmptyFolders(string modelsDirectory, TimeSpan idleFor)
+    {
+        if (string.IsNullOrWhiteSpace(modelsDirectory) || !Directory.Exists(modelsDirectory))
+            return 0;
+
+        var cutoff = DateTime.UtcNow - idleFor;
+        var removed = 0;
+        try
+        {
+            foreach (var folder in Directory.EnumerateDirectories(modelsDirectory))
+            {
+                try
+                {
+                    if (Directory.EnumerateFileSystemEntries(folder).Any()) continue;
+                    if (Directory.GetLastWriteTimeUtc(folder) > cutoff) continue;   // a download may be starting
+                    Directory.Delete(folder, recursive: false);
+                    removed++;
+                }
+                catch { /* gained a file, in use or vanished: leave it */ }
+            }
+        }
+        catch { /* the walk failing is not fatal */ }
+
+        return removed;
+    }
+
+    /// <summary>
     /// Reclaim the superseded models under <paramref name="modelsDirectory"/>: delete
     /// each planned model's folder (only when its <c>installed.json</c> marks it a
     /// COMPLETE download — a partial download is left for the downloader to resume)

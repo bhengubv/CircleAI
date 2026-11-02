@@ -88,7 +88,14 @@ public sealed record ManagedGeneratorOptions
     /// the trunk checks them all in one pass and keeps what it would have chosen itself, so the reply
     /// is the one plain decoding gives, token for token. 2 is the card's depth; 0 decodes plainly.
     /// </summary>
-    public int Drafts { get; init; } = 2;
+    /// <remarks>
+    /// OFF UNLESS A HOST ASKS (OPEN-GAPS C7), because nowhere it was measured is it faster. S5's run
+    /// on the desktop wrote 0.78-0.89 tokens a second drafting against 1.60-2.08 plain, and on the
+    /// P30 (S9, 2026-11-02) the check pass alone - three tokens through a product together - took
+    /// 97.8 ms against 41.0 ms one by one, so the phone loses before a single draft is rejected.
+    /// Lossless either way: a host that measures it faster on its own hardware sets 2.
+    /// </remarks>
+    public int Drafts { get; init; }
 
     /// <summary>Reply tokens when a call asks for none.</summary>
     public int MaxNewTokens { get; init; } = 512;
@@ -133,7 +140,7 @@ public sealed record ManagedGeneratorOptions
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
-public sealed class ManagedChatGenerator : IToolCallingGenerator
+public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerator
 {
     private const string Area = "Engine";
     private const ulong SessionMagic = 0x314E_4547_4D49_4143; // "CAIMGEN1", little-endian

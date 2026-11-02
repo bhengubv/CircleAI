@@ -167,4 +167,28 @@ public sealed class HousekeepingBeforePullTests
         Assert.True(run >= 0 && wait > run, "setup started from the app never waits for housekeeping");
         Assert.True(plan > wait, "setup plans its downloads before housekeeping has finished");
     }
+
+    [Fact]
+    public void The_first_plans_wait_for_the_speeds_this_device_measured()
+    {
+        // OPEN-GAPS E30: the device's memory loads fire-and-forget at start-up, and with no speeds
+        // read back rank alone decides - the P30 would want the Bonsai 4B. The setup fetch (through
+        // housekeeping's wait) and the brain's first choice, on the phone and on a PC, wait for it.
+        var app = Source("src", "CircleAIService", "ServiceApplication.cs");
+        var loaded = app.IndexOf("var selfLoaded = CircleAI.SelfKnowledge.SelfModel.Current?.Loaded", StringComparison.Ordinal);
+        var done = app.IndexOf("CircleAI.Device.CircleNeuronService.HousekeepingDone = System.Threading.Tasks.Task.WhenAll(", StringComparison.Ordinal);
+        Assert.True(loaded >= 0 && done > loaded, "housekeeping's wait does not include the device's speeds");
+        Assert.Contains("CatalogueReady ?? System.Threading.Tasks.Task.CompletedTask, selfLoaded)", app[done..], StringComparison.Ordinal);
+
+        var supervisor = Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var choose = supervisor.IndexOf("private string? Choose()", StringComparison.Ordinal);
+        var wait = supervisor.IndexOf("SelfModel.Current?.Loaded.Wait(", choose, StringComparison.Ordinal);
+        var plan = supervisor.IndexOf("BrainPlan.Explain(", choose, StringComparison.Ordinal);
+        Assert.True(choose >= 0 && wait > choose && plan > wait, "the supervisor chooses before the speeds are read back");
+
+        var desktop = Source("src", "CircleAIService", "Host", "Program.cs");
+        var known = desktop.IndexOf("known.Loaded.WaitAsync(", StringComparison.Ordinal);
+        var pick = desktop.IndexOf(".BestFit(probe, ChatCapability.Default)", StringComparison.Ordinal);
+        Assert.True(known >= 0 && pick > known, "the desktop host chooses before the speeds are read back");
+    }
 }

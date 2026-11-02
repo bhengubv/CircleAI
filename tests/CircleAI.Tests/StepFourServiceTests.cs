@@ -178,12 +178,46 @@ public sealed class KernelThreadsTests : IDisposable
     public void Dispose()
     {
         KernelThreads.MeasureForTest = null;
+        KernelThreads.MeasurePq2ForTest = null;
         KernelThreads.Forget();
         try { Directory.Delete(_dir, recursive: true); } catch { /* temp */ }
     }
 
     private static KernelBench.Result At(int threads, double gbPerSecond) =>
         new(KernelPath.Lut, 6144, 2048, 1, gbPerSecond, threads);
+
+    [Fact]
+    public void Both_packings_are_measured_once_and_read_back_by_the_planner()
+    {
+        // OPEN-GAPS C8: how fast each packing reads its weights here is kept beside the threads, and
+        // the main process - which plans and never builds a brain - reads it back without measuring.
+        KernelThreads.MeasureForTest = _ => [At(1, 0.30), At(2, 0.50), At(3, 0.60)];
+        KernelThreads.MeasurePq2ForTest = _ => [At(1, 0.40), At(3, 1.80)];
+        Assert.Equal(3, KernelThreads.Choose(fallback: 2, directory: _dir));
+
+        KernelThreads.Forget();
+        var kept = KernelThreads.Remembered(_dir)!;
+        Assert.Equal(0.60, kept.Ptq1GigabytesPerSecond, 6);
+        Assert.Equal(1.80, kept.Pq2GigabytesPerSecond, 6);
+        Assert.Equal(3.0, kept.PackingFactor("PTQ1_0", "PQ2_0")!.Value, 6);
+        Assert.Equal(1 / 3.0, kept.PackingFactor("PQ2_0-MTP", "PTQ1_0")!.Value, 6);
+        Assert.Null(kept.PackingFactor("Q8_0", "PTQ1_0"));
+    }
+
+    [Fact]
+    public void A_choice_kept_before_both_packings_were_measured_is_measured_again()
+    {
+        // The file every device that ran S7 holds: three lines, no rates, the fingerprint before.
+        var old = KernelThreads.Fingerprint().Replace("|packings", string.Empty, StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(_dir, KernelThreads.FileName), $"3\n0.86\n{old}");
+        Assert.Null(KernelThreads.Remembered(_dir));
+
+        var measured = 0;
+        KernelThreads.MeasureForTest = _ => { measured++; return [At(1, 0.37), At(3, 0.30)]; };
+        Assert.Equal(1, KernelThreads.Choose(fallback: 2, directory: _dir));
+        Assert.Equal(1, measured);
+        Assert.Equal(0.37, KernelThreads.Remembered(_dir)!.Ptq1GigabytesPerSecond, 6);
+    }
 
     [Fact]
     public void The_fewest_threads_within_five_percent_of_the_fastest_win()

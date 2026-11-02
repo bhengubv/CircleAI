@@ -178,12 +178,12 @@ public sealed partial class ServiceApplication
         try { power = DeviceContext.PowerProbe?.Invoke() ?? PowerState.Unknown; }
         catch { power = PowerState.Unknown; }
 
-        var heat = _thermal?.CurrentState switch
+        var heat = CircleAI.Service.Droid.PretendConditions.Heat(_thermal?.CurrentState switch
         {
             CircleAI.Hosting.ThermalState.Critical => 2,
             CircleAI.Hosting.ThermalState.Serious => 1,
             _ => 0,
-        };
+        });
         var memory = DateTimeOffset.UtcNow - supervisor.LastCriticalTrim < TimeSpan.FromMinutes(10);
         return new BalanceReading(power.BatteryPercent, power.Charging, heat, memory);
     }

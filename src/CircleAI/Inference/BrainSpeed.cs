@@ -13,6 +13,12 @@
 // answered here. A model that has never run here is estimated from one that has, on the same
 // engine: producing a token means reading the weights once, so speed goes with the inverse of
 // their size. No measurement on that engine at all means no estimate - unknown, never assumed.
+//
+// AND READING THEM IS NOT EQUALLY QUICK IN EVERY PACKING (OPEN-GAPS C8). The C# engine reads
+// PQ2_0 about 3.6 times faster than PTQ1_0 on the desktop that built it and a little slower on
+// the P30, so a PQ2_0 brain scaled from a PTQ1_0 one by size alone was ruled too slow on the very
+// machine it ran fastest on. A brain is estimated from one in its own packing where one has run;
+// across packings, by how fast this device's kernels read each (KernelThreads, measured once).
 
 using System;
 using System.Collections.Generic;
@@ -36,6 +42,12 @@ public static class BrainSpeed
 
     /// <summary>Measured speeds from somewhere other than the device's memory: a test, a host without one.</summary>
     public static Func<string, double?>? Measured { get; set; }
+
+    /// <summary>
+    /// How fast this device's kernels read each packing; null reads what the device measured
+    /// (<see cref="Managed.Kernels.KernelThreads.Remembered"/>). A setting so a test decides.
+    /// </summary>
+    public static Func<Managed.Kernels.KernelThreads.Choice?>? Kernels { get; set; }
 
     /// <summary>The decode speed this device has measured for a model, or null.</summary>
     public static double? MeasuredOf(string modelId)
@@ -67,20 +79,42 @@ public static class BrainSpeed
         if (MeasuredOf(entry.Name) is { } measured) return new Estimate(measured, entry.Name);
         if (entry.TotalBytes <= 0) return null;
 
-        Estimate? nearest = null;
-        var nearestDistance = double.MaxValue;
+        var runs = new List<(ModelEntry Model, double Speed)>();
         foreach (var other in catalogue)
         {
             if (other.Engine != entry.Engine || other.TotalBytes <= 0
                 || string.Equals(other.Name, entry.Name, StringComparison.OrdinalIgnoreCase)) continue;
-            if (MeasuredOf(other.Name) is not { } speed) continue;
+            if (MeasuredOf(other.Name) is { } speed) runs.Add((other, speed));
+        }
+        if (runs.Count == 0) return null;
 
+        // ITS OWN PACKING WHERE ONE HAS RUN; ANOTHER ONLY WHEN NONE HAS, scaled by the kernels.
+        var packing = PackingOf(entry);
+        var alike = runs.Where(r => PackingOf(r.Model) == packing).ToList();
+        var kernels = alike.Count == 0 ? KernelsHere() : null;
+
+        Estimate? nearest = null;
+        var nearestDistance = double.MaxValue;
+        foreach (var (other, speed) in alike.Count > 0 ? alike : runs)
+        {
             var distance = Math.Abs(Math.Log((double)other.TotalBytes / entry.TotalBytes));
             if (distance >= nearestDistance) continue;
             nearestDistance = distance;
-            nearest = new Estimate(speed * other.TotalBytes / entry.TotalBytes, other.Name);
+            var factor = kernels?.PackingFactor(other.Quantization, entry.Quantization) ?? 1.0;
+            nearest = new Estimate(speed * other.TotalBytes / entry.TotalBytes * factor, other.Name);
         }
         return nearest;
+    }
+
+    // The C# engine's packing of a row - the kernel its weights are read with - or null for any other engine.
+    private static string? PackingOf(ModelEntry entry) =>
+        entry.Engine == ModelEngine.Managed ? Managed.Kernels.KernelThreads.Packing(entry.Quantization) : null;
+
+    // What this device measured of its kernels; null when nothing was, or it could not be read.
+    private static Managed.Kernels.KernelThreads.Choice? KernelsHere()
+    {
+        try { return Kernels is { } hooked ? hooked() : Managed.Kernels.KernelThreads.Remembered(); }
+        catch { return null; }
     }
 
     /// <summary>Whether the model is known, or estimated, to be too slow to talk with here.</summary>

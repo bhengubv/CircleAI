@@ -173,6 +173,31 @@ public sealed class InProcessBrainWorker : IBrainWorker
             lock (_gate) knobs = _knobs;
             using var risky = CircleAI.Assistant.RiskySteps.Begin($"generate {brain.ModelId} | {knobs}");
 
+            // A TURN WITH TOOLS IS ANSWERED WHOLE (OPEN-GAPS A16): the engine's own tool for a
+            // plain intent, else the agentic loop (ToolTurn) - and the caller, which asked with
+            // tools because its streamed answer began a call, replaces what it showed with this.
+            if (job.Tools)
+            {
+                string answer;
+                try
+                {
+                    answer = await ToolTurn.RunAsync(brain.Service, LastUserTurn(job.Messages), job.RetrievalQuery, options, deadline.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (BrainWorkerException) { throw; }
+                catch (Exception ex)
+                {
+                    throw new BrainWorkerException(Classify(ex, WorkPhase.Prefill, brain.ModelId, _clock.GetUtcNow()), ex);
+                }
+
+                ttft = clock.ElapsedMilliseconds;
+                _log($"tool turn answered in {ttft} ms");
+                if (answer.Length > 0) yield return new BrainChunk(answer);
+                yield return Ending(brain, recorder, clock.ElapsedMilliseconds, ttft, answer.Length > 0 ? 1 : 0);
+                yield break;
+            }
+
             var stream = brain.Service.StreamAsync(job.Messages, options, deadline.Token).GetAsyncEnumerator(deadline.Token);
             try
             {
@@ -203,22 +228,34 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 await stream.DisposeAsync().ConfigureAwait(false);
             }
 
-            var total = clock.ElapsedMilliseconds;
-            yield return new BrainChunk(string.Empty, Final: true, Timing: new TurnTiming(
-                EnrichMs: recorder.EnrichMs,
-                PrefillMs: recorder.PrefillMs >= 0 ? recorder.PrefillMs : ttft,
-                PromptTokens: recorder.PromptTokens,
-                DecodeMs: recorder.DecodeMs >= 0 ? recorder.DecodeMs : (ttft >= 0 ? total - ttft : -1),
-                OutputTokens: recorder.OutputTokens >= 0 ? recorder.OutputTokens : pieces,
-                TtftMs: ttft,
-                ModelId: brain.ModelId,
-                KvPath: recorder.KvPath,
-                Finish: recorder.Finish ?? "eos"));
+            yield return Ending(brain, recorder, clock.ElapsedMilliseconds, ttft, pieces);
         }
         finally
         {
             _one.Release();
         }
+    }
+
+    // The last piece of an answer: what the recorder measured, else what the stream showed.
+    private static BrainChunk Ending(InProcessBrain brain, TurnTimingRecorder recorder, long total, long ttft, int pieces) =>
+        new(string.Empty, Final: true, Timing: new TurnTiming(
+            EnrichMs: recorder.EnrichMs,
+            PrefillMs: recorder.PrefillMs >= 0 ? recorder.PrefillMs : ttft,
+            PromptTokens: recorder.PromptTokens,
+            DecodeMs: recorder.DecodeMs >= 0 ? recorder.DecodeMs : (ttft >= 0 ? total - ttft : -1),
+            OutputTokens: recorder.OutputTokens >= 0 ? recorder.OutputTokens : pieces,
+            TtftMs: ttft,
+            ModelId: brain.ModelId,
+            KvPath: recorder.KvPath,
+            Finish: recorder.Finish ?? "eos"));
+
+    // The turn a tool turn answers: the last the person said (the coordinator's conversation ends on it).
+    private static string LastUserTurn(IReadOnlyList<ChatMessage> messages)
+    {
+        for (var i = messages.Count - 1; i >= 0; i--)
+            if (string.Equals(messages[i].Role, "user", StringComparison.OrdinalIgnoreCase))
+                return messages[i].Content ?? string.Empty;
+        return string.Empty;
     }
 
     /// <inheritdoc />

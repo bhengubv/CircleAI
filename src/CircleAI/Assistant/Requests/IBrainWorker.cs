@@ -51,6 +51,10 @@ public sealed record BrainWorkerStatus(
 /// <param name="Effort">How hard the model thinks first (<see cref="EffortRouter"/>); null leaves the brain's own default.</param>
 /// <param name="ThinkingBudget">The most tokens the thought may take before it is closed; 0 sets none.</param>
 /// <param name="Plain">The messages reach the model as given - no persona, no notes, no tools (<see cref="GenerationOptions.Plain"/>).</param>
+/// <param name="Tools">
+/// The caller allowed tools for this turn (<see cref="AskSubmission.Agentic"/>): the answer is the tool
+/// turn's (<see cref="CircleAI.Hosting.ToolTurn"/>), written whole once the tools have run, not streamed.
+/// </param>
 public sealed record BrainJob(
     string AskId,
     IReadOnlyList<ChatMessage> Messages,
@@ -60,7 +64,8 @@ public sealed record BrainJob(
     DateTimeOffset Deadline,
     ReasoningEffort? Effort = null,
     int ThinkingBudget = 0,
-    bool Plain = false);
+    bool Plain = false,
+    bool Tools = false);
 
 /// <summary>A piece of an answer, or the end of one.</summary>
 /// <param name="Text">The new text (may be empty on the final piece).</param>

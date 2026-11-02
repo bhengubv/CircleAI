@@ -29,7 +29,7 @@ namespace CircleAI.Inference;
 /// Kimi-VL or Qwen-VL family model. Falls back to text-only generation
 /// when no <see cref="ChatMessage.ImageBytes"/> is attached.
 /// </summary>
-public sealed class KimiVlGenerator : IChatGenerator
+public sealed class KimiVlGenerator : IChatGenerator, ISeeingGenerator
 {
     private const string ImStart   = "<|im_start|>";
     private const string ImEnd     = "<|im_end|>";
@@ -47,6 +47,10 @@ public sealed class KimiVlGenerator : IChatGenerator
     private readonly SemaphoreSlim _generationLock = new(initialCount: 1, maxCount: 1);
 
     private bool _disposed;
+
+    /// <inheritdoc />
+    /// <remarks>Always: it is MNN's vision runtime, built only for a vision-language model.</remarks>
+    public bool CanSee => true;
 
     /// <summary>
     /// Loads a vision-language model and prepares it for generation.

@@ -254,6 +254,32 @@ public sealed class InferenceSupervisor : IBrainWorker
     }
 
     /// <summary>
+    /// Load <paramref name="model"/> as the brain for <paramref name="span"/>, whatever the plan says - a
+    /// developer check (S9) that a brain too big for this phone is stepped down from, by the rules
+    /// that would step down from it anyway. The brain held now is let go so the next question loads
+    /// the pinned one; a brain Wolverine has stepped down from is still stepped down from, which is
+    /// the point. Null or empty unpins, and the plan chooses again.
+    /// </summary>
+    public async Task PinForTestAsync(string? model, TimeSpan span, CancellationToken ct)
+    {
+        var pinned = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
+        lock (_gate) { _pinned = pinned; _pinnedUntil = DateTimeOffset.UtcNow + span; }
+        _log(pinned is null
+            ? "the test pin is let go; the plan chooses the brain again"
+            : $"pinned for a test: {pinned} for {span.TotalMinutes:0} min, whatever the plan says");
+        await ReleaseAsync(ct).ConfigureAwait(false);
+    }
+
+    private string? _pinned;
+    private DateTimeOffset _pinnedUntil;
+
+    // The brain pinned for a test, while its time lasts.
+    private string? Pinned()
+    {
+        lock (_gate) return _pinned is not null && DateTimeOffset.UtcNow < _pinnedUntil ? _pinned : null;
+    }
+
+    /// <summary>
     /// A developer check: <paramref name="model"/> loaded in the inference process with
     /// <paramref name="engine"/> (null: its catalogue row's), asked one question by the path every
     /// question takes there - AIService, the persona, the generator its build site makes - and
@@ -266,7 +292,8 @@ public sealed class InferenceSupervisor : IBrainWorker
     /// queue is answering, because it takes the brain away.
     /// </remarks>
     public async Task<(string Text, TurnTiming? Timing, long LoadMs)> AskOnceForTestAsync(
-        string model, string modelDirectory, ModelEngine? engine, string question, int maxTokens, CancellationToken ct)
+        string model, string modelDirectory, ModelEngine? engine, string question, int maxTokens, CancellationToken ct,
+        byte[]? image = null)
     {
         if (SchedulerIdle?.Invoke() == false) throw new InvalidOperationException("the queue is answering; try again when it is idle");
         await ReleaseAsync(ct).ConfigureAwait(false);
@@ -278,7 +305,10 @@ public sealed class InferenceSupervisor : IBrainWorker
 
             var text = new System.Text.StringBuilder();
             TurnTiming? timing = null;
-            var job = new BrainJob("check-" + Guid.NewGuid().ToString("N")[..8], [new ChatMessage("user", question)],
+            // WITH A PICTURE when one is given (S9): the brain sees it with its own tower, found
+            // beside it by the tower's row name, as a question about a photo is answered there.
+            var job = new BrainJob("check-" + Guid.NewGuid().ToString("N")[..8],
+                [new ChatMessage("user", question) { ImageBytes = image }],
                 question, maxTokens, Spoken: false, DateTimeOffset.UtcNow.AddHours(1));
             await foreach (var chunk in _connection.GenerateAsync(job, ct).ConfigureAwait(false))
             {
@@ -671,6 +701,13 @@ public sealed class InferenceSupervisor : IBrainWorker
     /// </summary>
     private string? Choose()
     {
+        // THE SPEEDS THIS PHONE MEASURED, READ BACK FIRST: they decide which brain is quick enough to
+        // talk with (BrainSpeed), and with none read back rank alone decides - the P30 would want the
+        // Bonsai 4B. The device's memory is loaded fire-and-forget at start-up, so the first plan
+        // waits for it, briefly; a memory that will not open plans on the catalogue, as before.
+        try { CircleAI.SelfKnowledge.SelfModel.Current?.Loaded.Wait(TimeSpan.FromSeconds(10)); }
+        catch { /* never a reason not to choose */ }
+
         var options = _options();
         var catalogue = _catalogue();
         var probe = DeviceProbe.Snapshot();
@@ -679,7 +716,8 @@ public sealed class InferenceSupervisor : IBrainWorker
         using var loader = new BundleModelLoader(_store, registry);
         var selector = DeviceAwareModelSelector.Preferring(catalogue, registry);
 
-        string? wanted = options.ModelId;
+        // A BRAIN PINNED FOR A TEST (S9) before the plan, and still under every rule below it.
+        string? wanted = Pinned() ?? options.ModelId;
         if (!string.IsNullOrWhiteSpace(wanted) && registry.GetLatestModel(wanted!) is { Retired: true }) wanted = null;
         if (string.IsNullOrWhiteSpace(wanted))
         {

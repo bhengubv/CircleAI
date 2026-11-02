@@ -209,7 +209,9 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             options,
             modelLoader:      loader,
             generatorFactory: null,
-            modelSelector:    DeviceAwareModelSelector.Preferring(null, registry),
+            // A PICTURE TO THE PAIR THAT SEES HERE (OPEN-GAPS E32): an installed C# brain and its
+            // tower before the catalogue's vision pick; everything else as the catalogue says.
+            modelSelector:    new SeeingSelector(DeviceAwareModelSelector.Preferring(null, registry), registry, loader),
             modelRegistry:    registry);
         await service.StartAsync(ct).ConfigureAwait(false);
         return new InProcessBrain(service, request.ModelId);
@@ -251,7 +253,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             Deadline: deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2),
             Effort: effort,
             ThinkingBudget: thinkingBudget,
-            Plain: plain);
+            Plain: plain,
+            Tools: WorkerWire.GetTools(req));
 
         _ = Task.Run(async () =>
         {
@@ -264,7 +267,16 @@ public sealed class InferenceWorkerService : global::Android.App.Service
                     job.News.Release();
                 }
             }
-            catch (BrainWorkerException ex) { job.Failure = ex.Failure; }
+            catch (BrainWorkerException ex)
+            {
+                job.Failure = ex.Failure;
+
+                // WHAT WENT WRONG, NOT ONLY ITS TYPE (S1): the failure carries the exception's type and a
+                // sentence for the person, and on the P30 on 2026-11-02 that hid why the eyes model failed
+                // every picture ("InvalidOperationException; an error in Circle AI's own code").
+                var cause = ex.InnerException ?? ex;
+                global::Android.Util.Log.Warn(Tag, $"answer failed ({ex.Failure.Kind}): {cause.GetType().Name}: {cause.Message}");
+            }
             catch (System.OperationCanceledException)
             {
                 job.Failure = new Failure(FailureKind.Cancelled, Certainty.Certain, WorkPhase.Decode, brain.ModelId,

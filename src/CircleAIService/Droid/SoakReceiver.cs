@@ -57,8 +57,9 @@ public sealed class SoakReceiver : BroadcastReceiver
                 Quality?.Invoke();
                 break;
             case "ask":
-                // ONE QUESTION THROUGH THE QUEUE, so a fault can be injected while it runs.
-                if (intent?.GetStringExtra("text") is { Length: > 0 } text) Ask?.Invoke(text);
+                // ONE QUESTION THROUGH THE QUEUE, so a fault can be injected while it runs - with
+                // "--ez tools true", as an app's tool turn comes (OPEN-GAPS A16).
+                if (intent?.GetStringExtra("text") is { Length: > 0 } text) Ask?.Invoke(text, intent.GetBooleanExtra("tools", false));
                 break;
             case "kill-worker":
                 // THE RELIABILITY GATE'S FAULT: end the inference process, as the
@@ -95,6 +96,7 @@ public sealed class SoakReceiver : BroadcastReceiver
                 // files directory, where adb can put a model) are looked in.
                 //   ... --es do engine [--es engine Managed|LlamaCpp] [--es text "Hello! Who are you?"]
                 //       [--ei max 48] [--es model Ternary-Bonsai-2-2B] [--es dir <models folder>]
+                //       [--es image <picture, in the sideload folder or a full path>]
                 var engineName = intent?.GetStringExtra("engine");
                 CircleAI.Core.ModelEngine? engine = Enum.TryParse<CircleAI.Core.ModelEngine>(engineName ?? "Managed", ignoreCase: true, out var parsed)
                     ? parsed : null;
@@ -102,7 +104,56 @@ public sealed class SoakReceiver : BroadcastReceiver
                 var model = intent?.GetStringExtra("model") ?? TwoB;
                 var dir = intent?.GetStringExtra("dir");
                 var max = intent?.GetIntExtra("max", 48) ?? 48;
-                System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max));
+                var picture = intent?.GetStringExtra("image");
+                System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max, picture));
+                break;
+            case "see":
+                // A PICTURE THROUGH THE QUEUE, AS AN APP'S COMES (S9): held where the link holds one
+                // and answered by whichever brain on the phone can see.
+                //   ... --es do see --es file <picture, in the sideload folder or a full path> [--es text "..."]
+                See?.Invoke(PictureFile(intent?.GetStringExtra("file") ?? "s9.png"), intent?.GetStringExtra("text"));
+                break;
+            case "logs":
+                // THE PROCESSES' LOG FILES, READ BACK WHERE ADB CAN SEE THEM (S9): a Release build
+                // cannot be read with run-as, so this is how the file half of the log is checked. With
+                // "--es grep <regex>", only the lines that match, from the whole of each file: the
+                // wake word writes a line a second, so a plain tail reaches back three minutes.
+                LogTail?.Invoke(Math.Clamp(intent?.GetIntExtra("lines", 20) ?? 20, 1, 400), intent?.GetStringExtra("grep"));
+                break;
+            case "pretend":
+                // A LOW BATTERY OR A HOT PHONE, PRETENDED FOR A WHILE - never a device setting
+                // (PretendConditions). heat: 0 calm, 1 serious, 2 critical.
+                //   ... --es do pretend [--ei battery 12] [--ez charging false] [--ei heat 2] [--ei minutes 15]
+                PretendConditions.Set(
+                    battery: intent?.GetIntExtra("battery", -1) is int battery and >= 0 ? battery : null,
+                    charging: intent is not null && intent.HasExtra("charging") ? intent.GetBooleanExtra("charging", false) : null,
+                    heat: intent?.GetIntExtra("heat", -1) is int heat and >= 0 ? heat : null,
+                    span: TimeSpan.FromMinutes(Math.Clamp(intent?.GetIntExtra("minutes", 15) ?? 15, 1, 120)));
+                global::Android.Util.Log.Info("CircleAI.Soak", PretendConditions.Describe());
+                break;
+            case "pretend-off":
+                PretendConditions.Clear();
+                global::Android.Util.Log.Info("CircleAI.Soak", "pretend off: " + PretendConditions.Describe());
+                break;
+            case "pin":
+                // A BRAIN PINNED WHATEVER THE PLAN SAYS, so one too big for this phone can be seen
+                // stepped down from (S9). "--es model none" unpins.
+                //   ... --es do pin --es model <id> [--ei minutes 20]
+                var pin = intent?.GetStringExtra("model");
+                Pin?.Invoke(pin is null || pin == "none" ? null : pin,
+                    TimeSpan.FromMinutes(Math.Clamp(intent?.GetIntExtra("minutes", 20) ?? 20, 1, 240)));
+                break;
+            case "setup":
+                // THE SETUP BOARD ROW BY ROW - what an app's progress screen reads over the link.
+                foreach (var row in CircleAI.Inference.SetupBoard.Snapshot())
+                    global::Android.Util.Log.Info("CircleAI.Soak", "setup: " + row.Describe());
+                global::Android.Util.Log.Info("CircleAI.Soak", "setup: " + (CircleAI.Inference.SetupBoard.Summary() is { } board
+                    ? $"{board.Settled} of {board.Count} settled" : "nothing on the way"));
+                break;
+            case "fetch":
+                // ONE CATALOGUED MODEL, FETCHED AS SETUP FETCHES: checked against its SHA-256, on the
+                // setup board, and primed when it lands.
+                if (intent?.GetStringExtra("model") is { Length: > 0 } wanted) Fetch?.Invoke(wanted);
                 break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
@@ -119,17 +170,35 @@ public sealed class SoakReceiver : BroadcastReceiver
     /// <summary>Ends the inference process (developer fault injection). Set by the service's startup.</summary>
     public static Action? KillWorker { get; set; }
 
-    /// <summary>Submits one question as the adb caller. Set by the service's startup.</summary>
-    public static Action<string>? Ask { get; set; }
+    /// <summary>Submits one question as the adb caller, tools allowed or not. Set by the service's startup.</summary>
+    public static Action<string, bool>? Ask { get; set; }
 
     /// <summary>
     /// Loads a model in the inference process with an engine, asks it one question there and lets
     /// it go: the answer, its timing and the load's milliseconds. Set by the service's startup.
     /// </summary>
-    public static Func<string, string, CircleAI.Core.ModelEngine?, string, int,
+    public static Func<string, string, CircleAI.Core.ModelEngine?, string, int, byte[]?,
         System.Threading.Tasks.Task<(string Text, CircleAI.Assistant.Requests.TurnTiming? Timing, long LoadMs)>>? AskOnce { get; set; }
 
+    /// <summary>Submits one picture and its question as the adb caller, the way the link does. Set by the service's startup.</summary>
+    public static Action<string, string?>? See { get; set; }
+
+    /// <summary>Writes the last lines of each process's log file - those matching a pattern, when one is given - to logcat. Set by the service's startup.</summary>
+    public static Action<int, string?>? LogTail { get; set; }
+
+    /// <summary>Pins a brain for a while, or unpins with null. Set by the service's startup.</summary>
+    public static Action<string?, TimeSpan>? Pin { get; set; }
+
+    /// <summary>Fetches one catalogued model the way setup does. Set by the service's startup.</summary>
+    public static Action<string>? Fetch { get; set; }
+
     private const string TwoB = "Ternary-Bonsai-2-2B";
+
+    // A picture named by the broadcast: a full path as given, else a file in the sideload folder.
+    private static string PictureFile(string name) =>
+        System.IO.Path.IsPathRooted(name) || Application.Context.GetExternalFilesDir(null)?.AbsolutePath is not { } sideload
+            ? name
+            : System.IO.Path.Combine(sideload, name);
 
     // The models folders a model is looked for in when the broadcast names none: the store, then
     // the sideload folder.
@@ -138,8 +207,20 @@ public sealed class SoakReceiver : BroadcastReceiver
             ? [CircleAI.Assistant.Device.ModelStore.Path, System.IO.Path.Combine(sideload, "models")]
             : [CircleAI.Assistant.Device.ModelStore.Path];
 
+    // A FOLDER THAT HOLDS THE MODEL, NOT MERELY ONE NAMED FOR IT. A download that stopped before
+    // its first byte leaves the store an empty folder of the model's name (OPEN-GAPS E29); taking
+    // the first folder that existed sent the P30's check there on 2026-11-02 - "the model is not
+    // on this device" - with the 2B sitting in the sideload folder behind it.
+    private static bool Holds(string folder, string model)
+    {
+        var path = System.IO.Path.Combine(folder, model);
+        return System.IO.Directory.Exists(path)
+            && System.IO.Directory.EnumerateFiles(path, "*", System.IO.SearchOption.AllDirectories)
+                .Any(file => !file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static async System.Threading.Tasks.Task AskThroughTheWorkerAsync(
-        string model, string? dir, CircleAI.Core.ModelEngine? engine, string question, int maxTokens)
+        string model, string? dir, CircleAI.Core.ModelEngine? engine, string question, int maxTokens, string? picture = null)
     {
         const string area = "Engine";
         var name = engine?.ToString() ?? "the row's engine";
@@ -151,15 +232,28 @@ public sealed class SoakReceiver : BroadcastReceiver
                 return;
             }
             var tried = dir is null ? ModelFolders() : [dir];
-            dir = tried.FirstOrDefault(folder => System.IO.Directory.Exists(System.IO.Path.Combine(folder, model)));
+            dir = tried.FirstOrDefault(folder => Holds(folder, model));
             if (dir is null)
             {
                 CircleAI.Core.Logging.CircleLog.Warn(area, $"engine check: no {model} folder in " + string.Join(" or ", tried));
                 return;
             }
 
-            CircleAI.Core.Logging.CircleLog.Info(area, $"engine check ({name}): {model} from {dir}");
-            var (text, timing, loadMs) = await ask(model, dir, engine, question, maxTokens).ConfigureAwait(false);
+            byte[]? image = null;
+            if (picture is not null)
+            {
+                var file = PictureFile(picture);
+                if (!System.IO.File.Exists(file))
+                {
+                    CircleAI.Core.Logging.CircleLog.Warn(area, $"engine check: no picture at {file}");
+                    return;
+                }
+                image = await System.IO.File.ReadAllBytesAsync(file).ConfigureAwait(false);
+            }
+
+            CircleAI.Core.Logging.CircleLog.Info(area, $"engine check ({name}): {model} from {dir}"
+                + (image is null ? string.Empty : $", with a {image.Length / 1024} kB picture"));
+            var (text, timing, loadMs) = await ask(model, dir, engine, question, maxTokens, image).ConfigureAwait(false);
             CircleAI.Core.Logging.CircleLog.Info(area, timing is null
                 ? $"engine check ({name}): loaded in {loadMs} ms, no timing came back: {text}"
                 : $"engine check ({name}): loaded in {loadMs} ms; {timing.PromptTokens} prompt tokens in {timing.PrefillMs} ms, "

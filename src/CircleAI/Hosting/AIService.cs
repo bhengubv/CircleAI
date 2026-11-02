@@ -495,6 +495,7 @@ public sealed class AIService : IAIService
         // Neuron: generalist by default; a specialist may answer when a router is
         // configured. Byte-identical to the single-slot path when Router is null.
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
+        if (Blind(generator, hasImage)) return CannotSeeIt;
 
         var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
                 retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
@@ -562,6 +563,11 @@ public sealed class AIService : IAIService
 
         // Neuron slot selection (generalist unless a router routes to a specialist).
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
+        if (Blind(generator, hasImage))
+        {
+            yield return CannotSeeIt;
+            yield break;
+        }
 
         var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
                 retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
@@ -658,6 +664,11 @@ public sealed class AIService : IAIService
         var hasImage = messages.Any(m => m.ImageBytes is not null);
 
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
+        if (Blind(generator, hasImage))
+        {
+            yield return new ChatFragment(ChatFragmentKind.Content, CannotSeeIt);
+            yield break;
+        }
         var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct).ConfigureAwait(false);
         var prepared = turn.Messages;
 
@@ -1479,6 +1490,22 @@ public sealed class AIService : IAIService
             Console.WriteLine($"CIRCLEAI-SLOT generalist: {ex.GetType().Name}: {ex.Message}");
             return generalist;
         }
+    }
+
+    /// <summary>What is said, in place of an answer, about a picture the brain answering cannot see.</summary>
+    public const string CannotSeeIt =
+        "I can't see pictures with the brain running here, so I won't guess what's in this one.";
+
+    // A PICTURE HANDED TO A BRAIN THAT CANNOT SEE IS REFUSED IN WORDS, NEVER ANSWERED (S9). The MNN
+    // text generator never reads a picture, so on the P30 on 2026-11-02 a question about a photo
+    // through the app's own path came back as a confident sentence about a picture the brain never
+    // got. A vision specialist answers when the router brings one in (SightRouter); when none is
+    // admitted, or nothing routes, the person is told rather than guessed at.
+    private static bool Blind(IChatGenerator generator, bool hasImage)
+    {
+        if (!hasImage || generator is ISeeingGenerator { CanSee: true }) return false;
+        Console.WriteLine($"CIRCLEAI-SLOT a picture reached {generator.GetType().Name}, which cannot see it: refused, not answered");
+        return true;
     }
 
     /// <summary>

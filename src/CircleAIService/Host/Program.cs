@@ -204,6 +204,12 @@ public static class Program
                 OverviewAnswer        = CircleAI.Assistant.AssistantPersona.CanDoSpoken,
                 // The same notes as the phone's - see BrainSkills.
                 SkillStore            = CircleAI.Service.BrainSkills.Embedded(),
+                // And the same tools, for a turn its caller allowed them on (OPEN-GAPS A16); a PC
+                // has no battery reading here, so that one tool says so.
+                ToolBridge            = new CircleAI.Tools.LoggedToolBridge(
+                    new CircleAI.Assistant.CircleAIToolBridge(), say),
+                // And a picture to a brain that can see (S9), never the text brain guessing.
+                Router                = new CircleAI.Hosting.Neuron.SightRouter(),
             };
 
             var service = new AIService(
@@ -407,6 +413,10 @@ public static class Program
                     // catalogue - the owner's rule (2026-10-21): anything other than that is
                     // wrong. CIRCLEAI_MODEL used to pin one here and skip the choice; it is
                     // gone.
+                    // THE SPEEDS THIS MACHINE MEASURED, READ BACK FIRST: they decide which brain is
+                    // quick enough (BrainSpeed), and the load was started fire-and-forget above.
+                    if (CircleAI.SelfKnowledge.SelfModel.Current is { } known)
+                        await known.Loaded.WaitAsync(TimeSpan.FromSeconds(10)).ContinueWith(_ => { }).ConfigureAwait(false);
                     wanted = DeviceAwareModelSelector.Preferring(catalogue, registry)
                         .BestFit(probe, ChatCapability.Default)?.ModelId;
 
@@ -480,6 +490,8 @@ public static class Program
                     Say(freed > 0
                         ? $"housekeeping: swept {freed} bytes of abandoned downloads"
                         : "housekeeping: no abandoned downloads to sweep");
+                    var emptied = CatalogueHousekeeping.SweepEmptyFolders(store, TimeSpan.FromHours(1));
+                    if (emptied > 0) Say($"housekeeping: removed {emptied} empty model folder(s) a stopped download left");
                 }
                 catch (OperationCanceledException) { /* asked to stop */ }
                 catch (Exception ex) { Say("setup failed: " + ex.Message); }
