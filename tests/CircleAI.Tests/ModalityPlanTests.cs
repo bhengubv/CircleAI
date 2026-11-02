@@ -243,11 +243,17 @@ public sealed class ModalityPlanTests
     // the headroom margin excludes a model that would fit only on paper — not this
     // month's line-up.
 
-    private static System.Collections.Generic.IReadOnlyList<ModelEntry> CataloguedVlms() =>
-        new ModelRegistryService().AllModels
-            .Where(e => e.Modality == ModelModality.Vision)
+    // The VLMs this build can run - the selector's own candidates. Since S5 the catalogue also holds
+    // the Bonsai 2 vision towers, which no shipped engine opens yet (EngineChoice.Opens): catalogued,
+    // ranked above SmolVLM, and never a candidate, so "the biggest that fits" is asked of the rest.
+    private static System.Collections.Generic.IReadOnlyList<ModelEntry> CataloguedVlms()
+    {
+        var shipped = DeviceModelAssessor.ShippedEngines();
+        return new ModelRegistryService().AllModels
+            .Where(e => e.Modality == ModelModality.Vision && shipped.Contains(e.Engine) && EngineChoice.Opens(e, shipped))
             .OrderBy(e => e.MinRamGb)
             .ToList();
+    }
 
     [Fact]
     public void Vision_OnADeviceBelowEveryCataloguedVlm_IsNothingFits_NotUnavailable()

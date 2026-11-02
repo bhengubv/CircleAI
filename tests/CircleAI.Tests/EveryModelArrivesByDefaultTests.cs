@@ -76,10 +76,14 @@ public sealed class EveryModelArrivesByDefaultTests : IDisposable
     private IReadOnlyList<SetupStep> Plan(DeviceProbe probe) =>
         FirstRun.Plan(_registry, new BundleModelLoader(Store(), _registry), probe, speech: true);
 
+    // Runnable means an engine this build ships can open it, too: since S5 the catalogue holds the
+    // whole Bonsai 2 fleet, and its vision towers and DFlash drafters are rows no engine reads yet -
+    // FirstRun leaves them out (EngineChoice.Opens), and so must "this phone can run".
     private bool CanRun(ModelEntry m, DeviceProbe probe)
         => !m.Retired
         && ModelFit.CouldEverHold(m, probe)
-        && ModelFit.FitsStorage(m, probe.StorageFreeGb);
+        && ModelFit.FitsStorage(m, probe.StorageFreeGb)
+        && EngineChoice.Opens(m, DeviceModelAssessor.ShippedEngines());
 
     [Fact]
     public void Every_voice_this_phone_can_run_is_fetched_without_being_asked_for()
