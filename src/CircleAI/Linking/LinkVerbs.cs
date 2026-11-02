@@ -213,6 +213,20 @@ public enum LinkVerb
     /// the app searches its own transcripts with what comes back.
     /// </summary>
     Embed,
+
+    /// <summary>
+    /// <see cref="LinkVerbRequest.Text"/> in another language, by the translation engine on the
+    /// service's own brain: one <see cref="LinkTranslateRows"/> row. Arguments
+    /// <see cref="LinkTranslateRows.ArgFrom"/> (optional) and <see cref="LinkTranslateRows.ArgTo"/>.
+    /// </summary>
+    /// <remarks>
+    /// THE APP HAD NO WAY TO TRANSLATE. Its brain is the service's, and the link carried chat
+    /// turns and nothing that said "these are words to translate" - so the Translate screen,
+    /// on the phone, answered "Translating is not available in this app yet". This runs
+    /// LlmTranslationEngine on the service's brain as a plain ask: queued like any question,
+    /// with no persona and no notes in front of the engine's prompt.
+    /// </remarks>
+    Translate,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -315,6 +329,9 @@ public static class LinkVerbs
         LinkVerb.Footprint      => LinkScope.Chat,
         // The chat floor: it computes on text the caller sends and reads nothing of the person's.
         LinkVerb.Embed          => LinkScope.Chat,
+        // The chat floor, and for the same reason: it asks the brain about the caller's own
+        // text and reads nothing of the person's - which is what "may ask the assistant" means.
+        LinkVerb.Translate      => LinkScope.Chat,
         _                     => LinkScope.Chat,
     };
 
@@ -327,6 +344,24 @@ public static class LinkVerbs
     /// the brain with it.
     /// </remarks>
     public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun;
+}
+
+/// <summary>The translate verb's arguments and its one row: <c>[translation, from, to]</c>.</summary>
+public static class LinkTranslateRows
+{
+    /// <summary>Argument: BCP-47 of the text's language; absent or "auto" when not known.</summary>
+    public const string ArgFrom = "from";
+
+    /// <summary>Argument: BCP-47 of the language the text should come back in.</summary>
+    public const string ArgTo = "to";
+
+    /// <summary>The row for a translation.</summary>
+    public static IReadOnlyList<string> Row(string translation, string? from, string to) =>
+        new[] { translation ?? string.Empty, from ?? string.Empty, to ?? string.Empty };
+
+    /// <summary>The translation a reply carries; empty when it carries none.</summary>
+    public static string Translation(IReadOnlyList<IReadOnlyList<string>> rows) =>
+        rows is { Count: > 0 } && rows[0] is { Count: > 0 } row ? row[0] ?? string.Empty : string.Empty;
 }
 
 /// <summary>A vector across the wire: one row of <c>[width, base64 of little-endian float32]</c>.</summary>

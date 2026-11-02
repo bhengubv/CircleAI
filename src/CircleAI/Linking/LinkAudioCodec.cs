@@ -34,6 +34,18 @@ public static class LinkAudioCodec
     /// </remarks>
     public const int WireVersion = 1;
 
+    /// <summary>
+    /// The version a translation travels as: version 1's fields, then the target language (a
+    /// request) or what was heard (a reply).
+    /// </summary>
+    /// <remarks>
+    /// ONLY A TRANSLATION IS WRITTEN THIS WAY. Transcribe and Speak stay version 1, byte for
+    /// byte, so an app and a service that never translate are unaffected; an older service
+    /// meeting a translation refuses it at the version, with the sentence that says which app
+    /// needs updating, rather than reading the target as the start of the next request.
+    /// </remarks>
+    public const int TranslateWireVersion = 2;
+
     /// <summary>What a writer must be able to do — the Parcel operations, abstracted.</summary>
     public interface IWriter
     {
@@ -65,11 +77,13 @@ public static class LinkAudioCodec
         var audio = request.Audio ?? Array.Empty<byte>();
         if (!LinkAudio.Fits(audio.Length, out refusal)) return false;
 
-        w.WriteInt(WireVersion);
+        var translating = request.Verb == LinkAudioVerb.Translate;
+        w.WriteInt(translating ? TranslateWireVersion : WireVersion);
         w.WriteInt((int)request.Verb);
         w.WriteString(request.Text ?? string.Empty);
         w.WriteString(request.Language);
         w.WriteBytes(audio);
+        if (translating) w.WriteString(request.Target);
         return true;
     }
 
@@ -85,20 +99,28 @@ public static class LinkAudioCodec
         ArgumentNullException.ThrowIfNull(r);
 
         var version = r.ReadInt();
-        if (version != WireVersion) return null;
+        if (version != WireVersion && version != TranslateWireVersion) return null;
 
         var verb = (LinkAudioVerb)r.ReadInt();
         if (!Enum.IsDefined(typeof(LinkAudioVerb), verb)) return null;
 
+        // A TRANSLATION IS VERSION 2 AND NOTHING ELSE IS: either mismatch is a layout this
+        // reader would misread, so it is refused.
+        if ((verb == LinkAudioVerb.Translate) != (version == TranslateWireVersion)) return null;
+
         var text = r.ReadString() ?? string.Empty;
         var language = r.ReadString();
         var audio = r.ReadBytes();
+        var target = version == TranslateWireVersion ? r.ReadString() : null;
 
         // The service checks the size TOO, rather than trusting the client to have.
         // A service that trusts its callers on sizes is a service any app can crash.
         if (!LinkAudio.Fits(audio.Length, out _)) return null;
 
-        return new LinkAudioRequest(verb, audio, text, language);
+        // A translation into nowhere is not a request.
+        if (verb == LinkAudioVerb.Translate && string.IsNullOrWhiteSpace(target)) return null;
+
+        return new LinkAudioRequest(verb, audio, text, language, target);
     }
 
     /// <summary>Write a reply. Oversized audio becomes a failure the caller can read.</summary>
@@ -123,11 +145,15 @@ public static class LinkAudioCodec
             return;
         }
 
-        w.WriteInt(WireVersion);
+        // WHAT WAS HEARD RIDES ONLY ON A TRANSLATION'S REPLY, as version 2 - a reply to
+        // Transcribe or Speak is version 1 exactly as before.
+        var translated = reply.Heard is not null;
+        w.WriteInt(translated ? TranslateWireVersion : WireVersion);
         w.WriteInt(reply.Ok ? 1 : 0);
         w.WriteString(reply.Text ?? string.Empty);
         w.WriteString(reply.Error);
         w.WriteBytes(audio);
+        if (translated) w.WriteString(reply.Heard);
     }
 
     /// <summary>Read a reply.</summary>
@@ -136,17 +162,18 @@ public static class LinkAudioCodec
         ArgumentNullException.ThrowIfNull(r);
 
         var version = r.ReadInt();
-        if (version != WireVersion)
+        if (version != WireVersion && version != TranslateWireVersion)
             return LinkAudioReply.Failure(
-                $"CircleAI speaks audio-link v{version}; this app speaks v{WireVersion}. "
+                $"CircleAI speaks audio-link v{version}; this app speaks v{TranslateWireVersion}. "
                 + "One of the two needs updating.");
 
         var ok = r.ReadInt() == 1;
         var text = r.ReadString() ?? string.Empty;
         var error = r.ReadString();
         var audio = r.ReadBytes();
+        var heard = version == TranslateWireVersion ? r.ReadString() ?? string.Empty : null;
 
-        return ok ? new LinkAudioReply(true, text, audio, null)
+        return ok ? new LinkAudioReply(true, text, audio, null, heard)
                   : LinkAudioReply.Failure(error ?? "CircleAI could not handle the audio.");
     }
 }

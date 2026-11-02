@@ -80,6 +80,31 @@ public static class SelfSubjects
     /// </remarks>
     public static string Healed(string name) => $"{Prefix}healed:{Normalise(name)}";
 
+    /// <summary>
+    /// How the person answered a question's reasoning effort: one subject per kind of question and
+    /// per signal, e.g. "self:effort:hard:cancelled".
+    /// </summary>
+    /// <remarks>
+    /// APPENDED, LIKE A TRIP: the router learns from the most recent few, so each one is kept, and
+    /// the kind and the signal are in the subject - read back from there, never from the prose.
+    /// </remarks>
+    public static string Effort(CircleAI.Inference.TurnWeight weight, CircleAI.Inference.EffortSignal signal) =>
+        $"{Prefix}effort:{Normalise(weight.ToString())}:{(signal == CircleAI.Inference.EffortSignal.Cancelled ? "cancelled" : "asked-again")}";
+
+    /// <summary>The kind of question and the signal out of an effort subject, or null.</summary>
+    public static (CircleAI.Inference.TurnWeight Weight, CircleAI.Inference.EffortSignal Signal)? EffortOf(string? subject)
+    {
+        if (subject is null || !subject.StartsWith(Prefix + "effort:", StringComparison.Ordinal)) return null;
+        var parts = subject[(Prefix.Length + "effort:".Length)..].Split(':');
+        if (parts.Length != 2 || !Enum.TryParse<CircleAI.Inference.TurnWeight>(parts[0], ignoreCase: true, out var weight)) return null;
+        return parts[1] switch
+        {
+            "cancelled"   => (weight, CircleAI.Inference.EffortSignal.Cancelled),
+            "asked-again" => (weight, CircleAI.Inference.EffortSignal.AskedAgain),
+            _             => null,
+        };
+    }
+
     /// <summary>Every subject that is a switch the software turned off, for a sweep.</summary>
     public static bool IsAboutHealing(string? subject) =>
         subject is not null && subject.StartsWith(Prefix + "healed:", StringComparison.Ordinal);

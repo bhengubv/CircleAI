@@ -48,13 +48,19 @@ public sealed record BrainWorkerStatus(
 /// <param name="MaxTokens">The longest answer allowed.</param>
 /// <param name="Spoken">The answer will be read aloud.</param>
 /// <param name="Deadline">The latest moment the answer may still be written; generation stops there.</param>
+/// <param name="Effort">How hard the model thinks first (<see cref="EffortRouter"/>); null leaves the brain's own default.</param>
+/// <param name="ThinkingBudget">The most tokens the thought may take before it is closed; 0 sets none.</param>
+/// <param name="Plain">The messages reach the model as given - no persona, no notes, no tools (<see cref="GenerationOptions.Plain"/>).</param>
 public sealed record BrainJob(
     string AskId,
     IReadOnlyList<ChatMessage> Messages,
     string? RetrievalQuery,
     int MaxTokens,
     bool Spoken,
-    DateTimeOffset Deadline);
+    DateTimeOffset Deadline,
+    ReasoningEffort? Effort = null,
+    int ThinkingBudget = 0,
+    bool Plain = false);
 
 /// <summary>A piece of an answer, or the end of one.</summary>
 /// <param name="Text">The new text (may be empty on the final piece).</param>

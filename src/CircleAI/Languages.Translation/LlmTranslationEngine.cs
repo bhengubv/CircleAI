@@ -44,7 +44,7 @@ public sealed class LlmTranslationEngine : ILiveTranslator
     {
         var messages = new[] { new ChatMessage("user", BuildPrompt(request)) };
         var translated = await _generator
-            .GenerateAsync(messages, ct: ct)
+            .GenerateAsync(messages, OptionsFor(request), ct)
             .ConfigureAwait(false);
 
         return new TranslationResult(
@@ -62,10 +62,25 @@ public sealed class LlmTranslationEngine : ILiveTranslator
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var messages = new[] { new ChatMessage("user", BuildPrompt(request)) };
-        await foreach (var token in _generator.StreamAsync(messages, ct: ct)
+        await foreach (var token in _generator.StreamAsync(messages, OptionsFor(request), ct)
                                               .ConfigureAwait(false))
             yield return token;
     }
+
+    /// <summary>How a translation is asked of the model.</summary>
+    /// <remarks>
+    /// PLAIN: the prompt below is the whole prompt, and a host that put its persona or its notes
+    /// in front of it had them translated too, or the sentence answered rather than translated.
+    /// NO THINKING: a translation is the words, not a problem to work - a brain that thinks first
+    /// makes the person at the desk wait for nothing. ROOM FOR THE WORDS: an answer cap sized to
+    /// the text, so a paragraph is not cut off at a chat answer's length, nor a word given 512.
+    /// </remarks>
+    internal static GenerationOptions OptionsFor(TranslationRequest request) => new()
+    {
+        Plain = true,
+        Effort = ReasoningEffort.Off,
+        MaxTokens = Math.Clamp((request.Text?.Length ?? 0) / 2 + 64, 128, 1024),
+    };
 
     /// <inheritdoc/>
     public Task<bool> IsLanguagePairSupportedAsync(
@@ -111,12 +126,27 @@ public sealed class LlmTranslationEngine : ILiveTranslator
     /// translating it — which, in front of somebody at a hospital desk, is a
     /// very different thing to put on the screen.
     /// </para>
+    /// <para>
+    /// A SOURCE NOBODY KNOWS IS LEFT UNNAMED, not guessed. "How do you say sawubona in
+    /// English" puts isiZulu where the asker's own language would be, so a capability that
+    /// only knows the target asks for "into English" - which the model handles from the text
+    /// itself - rather than naming a source that may be wrong. An empty tag, "auto" and "und"
+    /// (BCP-47's undetermined) all mean not known.
+    /// </para>
     /// </remarks>
     private string BuildPrompt(TranslationRequest r) =>
-        $"Translate the following text from {_name(r.SourceBcpTag)} to {_name(r.TargetBcpTag)}. " +
+        (IsUnknown(r.SourceBcpTag)
+            ? $"Translate the following text into {_name(r.TargetBcpTag)}. "
+            : $"Translate the following text from {_name(r.SourceBcpTag)} to {_name(r.TargetBcpTag)}. ") +
         $"Mode: {r.Mode}. Preserve meaning and cultural context, not just literal words. " +
         (r.ContextHint is not null ? $"Context: {r.ContextHint}. " : string.Empty) +
         $"Give only the translation, nothing else.\n\n{r.Text}";
+
+    /// <summary>Whether a source tag says nothing about the language: empty, "auto" or "und".</summary>
+    public static bool IsUnknown(string? bcpTag) =>
+        string.IsNullOrWhiteSpace(bcpTag)
+        || string.Equals(bcpTag, "auto", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(bcpTag, "und", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The fallback name lookup: this assembly's own table, which is smaller

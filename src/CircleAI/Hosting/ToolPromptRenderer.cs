@@ -98,54 +98,10 @@ internal static class ToolPromptRenderer
     /// Qwen3 was trained on. Built as objects and serialised rather than string
     /// concatenated, so a quote or brace in a description cannot corrupt the JSON.
     /// </summary>
-    private static Dictionary<string, object?> ToFunctionSchema(ToolDefinition tool)
-    {
-        var properties = new Dictionary<string, object?>();
-
-        foreach (var (paramName, param) in tool.Parameters)
-        {
-            var schema = new Dictionary<string, object?>
-            {
-                ["type"]        = param.Type,
-                ["description"] = param.Description,
-            };
-
-            if (param.Enum is { Length: > 0 })
-                schema["enum"] = param.Enum;
-
-            properties[paramName] = schema;
-        }
-
-        var function = new Dictionary<string, object?>
-        {
-            ["name"]        = tool.Name,
-            ["description"] = tool.Description,
-        };
-
-        // NOTHING FOR A TOOL THAT TAKES NOTHING. get_battery_level was emitting
-        // "parameters":{"type":"object","properties":{},"required":[]} — sixty
-        // characters saying there is nothing to say, prefilled on every turn
-        // once the block latches. Omitted entirely; a function with no
-        // parameters is called with none.
-        if (properties.Count > 0)
-        {
-            var parameters = new Dictionary<string, object?>
-            {
-                ["type"]       = "object",
-                ["properties"] = properties,
-            };
-
-            // Likewise: an empty required list is not information.
-            if (tool.RequiredParameters is { Count: > 0 })
-                parameters["required"] = tool.RequiredParameters;
-
-            function["parameters"] = parameters;
-        }
-
-        return new Dictionary<string, object?>
-        {
-            ["type"]     = "function",
-            ["function"] = function,
-        };
-    }
+    /// <remarks>
+    /// ONE OWNER, TWO READERS (<see cref="ToolSchema"/>). The C# engine hands these same
+    /// schemas to the model's own chat template instead of a note like this one, and a
+    /// mapping kept twice would teach the model one shape and show it another.
+    /// </remarks>
+    private static Dictionary<string, object?> ToFunctionSchema(ToolDefinition tool) => ToolSchema.Function(tool);
 }

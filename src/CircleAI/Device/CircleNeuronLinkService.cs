@@ -1014,6 +1014,21 @@ public sealed class CircleNeuronLinkService : Service
                 return LinkRowsReply.Success(new[] { LinkEmbedRows.Row(vector) });
             }
 
+            case LinkVerb.Translate:
+            {
+                if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("nothing to translate");
+                var to = req.Arg(LinkTranslateRows.ArgTo);
+                if (string.IsNullOrWhiteSpace(to)) return LinkRowsReply.Failure("no language to translate into");
+                var engine = TranslatorFor(uid);
+                if (engine is null) return LinkRowsReply.Failure("translating is not available yet");
+
+                var from = req.Arg(LinkTranslateRows.ArgFrom);
+                var result = await engine.TranslateAsync(new CircleAI.Languages.Translation.TranslationRequest(
+                    req.Text!, from ?? string.Empty, to!, CircleAI.Languages.Translation.TranslationMode.Conversational)).ConfigureAwait(false);
+                Log.Info(Tag, $"translate: {req.Text!.Length} chars into {to}, {result.TranslatedText.Length} back");
+                return LinkRowsReply.Success(new[] { LinkTranslateRows.Row(result.TranslatedText, from, to!) });
+            }
+
             default:
                 return LinkRowsReply.Failure("unknown verb");
         }
@@ -1045,6 +1060,30 @@ public sealed class CircleNeuronLinkService : Service
 
     /// <summary>The service's own health facts, for the Health verb. Set by the host.</summary>
     public static Func<IReadOnlyList<KeyValuePair<string, string>>>? HealthFacts { get; set; }
+
+    /// <summary>How long a translation holds its binder thread for the brain's answer.</summary>
+    /// <remarks>The blocking ask's own budget, for the same reason: a cold load and a sentence on the P30.</remarks>
+    private static readonly TimeSpan TranslateBudget = LegacyAskBudget;
+
+    /// <summary>
+    /// The translation engine on this device's brain, asked as <paramref name="uid"/>'s app; null
+    /// before the question queue is up.
+    /// </summary>
+    /// <remarks>
+    /// THE SAME ENGINE EVERY HEAD USES (LlmTranslationEngine), ON THE BRAIN THE DEVICE CHOSE: its
+    /// generator is the ask queue (AskFrontGenerator), so a translation waits its turn behind the
+    /// question being answered, waits out a cold load, and goes to the model as a plain ask - the
+    /// engine's prompt, with no persona and no notes in front of it.
+    /// </remarks>
+    private CircleAI.Languages.Translation.LlmTranslationEngine? TranslatorFor(int uid)
+    {
+        var asks = CircleNeuronService.Asks;
+        var caller = CallerKeyOf(uid);
+        if (asks is null || caller is null) return null;
+        return new CircleAI.Languages.Translation.LlmTranslationEngine(
+            new CircleAI.Assistant.Requests.AskFrontGenerator(asks, caller, CircleAI.Assistant.Requests.AskLane.Foreground, TranslateBudget),
+            CircleAI.Assistant.BrainTranslation.Name);
+    }
 
     /// <summary>This build's versionCode, for the handshake. Set by the host.</summary>
     public static long VersionCode { get; set; }
@@ -1371,6 +1410,18 @@ public sealed class CircleNeuronLinkService : Service
                 // rather than throwing inside the reply, which would leave the client
                 // holding a dead binder and no explanation.
                 return LinkAudioReply.Spoke(audio ?? Array.Empty<byte>());
+            }
+
+            case LinkAudioVerb.Translate:
+            {
+                // THE EARS, THE BRAIN AND THE VOICE, WHERE ALL THREE ALREADY ARE: what this app
+                // recorded is transcribed, translated by the engine on the device's brain, and
+                // spoken in the other language - one request instead of three round trips, the
+                // middle one of which did not exist.
+                var engine = TranslatorFor(uid);
+                if (engine is null) return LinkAudioReply.Failure("Translating is not available yet.");
+                return await LinkSpeechTranslation.TranslateAsync(speech, engine, request,
+                    line => Log.Info(Tag, line)).ConfigureAwait(false);
             }
 
             default:

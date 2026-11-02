@@ -18,6 +18,12 @@
 // a ceiling that forces the call shut. Names are identifiers - and, when the tools are known, one
 // of the tools' own names.
 //
+// WHEN THE TOOLS' SIGNATURES ARE KNOWN, A CALL CAN ONLY BE ONE THE TOOL CAN RUN. The parameter names
+// are the tool's own, each at most once; the call cannot close until every required parameter is
+// in it; and a parameter that takes a fixed set of values takes one of them, spelled as declared.
+// Those are the three ways a well-formed call still came back refused (ToolCallReader.IsRunnable):
+// a misspelt argument, a missing one, a value outside its list.
+//
 // A State is a value: a candidate token is tried against it without changing anything.
 
 namespace CircleAI.Inference.Managed.Sampling;
@@ -28,13 +34,17 @@ public sealed class ToolCallGrammar
     /// <summary>What a model writes to open a call; the grammar starts right after it.</summary>
     public const string Opening = "<tool_call>";
 
+    /// <summary>The most parameters of one tool whose use is tracked - which are given, which are required.</summary>
+    private const int TrackedParameters = 64;
+
     private static readonly byte[] OpenFunction = "\n<function="u8.ToArray();
-    private static readonly byte[] Parameter = "arameter="u8.ToArray();    // after "<p"
+    private static readonly byte[] ParameterTag = "arameter="u8.ToArray(); // after "<p"
     private static readonly byte[] CloseCall = "function>\n</tool_call>"u8.ToArray(); // after "</"
     private static readonly byte[] ValueEnd = "\n</parameter>\n"u8.ToArray();
     private static readonly byte[] NextCall = "\n<tool_call>"u8.ToArray();
 
     private readonly NameTrie? _names;
+    private readonly Signature[]? _signatures;
 
     /// <summary>
     /// A grammar for calls to the tools named in <paramref name="toolNames"/>, or to any identifier
@@ -50,14 +60,54 @@ public sealed class ToolCallGrammar
         if (toolNames is not null)
         {
             var names = toolNames.Where(n => !string.IsNullOrEmpty(n)).ToList();
-            foreach (var name in names)
-            {
-                if (!name.All(c => c < 128 && IsNameByte((byte)c)))
-                    throw new ArgumentException($"'{name}' is not a name this form can carry.", nameof(toolNames));
-            }
-            _names = new NameTrie(names);
+            foreach (var name in names) CheckName(name, nameof(toolNames));
+            _names = new NameTrie(names.Select(Bytes));
         }
     }
+
+    /// <summary>
+    /// A grammar for calls to <paramref name="functions"/> only, each with its own parameters: their
+    /// names, each at most once; every required one before the call closes; a fixed set's values only.
+    /// </summary>
+    public ToolCallGrammar(IEnumerable<Function> functions, int maxParameters = 32, int maxValueBytes = 8192)
+        : this(toolNames: null, maxParameters, maxValueBytes)
+    {
+        ArgumentNullException.ThrowIfNull(functions);
+        var list = functions.Where(f => f is not null && !string.IsNullOrEmpty(f.Name)).ToList();
+        foreach (var function in list)
+        {
+            CheckName(function.Name, nameof(functions));
+            foreach (var parameter in function.Parameters) CheckName(parameter.Name, nameof(functions));
+        }
+        _names = new NameTrie(list.Select(f => Bytes(f.Name)));
+        _signatures = new Signature[list.Count];
+        for (var i = 0; i < list.Count; i++) _signatures[i] = new Signature(list[i]);
+    }
+
+    /// <summary>A tool a call may name: its name and every parameter it takes.</summary>
+    /// <param name="Name">The tool's name, as the call must write it.</param>
+    /// <param name="Parameters">Its parameters; none means the call carries none.</param>
+    public sealed record Function(string Name, IReadOnlyList<Parameter> Parameters);
+
+    /// <summary>One parameter of a <see cref="Function"/>.</summary>
+    /// <param name="Name">Its name, as the call must write it.</param>
+    /// <param name="Required">The call cannot close without it.</param>
+    /// <param name="Values">
+    /// The only values it takes, spelled as the call must write them; null takes any text. A set
+    /// with a value that holds a line break is not held to (the value's own end is a line break).
+    /// </param>
+    public sealed record Parameter(string Name, bool Required = false, IReadOnlyList<string>? Values = null);
+
+    /// <summary>Whether a tool or parameter name can be written in this form.</summary>
+    public static bool CanCarry(string? name) =>
+        !string.IsNullOrEmpty(name) && name.All(c => c < 128 && IsNameByte((byte)c));
+
+    private static void CheckName(string name, string argument)
+    {
+        if (!CanCarry(name)) throw new ArgumentException($"'{name}' is not a name this form can carry.", argument);
+    }
+
+    private static byte[] Bytes(string text) => System.Text.Encoding.UTF8.GetBytes(text);
 
     /// <summary>Parameters a call may carry.</summary>
     public int MaxParameters { get; }
@@ -106,6 +156,12 @@ public sealed class ToolCallGrammar
         /// (<see cref="State.At"/> bytes of it so far).
         /// </summary>
         Done,
+
+        /// <summary>A value from the parameter's fixed set, <see cref="State.Node"/> where it is among them.</summary>
+        SetValue,
+
+        /// <summary>The rest of "\n&lt;/parameter&gt;\n" after a value from a fixed set, byte <see cref="State.At"/> of it next.</summary>
+        SetValueEnd,
     }
 
     /// <summary>A position in the grammar.</summary>
@@ -113,8 +169,12 @@ public sealed class ToolCallGrammar
     /// <param name="At">How far into that part.</param>
     /// <param name="Parameters">Parameters this call has opened.</param>
     /// <param name="ValueBytes">Bytes of the current value.</param>
-    /// <param name="Node">Where the function's name is in the known names.</param>
-    public readonly record struct State(Phase Phase, int At, int Parameters, int ValueBytes, int Node)
+    /// <param name="Node">Where the name (or the fixed-set value) being written is among the known ones.</param>
+    /// <param name="Function">The tool this call names, among the known signatures; -1 when none is known.</param>
+    /// <param name="Given">The tool's parameters this call has already given, one bit each.</param>
+    /// <param name="Param">The parameter being written, in the tool's signature; -1 when none is known.</param>
+    public readonly record struct State(Phase Phase, int At, int Parameters, int ValueBytes, int Node,
+        int Function = -1, ulong Given = 0, int Param = -1)
     {
         /// <summary>
         /// Whether the turn may end here: a call is complete and no other has begun - a newline
@@ -150,7 +210,7 @@ public sealed class ToolCallGrammar
                 if (b == (byte)'>')
                 {
                     if (s.At == 0 || (_names is not null && !_names.IsName(s.Node))) return false;
-                    s = s with { Phase = Phase.AfterFunctionName, At = 0 };
+                    s = s with { Phase = Phase.AfterFunctionName, At = 0, Function = _names?.NameAt(s.Node) ?? -1, Given = 0, Param = -1 };
                     return true;
                 }
                 if (!IsNameByte(b)) return false;
@@ -174,41 +234,87 @@ public sealed class ToolCallGrammar
                 return true;
 
             case Phase.ChoiceAfterLess:
-                if (b == (byte)'p' && s.Parameters < MaxParameters)
+            {
+                var signature = SignatureOf(s.Function);
+                if (b == (byte)'p' && s.Parameters < MaxParameters && (signature is null || signature.AnyLeft(s.Given)))
                 {
-                    s = s with { Phase = Phase.OpenParameter, At = 0, Parameters = s.Parameters + 1 };
+                    s = s with { Phase = Phase.OpenParameter, At = 0, Parameters = s.Parameters + 1, Node = 0 };
                     return true;
                 }
-                if (b == (byte)'/')
+                // A REQUIRED PARAMETER STILL MISSING KEEPS THE CALL OPEN: closed without it, the
+                // call is one the tool refuses.
+                if (b == (byte)'/' && (signature is null || signature.HasRequired(s.Given)))
                 {
                     s = s with { Phase = Phase.CloseCall, At = 0 };
                     return true;
                 }
                 return false;
+            }
 
             case Phase.OpenParameter:
-                if (b != Parameter[s.At]) return false;
-                s = s.At + 1 == Parameter.Length ? s with { Phase = Phase.ParameterName, At = 0 } : s with { At = s.At + 1 };
+                if (b != ParameterTag[s.At]) return false;
+                s = s.At + 1 == ParameterTag.Length ? s with { Phase = Phase.ParameterName, At = 0, Node = 0 } : s with { At = s.At + 1 };
                 return true;
 
             case Phase.ParameterName:
+            {
+                var signature = SignatureOf(s.Function);
                 if (b == (byte)'>')
                 {
                     if (s.At == 0) return false;
-                    s = s with { Phase = Phase.AfterParameterName, At = 0 };
+                    if (signature is null)
+                    {
+                        s = s with { Phase = Phase.AfterParameterName, At = 0, Param = -1 };
+                        return true;
+                    }
+                    var index = signature.Names.NameAt(s.Node);
+                    if (index < 0 || signature.WasGiven(s.Given, index)) return false;
+                    s = s with { Phase = Phase.AfterParameterName, At = 0, Param = index, Given = signature.Give(s.Given, index) };
                     return true;
                 }
                 if (!IsNameByte(b)) return false;
+                if (signature is not null)
+                {
+                    // ONLY TOWARDS A NAME NOT YET GIVEN, so the model is never let into a name it
+                    // could not finish.
+                    var child = signature.Names.Child(s.Node, b);
+                    if (child < 0 || !signature.Leads(child, s.Given)) return false;
+                    s = s with { Node = child };
+                }
                 s = s with { At = s.At + 1 };
                 return true;
+            }
 
             case Phase.AfterParameterName:
                 if (b != (byte)'\n') return false;
-                s = s with { Phase = Phase.Value, At = 0, ValueBytes = 0 };
+                s = SignatureOf(s.Function)?.ValuesOf(s.Param) is not null
+                    ? s with { Phase = Phase.SetValue, At = 0, Node = 0, ValueBytes = 0 }
+                    : s with { Phase = Phase.Value, At = 0, ValueBytes = 0 };
                 return true;
 
             case Phase.Value:
                 return StepValue(ref s, b);
+
+            case Phase.SetValue:
+            {
+                // One of the declared values, byte for byte; once one is complete, its line break
+                // opens the closing tag. A set holding a line break is never held to (Signature).
+                var values = SignatureOf(s.Function)!.ValuesOf(s.Param)!;
+                if (b == ValueEnd[0] && values.IsName(s.Node))
+                {
+                    s = s with { Phase = Phase.SetValueEnd, At = 1 };
+                    return true;
+                }
+                var child = values.Child(s.Node, b);
+                if (child < 0) return false;
+                s = s with { Node = child, ValueBytes = s.ValueBytes + 1 };
+                return true;
+            }
+
+            case Phase.SetValueEnd:
+                if (b != ValueEnd[s.At]) return false;
+                s = s.At + 1 == ValueEnd.Length ? s with { Phase = Phase.Choice, At = 0, ValueBytes = 0 } : s with { At = s.At + 1 };
+                return true;
 
             case Phase.CloseCall:
                 if (b != CloseCall[s.At]) return false;
@@ -324,33 +430,95 @@ public sealed class ToolCallGrammar
         b is (>= (byte)'a' and <= (byte)'z') or (>= (byte)'A' and <= (byte)'Z') or (>= (byte)'0' and <= (byte)'9')
             or (byte)'_' or (byte)'-' or (byte)'.' or (byte)':' or (byte)'/';
 
-    // The tools' names as a trie over their bytes; node 0 is the empty name.
+    private Signature? SignatureOf(int function) =>
+        _signatures is { } all && function >= 0 && function < all.Length ? all[function] : null;
+
+    // One tool's signature, compiled: its parameters' names as a trie, which of them are required,
+    // and the fixed set of values each one takes, if it takes one.
+    private sealed class Signature
+    {
+        private readonly NameTrie?[] _values;
+        private readonly ulong _all;
+        private readonly ulong _required;
+        private readonly bool _tracked;
+
+        public Signature(Function function)
+        {
+            var parameters = function.Parameters ?? [];
+            Names = new NameTrie(parameters.Select(p => Bytes(p.Name)));
+            _values = new NameTrie?[parameters.Count];
+            _tracked = parameters.Count <= TrackedParameters;
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (_tracked)
+                {
+                    _all |= 1UL << i;
+                    if (parameters[i].Required) _required |= 1UL << i;
+                }
+                // A VALUE WITH A LINE BREAK IN IT CANNOT BE TOLD FROM ITS OWN END, so such a set is
+                // left as free text rather than held to wrongly.
+                if (parameters[i].Values is { Count: > 0 } values && !values.Any(v => v is null || v.Contains('\n')))
+                    _values[i] = new NameTrie(values.Select(Bytes));
+            }
+        }
+
+        public NameTrie Names { get; }
+
+        public NameTrie? ValuesOf(int parameter) => parameter >= 0 && parameter < _values.Length ? _values[parameter] : null;
+
+        // Whether a parameter not yet given is left to open; anything goes past the tracked count.
+        public bool AnyLeft(ulong given) => !_tracked || (_all & ~given) != 0;
+
+        // Whether every required parameter has been given.
+        public bool HasRequired(ulong given) => !_tracked || (_required & ~given) == 0;
+
+        public bool WasGiven(ulong given, int parameter) => _tracked && (given & (1UL << parameter)) != 0;
+
+        public ulong Give(ulong given, int parameter) => _tracked ? given | (1UL << parameter) : given;
+
+        // Whether a name not yet given lies at or below this node.
+        public bool Leads(int node, ulong given) => !_tracked || (Names.Reach(node) & ~given) != 0;
+    }
+
+    // Names as a trie over their bytes; node 0 is the empty name. Each node knows which name ends
+    // there (its index in the order given, the later of two equal names winning) and which of the
+    // first 64 names lie at or below it.
     private sealed class NameTrie
     {
         private readonly Dictionary<(int Node, byte Byte), int> _children = [];
-        private readonly List<bool> _ends = [false];
+        private readonly List<int> _ends = [-1];
+        private readonly List<ulong> _reach = [0];
 
-        public NameTrie(IEnumerable<string> names)
+        public NameTrie(IEnumerable<byte[]> names)
         {
+            var index = 0;
             foreach (var name in names)
             {
+                var bit = index < TrackedParameters ? 1UL << index : 0;
                 var node = 0;
-                foreach (var b in System.Text.Encoding.ASCII.GetBytes(name))
+                _reach[0] |= bit;
+                foreach (var b in name)
                 {
                     if (!_children.TryGetValue((node, b), out var child))
                     {
                         child = _ends.Count;
-                        _ends.Add(false);
+                        _ends.Add(-1);
+                        _reach.Add(0);
                         _children[(node, b)] = child;
                     }
                     node = child;
+                    _reach[node] |= bit;
                 }
-                _ends[node] = true;
+                _ends[node] = index++;
             }
         }
 
         public int Child(int node, byte b) => _children.TryGetValue((node, b), out var child) ? child : -1;
 
-        public bool IsName(int node) => _ends[node];
+        public bool IsName(int node) => _ends[node] >= 0;
+
+        public int NameAt(int node) => _ends[node];
+
+        public ulong Reach(int node) => _reach[node];
     }
 }

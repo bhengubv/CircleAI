@@ -230,6 +230,44 @@ public sealed class LinkedBrain : IBrain, IDisposable
         return reply.Ok ? reply.Audio : Array.Empty<byte>();
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE SERVICE'S TRANSLATE VERB, NOT A TURN. The engine runs where the brain is, on the
+    /// brain the device chose, as a plain ask - no persona and no notes in front of its prompt.
+    /// An older service has no such verb and says "unknown verb"; then the engine runs over an
+    /// ordinary turn instead (IBrain's default), which is what translating here did before.
+    /// <para>
+    /// A FAILURE IS THROWN, NOT RETURNED: a returned sentence would be read out as the
+    /// translation. The caller turns it into words a person can act on.
+    /// </para>
+    /// </remarks>
+    public async Task<string> TranslateAsync(string text, string? fromTag, string toTag, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null) throw new InvalidOperationException(NotLinked());
+
+        var reply = await client.TranslateAsync(text, fromTag, toTag, ct).ConfigureAwait(false);
+        if (reply.Ok) return LinkTranslateRows.Translation(reply.Rows);
+        if (reply.Error == "unknown verb")
+        {
+            Trace("translate: the service has no translate verb; translating over a turn");
+            return await BrainTranslation.TranslateAsync(this, text, fromTag, toTag, ct).ConfigureAwait(false);
+        }
+        throw new InvalidOperationException(reply.Error ?? "Circle AI could not translate that.");
+    }
+
+    /// <summary>
+    /// What this app recorded, said again in another language by the service: its ears, its
+    /// brain and its voice in one request. The caller plays <see cref="LinkAudioReply.Audio"/>.
+    /// </summary>
+    public async Task<LinkAudioReply> TranslateSpeechAsync(byte[] pcm16, string? fromTag, string toTag, CancellationToken ct = default)
+    {
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null) return LinkAudioReply.Failure(NotLinked());
+        return await client.TranslateSpeechAsync(pcm16, fromTag, toTag, ct).ConfigureAwait(false);
+    }
+
     /// <summary>The bound client, for the siblings that ride the same link.</summary>
     /// <remarks>
     /// ONE BIND PER APP, not one per contract. LinkedMemory needs the same service,
