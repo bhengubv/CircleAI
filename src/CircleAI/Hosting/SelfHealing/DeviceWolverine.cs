@@ -200,6 +200,10 @@ public sealed class DeviceWolverine : ILinkHealing, IDisposable
         HealthEvents.Raised += OnHealth;
         foreach (var early in earlier.Reverse()) OnHealth(early);                                // oldest first
 
+        // A MODEL THAT LANDED proves a re-download or a resume - whichever of the pull paths
+        // fetched it, because every download in this process raises this one event.
+        BundleModelLoader.ModelLanded += ModelLanded;
+
         if (Outbox is { Enabled: true } outbox && outbox.MarkTold())
             EngineFixes.Say(_o.Announce, WolverineSentences.ReportsOn);
 
@@ -505,6 +509,7 @@ public sealed class DeviceWolverine : ILinkHealing, IDisposable
     public void Dispose()
     {
         HealthEvents.Raised -= OnHealth;
+        BundleModelLoader.ModelLanded -= ModelLanded;
         Healer.Applied -= OnApplied;
         _flushTimer?.Dispose();
         if (_ownsLog && Log is IDisposable disposable) disposable.Dispose();
