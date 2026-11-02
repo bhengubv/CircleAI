@@ -33,21 +33,22 @@
 // This rule was per step first, and at 0.3 per step the 4B's first full run had one logit over:
 // 0.309 at code step 29, the runner-up token, where the fork had not drifted.
 //
-// MEASURED 2026-11-02 OVER ALL 12 x 32 IN RELEASE (with the fixtures' own Q8_0 quantiser), as the
-// differences of the fork's top-20 logits:
-//   2B        mean 0.036, 99th percentile 0.141, worst 0.276 - held to 0.3, passes
-//   4B        mean 0.035, 99th percentile 0.133, worst 0.318 - held to its drift 0.3464, passes
+// MEASURED 2026-11-02 OVER ALL 12 x 32 IN RELEASE, as the differences of the fork's top-20 logits:
+//   2B        mean 0.036, 99th percentile 0.140, worst 0.249 - held to 0.3, passes
+//   4B        mean 0.036, 99th percentile 0.147, worst 0.309 - held to its drift 0.3464, passes
 //   2B PQ2_0  mean 0.046, 99th percentile 0.177, worst 0.384 - FAILS: 5 of 6,340 beyond its
 //             drift (0.3096), 6 beyond 0.3. Its Q8_K activations take one scale per 256 values
 //             where Q8_0 takes one per 32, so each value the two engines round differently moves
 //             further, and the whole distribution sits higher.
-// Every top token was the fork's except where the fork's own top two were within 0.06. The worst of
-// thousands of differences is the restless number: the fork's fp16 flash-attention arithmetic, copied
-// step for step from its source into the fp16 cache's attention, left every mean where it was (0.036,
-// 0.035, 0.046) and moved the 2B's worst to 0.313, the 4B's to 0.285 and the PQ2_0's to 0.351 - so
-// that copy was not kept. A set near its tolerance can pass or fail on a change of
-// arithmetic that changes nothing else; the mean and the percentiles printed below are the steadier
-// reading. The rule is not widened to fit: the 2B in PQ2_0 fails it at full length (2 x 8 passes).
+// Every top token was the fork's except where the fork's own top two were within 0.02. The worst of
+// thousands of differences is the restless number. Two other arithmetics were measured the same way
+// and not kept: the reference Q8_0 rounding the ruler runs (see Q8Activations) left the means where
+// they were (0.036, 0.035) and moved the worst to 0.276 and 0.318; the fork's fp16 flash-attention
+// arithmetic, copied step for step from its source into the fp16 cache's attention, left every mean
+// where it was (0.036, 0.035, 0.046) and moved the worst to 0.313, 0.285 and 0.351. A set near its
+// tolerance can pass or fail on a change of arithmetic that changes nothing else; the mean and the
+// percentiles printed below are the steadier reading. The rule is not widened to fit: the 2B in PQ2_0
+// fails it at full length (2 x 8 passes).
 
 using System.Diagnostics;
 using CircleAI.Inference.Managed.Gguf;

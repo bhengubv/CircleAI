@@ -17,10 +17,11 @@
 // is the reference one: id = 1 / d, C's roundf. Asked directly - ggml_get_type_traits_cpu(Q8_0)'s
 // from_float in the shipped ggml-cpu.dll - it puts amax 1.4285147, x 1.1304388 on 101 where this
 // puts it on 100, and 2.5 at amax 127 on 3 where this puts it on 2. (127 / amax and 1 / d differ in
-// the last bit for 27% of blocks.) S5 switched this file to the reference rounding and measured: the
-// text parity no closer (worst top-20 differences 0.276 for the 2B and 0.318 for the 4B, against
-// 0.249 and 0.309 with this rounding) and the vision tower's worst value further from the fork's
-// (0.148 against 0.029, beyond the fork's own 0.11). So the switch was taken back, and which rounding the
+// the last bit for 27% of blocks.) S5 switched this file to the reference rounding and measured, over
+// all 12 x 32 parity steps: the text no closer (mean top-20 differences 0.036 for the 2B and 0.035 for
+// the 4B with it, 0.036 and 0.036 with this; worst 0.276 and 0.318 with it, 0.249 and 0.309 with this)
+// and the vision tower's worst value further from the fork's (0.148 against 0.029, beyond the fork's
+// own 0.11). So the switch was taken back, and which rounding the
 // engine keeps is a decision for the owner with that evidence. The fork on the phone (the NEON
 // branch) takes id = 1 / d with midpoints to even - neither this nor the reference.
 
