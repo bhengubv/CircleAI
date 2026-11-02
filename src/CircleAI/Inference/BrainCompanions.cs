@@ -17,8 +17,10 @@
 //   a drafter  a "Draft" capability, or an Architecture or name naming DFlash or a draft model;
 //   its brain  the same Repo as the brain (upstream publishes a brain's tower beside it), or a
 //              name that begins with the brain's name less its packing ("Ternary-Bonsai-2-4B");
-//   readable   the engine its row names can open it (EngineChoice.CanRun) - so a row catalogued
-//              before its code lands waits, rather than costing the person's data for nothing.
+//   usable     the engine can use it (Usable): a drafter by the engine's own pack rule, so one
+//              catalogued before its code lands waits rather than costing the person's data for
+//              nothing; a tower on the C# engine whenever its brain is, because the brain finds it
+//              in the folder beside its own that the store names after the tower's row (S8).
 //
 // A row that meets none of it is an ordinary model and is planned as one.
 
@@ -116,11 +118,13 @@ public static class BrainCompanions
     /// <param name="declined">Rows the person or this device refused; null refuses none.</param>
     /// <param name="engines">The engines this build ships; null asks the build.</param>
     /// <remarks>
-    /// NOT BEFORE THE ENGINE CAN READ IT. The Bonsai 2 fleet's towers ("clip") and drafters
-    /// ("dflash") are catalogued before the C# engine has code for them, and a tower nobody can load
-    /// is hundreds of megabytes of the person's data for nothing. <see cref="EngineChoice.CanRun"/>
-    /// is the engine's own answer, so each arrives in the plan the day its code lands, with no
-    /// catalogue edit.
+    /// NOT BEFORE THE ENGINE CAN USE IT. The Bonsai 2 fleet's drafters ("dflash") are catalogued
+    /// before the C# engine has code for them, and a file nobody can load is hundreds of megabytes of
+    /// the person's data for nothing - <see cref="EngineChoice.CanRun"/> is the engine's own answer,
+    /// so each arrives in the plan the day its code lands, with no catalogue edit. A TOWER ON THE C#
+    /// ENGINE IS THE EXCEPTION THAT PROVES IT: it is never opened as a model of its own; the brain
+    /// finds it in the folder the store names after the tower's row, beside its own (S8,
+    /// <c>ManagedChatGenerator.FindTower</c>), so it is usable exactly when its brain is.
     /// </remarks>
     public static IReadOnlyList<BrainCompanion> ThatFit(
         ModelEntry brain, IEnumerable<ModelEntry> catalogue, DeviceProbe probe, Func<string, bool>? declined = null,
@@ -135,7 +139,7 @@ public static class BrainCompanions
             foreach (var candidate in Of(brain, catalogue).Where(c => c.Kind == kind))
             {
                 if (declined is not null && declined(candidate.Entry.Name)) continue;
-                if (!EngineChoice.CanRun(candidate.Entry, engines)) continue;
+                if (!Usable(candidate, brain, engines)) continue;
                 if (!ModelFit.FitsStorage(candidate.Entry, probe.StorageFreeGb)) continue;
 
                 // THE WHOLE RESIDENT COST, NOT THE COMPANION'S ALONE: a tower that fits on its own
@@ -156,6 +160,21 @@ public static class BrainCompanions
             }
         }
         return chosen;
+    }
+
+    /// <summary>
+    /// Whether this build can use <paramref name="companion"/> beside <paramref name="brain"/>: a
+    /// C# engine tower beside a C# engine brain the engine reads (the brain finds it, S8); anything
+    /// else by the engine's own pack rule.
+    /// </summary>
+    public static bool Usable(BrainCompanion companion, ModelEntry brain, IReadOnlyCollection<ModelEngine>? engines = null)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        ArgumentNullException.ThrowIfNull(brain);
+        return companion.Kind == CompanionKind.VisionTower
+               && companion.Entry.Engine == ModelEngine.Managed && brain.Engine == ModelEngine.Managed
+            ? EngineChoice.CanRun(brain, engines)
+            : EngineChoice.CanRun(companion.Entry, engines);
     }
 
     /// <summary>A brain's name less its packing: "Ternary-Bonsai-2-4B-PQ2_0" is family "Ternary-Bonsai-2-4B".</summary>

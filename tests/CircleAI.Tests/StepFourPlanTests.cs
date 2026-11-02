@@ -49,9 +49,9 @@ public sealed class StepFourPlanTests : IDisposable
             BundleFiles = [new BundleFile(name + "-PTQ1_0.gguf", "00", bytes)],
         };
 
-    // A TOWER AND A DRAFTER AN ENGINE OF THIS BUILD CAN READ. Bonsai 2's own are rows of the C# engine,
-    // which has no code for them yet; A_companion_the_engine_cannot_read_yet_waits_for_its_code holds
-    // them back, and these stand for the day the engine reads them.
+    // A TOWER AND A DRAFTER AN ENGINE OF THIS BUILD CAN USE. Bonsai 2's own are rows of the C# engine,
+    // whose tower comes with its brain and whose drafter waits for its code - see
+    // A_drafter_waits_for_its_code_and_a_tower_comes_with_a_brain_the_engine_reads.
     private static ModelEntry Tower(string name, string repo, long bytes, ModelEngine engine = ModelEngine.Mnn) =>
         new(name, "1.0", "Q8_0")
         {
@@ -139,20 +139,26 @@ public sealed class StepFourPlanTests : IDisposable
     }
 
     [Fact]
-    public void A_companion_the_engine_cannot_read_yet_waits_for_its_code()
+    public void A_drafter_waits_for_its_code_and_a_tower_comes_with_a_brain_the_engine_reads()
     {
-        // BONSAI 2'S OWN ROWS: a "clip" tower and a "dflash" drafter on the C# engine, which reads
-        // neither yet. Planned now they would be 1.9 GB of the person's data that nothing can load.
+        // BONSAI 2'S OWN ROWS on the C# engine. Its "clip" tower is never opened as a model: the brain
+        // finds it in the folder beside its own (S8, FindTower), so it is usable whenever the brain
+        // is. Its "dflash" drafter has no code yet - planned now, 1.6 GB of data nothing could load.
         var brain = Brain("Ternary-Bonsai-2-4B", "prism-ml/Ternary-Bonsai-2-4B-gguf", 950_000_000, 11);
         var tower = Tower("Ternary-Bonsai-2-4B-Vision", "prism-ml/Ternary-Bonsai-2-4B-gguf", 367_000_000, ModelEngine.Managed);
         var drafter = Drafter("Ternary-Bonsai-2-4B-DFlash2", 1_575_000_000, ModelEngine.Managed);
 
-        Assert.Empty(BrainCompanions.ThatFit(brain, [brain, tower, drafter], Roomy(), engines: Managed));
+        Assert.Equal(new[] { tower.Name },
+            BrainCompanions.ThatFit(brain, [brain, tower, drafter], Roomy(), engines: Managed).Select(c => c.Entry.Name));
+
+        // A tower beside a brain the engine cannot read is no use either.
+        var unreadable = brain with { Quantization = "Q4_K_M" };
+        Assert.Empty(BrainCompanions.ThatFit(unreadable, [unreadable, tower, drafter], Roomy(), engines: Managed));
 
         using var registry = new Rows([brain, tower, drafter]);
         using var loader = new BundleModelLoader(EmptyStore(), registry);
         var plan = FirstRun.Plan(registry, loader, Roomy(), speech: false, engines: Managed);
-        Assert.Equal(new[] { brain.Name }, plan.Select(s => s.Model.Name));
+        Assert.Equal(new[] { brain.Name, tower.Name }, plan.Select(s => s.Model.Name));
     }
 
     // ── the plan takes them ───────────────────────────────────────────────────
