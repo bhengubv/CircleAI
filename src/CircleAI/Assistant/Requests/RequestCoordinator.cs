@@ -856,8 +856,22 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             }
         }
 
-        messages.Add(new ChatMessage("user", ask.Message));
+        // AND THE PICTURE THE QUESTION IS ABOUT, when one came with it (Step 4): kept on disk beside
+        // the ask, so a question re-queued after a crash still has its picture.
+        messages.Add(new ChatMessage("user", ask.Message) { ImageBytes = ImageOf(ask) });
         return messages;
+    }
+
+    /// <summary>
+    /// The picture an ask is about; null when it has none. Set by a host that takes pictures across
+    /// its link (Step 4); unset, every ask is text.
+    /// </summary>
+    public Func<AskRecord, byte[]?>? Images { get; set; }
+
+    private byte[]? ImageOf(AskRecord ask)
+    {
+        try { return Images?.Invoke(ask); }
+        catch { return null; }
     }
 
     private static TurnTiming Merge(TurnTiming? worker, AskRecord ask, DateTimeOffset started, long loadWaitMs, long ttftMs, DateTimeOffset finished)

@@ -65,7 +65,7 @@ namespace CircleAI.Service.Android;
 [Application(
     Label = "Circle AI Service",
     Icon  = "@drawable/ic_launcher")]
-public sealed class ServiceApplication : Application
+public sealed partial class ServiceApplication : Application
 {
     public ServiceApplication(IntPtr handle, JniHandleOwnership transfer)
         : base(handle, transfer) { }
@@ -1330,6 +1330,11 @@ public sealed class ServiceApplication : Application
         // and for the same reason: the catalogue is built later in this method.
         CircleNeuronLinkService.Facts    = new DeviceFacts(
             footprint, catalogue: () => CircleAI.Device.CircleNeuronService.Catalogue);
+
+        // STEP 4 - every brain on, primed, balanced and visible to apps. Its own block, in
+        // Droid/StepFour.cs: preferences, the download gate, the setup board, priming on arrival,
+        // pictures across the link, and the balance loop.
+        InstallStepFour();
 
         // HOUSEKEEPING, ON INIT, BECAUSE NOTHING WAS DOING IT HERE. The catalogue
         // bootstrap used to run in the hybrid app with reclaimInferior: true, and it

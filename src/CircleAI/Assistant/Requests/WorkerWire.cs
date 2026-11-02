@@ -39,7 +39,13 @@ public static class WorkerWire
                         Since = "since", WaitMs = "wait", Text = "text", Length = "len", Final = "final",
                         Pid = "pid", StartedMs = "started", Phase = "phase", Step = "step", RetryS = "retry",
                         RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim",
-                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain";
+                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain",
+                        // THE BALANCE'S SHAPE FOR A LOAD (Step 4): the working memory's bits and the
+                        // share of the context. Absent means the brain as built.
+                        KvMode = "kv", ContextShare = "ctxshare";
+
+    /// <summary>The largest image a message may carry between the two processes.</summary>
+    public const int MaxImageBytes = 16 * 1024 * 1024;
 
     // ── a job's own settings ─────────────────────────────────────────────────
 
@@ -62,14 +68,24 @@ public static class WorkerWire
 
     // ── messages ─────────────────────────────────────────────────────────────
 
-    /// <summary>Write a conversation into a map (m.count, m.i.role, m.i.content).</summary>
-    public static void PutMessages(IDictionary<string, string> map, IReadOnlyList<ChatMessage> messages)
+    /// <summary>Write a conversation into a map (m.count, m.i.role, m.i.content, m.i.imagefile).</summary>
+    /// <param name="map">The map.</param>
+    /// <param name="messages">The conversation.</param>
+    /// <param name="spill">
+    /// Where a message's image goes: written to a file it returns the path of. The two processes
+    /// are one app and share its storage, and a picture through the map would be most of a binder
+    /// transaction's megabyte (Step 4). Null leaves images out, as before.
+    /// </param>
+    public static void PutMessages(IDictionary<string, string> map, IReadOnlyList<ChatMessage> messages,
+                                   Func<byte[], string>? spill = null)
     {
         map["m.count"] = I(messages.Count);
         for (var i = 0; i < messages.Count; i++)
         {
             map["m." + I(i) + ".role"] = messages[i].Role ?? "user";
             map["m." + I(i) + ".content"] = messages[i].Content ?? string.Empty;
+            if (spill is not null && messages[i].ImageBytes is { Length: > 0 } image && image.Length <= MaxImageBytes)
+                map["m." + I(i) + ".imagefile"] = spill(image);
         }
     }
 
@@ -82,9 +98,25 @@ public static class WorkerWire
         {
             if (!map.TryGetValue("m." + I(i) + ".content", out var content)) continue;
             map.TryGetValue("m." + I(i) + ".role", out var role);
-            list.Add(new ChatMessage(string.IsNullOrEmpty(role) ? "user" : role, content));
+            map.TryGetValue("m." + I(i) + ".imagefile", out var imageFile);
+            list.Add(new ChatMessage(string.IsNullOrEmpty(role) ? "user" : role, content) { ImageBytes = Image(imageFile) });
         }
         return list;
+    }
+
+    // An image the other process left in a file: read once, never past the limit; null when absent.
+    private static byte[]? Image(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try
+        {
+            var info = new System.IO.FileInfo(path);
+            return info.Exists && info.Length is > 0 and <= MaxImageBytes ? System.IO.File.ReadAllBytes(path) : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // ── failures ─────────────────────────────────────────────────────────────

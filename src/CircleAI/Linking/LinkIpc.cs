@@ -29,9 +29,11 @@ public static class LinkIpc
     /// NOT THE DESCRIPTOR, which only changes on a BREAKING change. Revision 2 added
     /// questions as records (AskSubmit/AskStatus/AskCancel/AskList), Status and
     /// Health; a client that reads 1, or gets "unknown verb" for Hello, uses the
-    /// blocking <see cref="TransactAsk"/> as before.
+    /// blocking <see cref="TransactAsk"/> as before. Revision 3 added the picture
+    /// transaction (<see cref="TransactImage"/>) and Step 4's settings verbs; a client
+    /// that reads 2 sends no pictures.
     /// </remarks>
-    public const int Protocol = 2;
+    public const int Protocol = 3;
 
     /// <summary>Transaction code: ask the shared brain one turn.</summary>
     public const int TransactAsk = 1;
@@ -57,6 +59,14 @@ public static class LinkIpc
     /// <see cref="LinkAudio.MaxAudioBytes"/>.
     /// </remarks>
     public const int TransactAudio = 3;
+
+    /// <summary>
+    /// Transaction code: a question about a picture (Step 4). Its own code for the reason audio has
+    /// one - bytes, not a map of strings - and because a picture over the transaction limit rides as
+    /// a file descriptor (<see cref="LinkImage"/>). Answered at once with one ask row; the answer is
+    /// followed with <see cref="LinkVerb.AskStatus"/>.
+    /// </summary>
+    public const int TransactImage = 4;
 
     /// <summary>The intent action a client binds the link service by.</summary>
     public const string BindAction = "com.bhengubv.circleai.action.LINK";

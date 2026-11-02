@@ -65,8 +65,15 @@ public sealed class ModelFetchService : Service
 
     // The plan setup would make here, refusals and verdicts included: one rule for both.
     private static IEnumerable<(string Name, long Bytes)> Owed(Core.Models.ModelRegistryService registry, BundleModelLoader loader) =>
-        CircleAI.Assistant.Device.DeviceSetup.PlanHere(registry, loader, Catalogue?.Invoke(), language: null)
-            .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+        OwedSteps(registry, loader).Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+
+    private static IReadOnlyList<CircleAI.Assistant.SetupStep> OwedSteps(Core.Models.ModelRegistryService registry, BundleModelLoader loader) =>
+        CircleAI.Assistant.Device.DeviceSetup.PlanHere(registry, loader, Catalogue?.Invoke(), language: null);
+
+    // WHAT THE PERSON SWITCHED OFF, AND WHAT THIS PHONE REFUSED - for the resume and the upgrade as
+    // well as the plan (Step 4: every background fetcher passes the declined list).
+    private static Func<string, bool> Declined() =>
+        CircleAI.Assistant.Device.DeviceSetup.NotOfferedHere(Catalogue?.Invoke());
 
     private static readonly object Gate = new();
     private static bool _busy;
@@ -107,7 +114,7 @@ public sealed class ModelFetchService : Service
         // The check stays BEFORE the notification, which is the part of the
         // original rule still worth keeping: a device with everything down shows
         // no sign this exists.
-        if (ModelSetup.Unfinished(loader).Count > 0) { Launch(context); return; }
+        if (ModelSetup.Unfinished(loader, declined: Declined()).Count > 0) { Launch(context); return; }
 
         // Nothing partial. Ask whether anything is missing entirely - the
         // first-run plan, the same one the setup screen would have shown.
@@ -210,7 +217,7 @@ public sealed class ModelFetchService : Service
                 // started nothing. BundleModelLoader.ModelLanded is raised by every
                 // download in the process, and ServiceApplication subscribes to it
                 // once; see the remark on that event.
-                await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct).ConfigureAwait(false);
+                await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct, declined: Declined()).ConfigureAwait(false);
 
                 // THEN START WHAT WAS NEVER STARTED - the change the owner asked
                 // for on 2026-10-09. Every ability is meant to be on from first
@@ -228,9 +235,18 @@ public sealed class ModelFetchService : Service
                 // can hear its name long before the 2.8 GB brain arrives.
                 try
                 {
-                    var plan = Owed(registry, loader);
+                    var steps = OwedSteps(registry, loader);
 
-                    await ModelSetup.FetchNotStartedAsync(loader, plan, Say, ct).ConfigureAwait(false);
+                    // EVERY ITEM ON THE SETUP BOARD IN ITS OWN WORDS, BEFORE THE FIRST BYTE (Step 4),
+                    // and THE BRAIN FIRST: smallest-first alone put a 429 MB brain behind every voice
+                    // smaller than it, and the person waited for all of them before it could answer.
+                    foreach (var step in steps)
+                        SetupBoard.Queue(step.Model.Name, step.Title, step.Model.TotalBytes);
+                    var brainFirst = CircleAI.Assistant.FirstRun.FirstBrain(steps);
+
+                    await ModelSetup.FetchNotStartedAsync(
+                        loader, steps.Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes)), Say, ct,
+                        brainFirst: brainFirst).ConfigureAwait(false);
                 }
                 catch (System.OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -330,8 +346,13 @@ public sealed class ModelFetchService : Service
     {
         var probe = CircleAI.Core.DeviceProbe.Snapshot();
         var catalogue = CircleNeuronService.Catalogue;
+
+        // NOT ONE THE PERSON SWITCHED OFF, AND NOT A DRAFTER (Step 4): the upgrade path is a
+        // background fetcher too, and a drafter is fetched for its brain, never as one.
+        var declined = Declined();
         var chat = registry.AllModels
-            .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired && !CrashVerdict.IsRefused(catalogue, e.Name))
+            .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired && !CrashVerdict.IsRefused(catalogue, e.Name)
+                        && !BrainCompanions.IsCompanion(e) && !declined(e.Name))
             .ToList();
         var bestHere = chat.Where(e => loader.ModelPresent(e.Name)).Select(e => e.QualityRank).DefaultIfEmpty(-1).Max();
         if (bestHere < 0) return null;   // no brain yet: that is the first-run plan's job

@@ -173,8 +173,10 @@ public sealed class EveryModelArrivesByDefaultTests : IDisposable
         // has exactly one answer for a slot where only one can be loaded. The others
         // are gigabytes that will never be chosen while it is there, and on the P30
         // one of them is the model whose load set off the low-memory kills.
+        // A DRAFTER IS NOT A BRAIN (Step 4): it is fetched for the brain it speeds up, and counted
+        // with it rather than against it.
         foreach (var probe in new[] { Roomy(), P30() })
-            Assert.True(Plan(probe).Count(s => s.Modality == ModelModality.Chat) <= 1,
+            Assert.True(Plan(probe).Count(s => s.Modality == ModelModality.Chat && !BrainCompanions.IsCompanion(s.Model)) <= 1,
                 "more than one brain is being fetched");
     }
 

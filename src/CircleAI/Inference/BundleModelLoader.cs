@@ -175,12 +175,67 @@ public sealed class BundleModelLoader : IModelLoader
         // in the service, each with its own loader, fetched the same 548 MB at once on
         // the P30 and wrote the same .tmp until one of them died.
         var key = Path.GetFullPath(Path.Combine(_storageRoot, modelName));
-        return InFlightDownloads.RunAsync(
+
+        // AND EVERY ONE OF THEM ON THE SETUP BOARD (Step 4), fed here because this is the one
+        // place every pull path passes: the bytes, the rate and the time left as they move, then
+        // ready - or, for a brain, priming until it has been loaded and warmed. A model already
+        // here is only being re-checked, which is not news.
+        var primes = !wasHere && _registry.GetLatestModel(modelName) is { Modality: ModelModality.Chat } brain
+                     && !BrainCompanions.IsCompanion(brain);
+        var download = InFlightDownloads.RunAsync(
             key, progress,
-            relay => DownloadReportedAsync(modelName, relay, ct),
+            relay => wasHere ? DownloadReportedAsync(modelName, relay, ct) : DownloadOnBoardAsync(modelName, primes, relay, ct),
             joined: _ => Console.WriteLine(
                 $"CIRCLEAI-DOWNLOAD {modelName}: joined the download already in flight"),
             completed: _ => { if (!wasHere) Arrived(modelName); });
+        return wasHere ? download : Tracked(modelName, download);
+    }
+
+    // The download, its progress told to the setup board and its arrival said there BEFORE the
+    // landing is raised - so a listener's "priming" lands after "arrived", never under it.
+    private async Task<string> DownloadOnBoardAsync(
+        string modelName, bool primes, IProgress<CircleAI.Core.DownloadProgress> relay, CancellationToken ct)
+    {
+        var path = await DownloadReportedAsync(modelName, SetupBoard.Relay(modelName, relay), ct).ConfigureAwait(false);
+        SetupBoard.Arrived(modelName, primes);
+        return path;
+    }
+
+    /// <summary>
+    /// Every model's downloads go through a gate when the host set one - the person's "not on mobile
+    /// data" and storage limit (Step 4) - unless the caller gave the loader its own. Null is no gate.
+    /// </summary>
+    public static Func<IModelDownloadGate?>? DefaultGate { get; set; }
+
+    /// <summary>How a download that did not finish reads on the setup board, and then the same failure.</summary>
+    private static async Task<string> Tracked(string modelName, Task<string> download)
+    {
+        try
+        {
+            return await download.ConfigureAwait(false);
+        }
+        catch (ModelDownloadBlockedException ex)
+        {
+            SetupBoard.WaitingForNetwork(modelName, ex.Message);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            SetupBoard.Paused(modelName, "stopped for now; it carries on from where it got to");
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TimeoutException
+                                   || ex.InnerException is System.Net.Http.HttpRequestException
+                                   || ex is System.Net.Sockets.SocketException)
+        {
+            SetupBoard.WaitingForNetwork(modelName, "the network went away; it carries on when there is one");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            SetupBoard.Failed(modelName, ex.Message);
+            throw;
+        }
     }
 
     /// <summary>Tell every listener that <paramref name="modelName"/> is here now.</summary>
@@ -236,9 +291,10 @@ public sealed class BundleModelLoader : IModelLoader
         // Metered-connection gate. Checked BEFORE any bytes move, and skipped
         // when the bundle is already cached — re-verifying an on-disk model
         // must never be refused for being "on mobile data".
-        if (_gate is not null && !ModelExists(modelName))
+        var gate = _gate ?? DefaultGate?.Invoke();
+        if (gate is not null && !ModelExists(modelName))
         {
-            var blocked = _gate.BlockReason(entry.TotalBytes);
+            var blocked = gate.BlockReason(entry.TotalBytes);
             if (blocked is not null)
                 throw new ModelDownloadBlockedException(blocked);
         }

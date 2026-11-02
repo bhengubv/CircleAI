@@ -345,7 +345,8 @@ public sealed class CircleNeuronLinkService : Service
         {
             if (data is null || (code != LinkIpc.TransactAsk
                                  && code != LinkIpc.TransactVerb
-                                 && code != LinkIpc.TransactAudio))
+                                 && code != LinkIpc.TransactAudio
+                                 && code != LinkIpc.TransactImage))
                 return base.OnTransact(code, data, reply, flags);
 
             data.EnforceInterface(LinkIpc.Descriptor);
@@ -380,6 +381,33 @@ public sealed class CircleNeuronLinkService : Service
                 }
 
                 if (reply is not null) LinkAudioCodec.WriteReply(new ParcelWriter(reply), audioResult);
+                return true;
+            }
+
+            // A PICTURE IS NOT A STRING MAP EITHER (Step 4): its bytes ride inline below 800 kB and
+            // behind a file descriptor above it. The reply is an ordinary rows map - one ask row.
+            if (code == LinkIpc.TransactImage)
+            {
+                LinkImageRequest? imageRequest;
+                try { imageRequest = LinkImageCodec.TryReadRequest(new ParcelReader(data), new ParcelHandleReader(data)); }
+                catch (Exception ex)
+                {
+                    Log.Warn(Tag, "picture: could not be read: " + ex.GetType().Name);
+                    imageRequest = null;
+                }
+                reply?.WriteNoException();
+
+                LinkRowsReply imageResult;
+                if (imageRequest is null)
+                    imageResult = LinkRowsReply.Failure(
+                        "CircleAI could not read that picture - check the app and CircleAI are both up to date, "
+                        + $"and that the picture is under {LinkImage.MaxBytes / 1_000_000} MB.");
+                else
+                {
+                    try { imageResult = _service.ServeImageAsync(uid, imageRequest).GetAwaiter().GetResult(); }
+                    catch (Exception ex) { imageResult = LinkRowsReply.Failure(ex.Message); }
+                }
+                WriteMap(reply, LinkVerbCodec.Encode(imageResult));
                 return true;
             }
 
@@ -954,7 +982,26 @@ public sealed class CircleNeuronLinkService : Service
                 var run = _setupRun;
                 var failed = _setupFailed;
                 if (failed is not null) return LinkRowsReply.Failure(failed);
-                if (run is null) return LinkRowsReply.Failure("nothing is being set up");
+
+                // EVERY MODEL ON ITS WAY IN, AFTER THE SUMMARY ROW (Step 4): queued, waiting for a
+                // network, downloading with bytes, speed and time left, verifying, priming, ready,
+                // failed or healing - whichever path is fetching it, the background one included.
+                // Row 0 keeps its six columns, so an app that reads only it still works.
+                var items = CircleAI.Inference.SetupBoard.Snapshot()
+                    .Select(LinkSettingsRows.Item).ToList();
+
+                if (run is null)
+                {
+                    // NO RUN THIS APP STARTED; THE BOARD IS WHAT IS HAPPENING. Nothing on it at all
+                    // is still "nothing is being set up", as it always said.
+                    if (CircleAI.Inference.SetupBoard.Summary() is not { } board)
+                        return LinkRowsReply.Failure("nothing is being set up");
+                    var boardPhase = board.Done ? SetupPhase.Done : board.Checking ? SetupPhase.Checking : SetupPhase.Fetching;
+                    return LinkRowsReply.Success(
+                        new[] { LinkSetupRows.Progress(board.Settled, board.Count, board.Title, board.Fraction,
+                                                       board.Remaining.TotalSeconds, boardPhase.ToString()) }
+                        .Concat(items).ToList());
+                }
 
                 var at = _setupAt;
                 if (run.IsCompleted && at is null)
@@ -962,13 +1009,13 @@ public sealed class CircleNeuronLinkService : Service
                     return LinkRowsReply.Success(new[]
                     {
                         LinkSetupRows.Progress(0, 0, "Done", 1, 0, nameof(SetupPhase.Done)),
-                    });
+                    }.Concat(items).ToList());
 
                 if (at is null)
                     return LinkRowsReply.Success(new[]
                     {
                         LinkSetupRows.Progress(0, 0, "Starting", 0, 0, nameof(SetupPhase.Fetching)),
-                    });
+                    }.Concat(items).ToList());
 
                 // THE PHASE IS FORCED TO Done WHEN THE TASK IS, because the last
                 // report a run makes is not always its final phase, and a screen that
@@ -979,7 +1026,34 @@ public sealed class CircleNeuronLinkService : Service
                     LinkSetupRows.Progress(at.Index, at.Count, at.Title,
                                            run.IsCompleted ? 1 : at.Fraction,
                                            at.Remaining.TotalSeconds, phase.ToString()),
-                });
+                }.Concat(items).ToList());
+            }
+
+            case LinkVerb.SettingsGet:
+            {
+                var preferences = CircleAI.Core.ServicePreferences.Current;
+                if (preferences is null) return LinkRowsReply.Failure("settings not available");
+                return LinkRowsReply.Success(preferences.Rows().Select(LinkSettingsRows.Setting).ToList());
+            }
+
+            case LinkVerb.SettingsSet:
+            {
+                var preferences = CircleAI.Core.ServicePreferences.Current;
+                if (preferences is null) return LinkRowsReply.Failure("settings not available");
+                if (!preferences.TrySet(req.Query ?? string.Empty, req.Text, out var row, out var why))
+                    return LinkRowsReply.Failure(why ?? "that setting could not be changed");
+                Log.Info(Tag, $"setting {row!.Key} = {row.Value}");
+                return LinkRowsReply.Success(new[] { LinkSettingsRows.Setting(row) });
+            }
+
+            case LinkVerb.AbilitySet:
+                return await SetAbilityAsync(req.Query, req.Text).ConfigureAwait(false);
+
+            case LinkVerb.CanDoNow:
+            {
+                var rows = await CanDoNowAsync().ConfigureAwait(false);
+                if (rows is null) return LinkRowsReply.Failure("device facts not available");
+                return LinkRowsReply.Success(rows.Append(CanDoNow.Summary(rows)).Select(LinkSettingsRows.CanDo).ToList());
             }
 
             case LinkVerb.Capabilities:
@@ -1052,6 +1126,207 @@ public sealed class CircleNeuronLinkService : Service
 
             default:
                 return LinkRowsReply.Failure("unknown verb");
+        }
+    }
+
+    // ── Step 4: an ability on or off, and what it can do right now ───────────
+
+    /// <summary>
+    /// What the balance has put to rest, by ability title, with why - set by the host from the
+    /// brain's balance shape. Null rests nothing.
+    /// </summary>
+    public static Func<IReadOnlyDictionary<string, string>>? Resting { get; set; }
+
+    /// <summary>
+    /// Switch one ability on or off and answer with its live row. On withdraws the person's refusal,
+    /// starts what it needs downloading in the background - followed with SetupProgress - and starts
+    /// listening for Waking; off refuses what it needs from every fetcher and stops listening for
+    /// Waking. Nothing downloaded is deleted.
+    /// </summary>
+    private async Task<LinkRowsReply> SetAbilityAsync(string? title, string? onOrOff)
+    {
+        var facts = Facts;
+        var preferences = CircleAI.Core.ServicePreferences.Current;
+        if (facts is null || preferences is null) return LinkRowsReply.Failure("abilities not available");
+        if (string.IsNullOrWhiteSpace(title)) return LinkRowsReply.Failure("no ability named");
+
+        bool on;
+        switch ((onOrOff ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "on" or "1" or "true": on = true; break;
+            case "off" or "0" or "false": on = false; break;
+            default: return LinkRowsReply.Failure($"say 'on' or 'off' for {title}, not '{onOrOff}'");
+        }
+
+        var abilities = await facts.AbilitiesAsync().ConfigureAwait(false);
+        if (abilities.All(a => a.Title != title))
+            return LinkRowsReply.Failure($"no ability called '{title}'; known: {string.Join(", ", abilities.Select(a => a.Title))}");
+
+        if (on)
+        {
+            preferences.SetAbility(title!, on: true);
+            CircleAI.Assistant.Device.DeviceFacts.Switch(title!, on: true);
+            if (title == "Waking" && Resident is { } resident) _ = resident.StartAsync();
+
+            // THE DOWNLOAD IS NOT WAITED FOR ON A BINDER THREAD. It starts here and the app follows
+            // it on the setup board; the background fetch brings anything else the ability needs.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var said = await facts.TurnOnAsync(title!).ConfigureAwait(false);
+                    Log.Info(Tag, $"ability {title} on: {said}");
+                }
+                catch (Exception ex) { Log.Warn(Tag, $"ability {title} did not turn on: {ex.Message}"); }
+            });
+            try
+            {
+                using var loader = new CircleAI.Inference.BundleModelLoader(
+                    ModelFetchService.StorageDirectory, new CircleAI.Core.Models.ModelRegistryService());
+                ModelFetchService.StartIfAnythingIsOwed(this, loader);
+            }
+            catch (Exception ex) { Log.Warn(Tag, "the fetch could not start: " + ex.Message); }
+        }
+        else
+        {
+            var said = await facts.TurnOffAsync(title!).ConfigureAwait(false);
+            if (said != "Off") return LinkRowsReply.Failure(said);
+            preferences.SetAbility(title!, on: false);
+            if (title == "Waking" && Resident is { } resident) await resident.StopAsync().ConfigureAwait(false);
+        }
+
+        Log.Info(Tag, $"ability {title} switched {(on ? "on" : "off")}");
+        var rows = await CanDoNowAsync().ConfigureAwait(false);
+        var row = rows?.FirstOrDefault(r => r.Title == title)
+                  ?? new CanDoRow(title!, on ? NowState.Soon : NowState.Off, on ? "Switched on." : "Switched off.", null);
+        return LinkRowsReply.Success(new[] { LinkSettingsRows.CanDo(row) });
+    }
+
+    /// <summary>Every ability's live state, or null when this host cannot say.</summary>
+    private static async Task<IReadOnlyList<CanDoRow>?> CanDoNowAsync()
+    {
+        var facts = Facts;
+        if (facts is null) return null;
+
+        var abilities = await facts.AbilitiesAsync().ConfigureAwait(false);
+        var brain = CircleNeuronService.Readiness?.Current.Brain;
+        var off = CircleAI.Core.ServicePreferences.Current?.AbilitiesOff ?? new HashSet<string>(StringComparer.Ordinal);
+        IReadOnlyDictionary<string, string> resting;
+        try { resting = Resting?.Invoke() ?? new Dictionary<string, string>(); }
+        catch { resting = new Dictionary<string, string>(); }
+
+        // ONE REGISTRY, ONE LOADER AND ONE READING OF THE DEVICE FOR EVERY ROW: this answers on a
+        // binder thread, and eight abilities each opening their own was eight times the work.
+        var root = ModelFetchService.StorageDirectory;
+        using var registry = new CircleAI.Core.Models.ModelRegistryService();
+        using var loader = string.IsNullOrWhiteSpace(root) ? null : new CircleAI.Inference.BundleModelLoader(root, registry);
+        var probe = CircleAI.Core.DeviceProbe.Snapshot();
+        return CanDoNow.Answer(abilities, brain, CircleAI.Assistant.Device.DeviceFacts.NeedsBrain, off, resting,
+            title => ArrivingFor(title, registry, loader, probe));
+    }
+
+    /// <summary>What the setup board says of the model an ability needs, or null.</summary>
+    private static CircleAI.Core.SetupItemStatus? ArrivingFor(
+        string title, CircleAI.Core.Models.ModelRegistryService registry, CircleAI.Inference.BundleModelLoader? loader,
+        CircleAI.Core.DeviceProbe probe)
+    {
+        if (CircleAI.Assistant.Device.DeviceFacts.NeedsBrain(title))
+        {
+            // THE BRAIN ON ITS WAY, whichever one the plan chose.
+            return CircleAI.Inference.SetupBoard.Snapshot().FirstOrDefault(i =>
+                !i.Settled && registry.GetLatestModel(i.ModelId) is { Modality: CircleAI.Core.ModelModality.Chat } e
+                && !CircleAI.Inference.BrainCompanions.IsCompanion(e));
+        }
+
+        if (loader is null) return null;
+        var choice = CircleAI.Assistant.Device.DeviceFacts.ChoiceFor(title, registry, loader, probe, CircleNeuronService.Catalogue);
+        return choice is null ? null : CircleAI.Inference.SetupBoard.Of(choice.Name);
+    }
+
+    // ── Step 4: a question about a picture ───────────────────────────────────
+
+    /// <summary>
+    /// Where a received picture waits for its ask. Set by the host; null refuses pictures.
+    /// </summary>
+    public static LinkImageStore? Images { get; set; }
+
+    /// <summary>
+    /// Shrinks a picture to what a vision model can use (ImageBudget), when the app did not. Set by
+    /// the host (Android's decoder); null passes pictures through as they came.
+    /// </summary>
+    public static Func<byte[], byte[]>? Shrink { get; set; }
+
+    /// <summary>
+    /// A question about a picture: checked, shrunk if the app did not, kept beside the ask, and
+    /// queued like any other question. Answers at once with the ask's row; the app follows it.
+    /// </summary>
+    private async Task<LinkRowsReply> ServeImageAsync(int uid, LinkImageRequest request)
+    {
+        var denied = await AuthorizeAsync(uid, LinkScope.Chat).ConfigureAwait(false);
+        if (denied is not null) return LinkRowsReply.Failure(denied);
+
+        var images = Images;
+        var asks = CircleNeuronService.Asks;
+        if (images is null || asks is null) return LinkRowsReply.Failure("pictures are not taken here yet");
+        if (CallerKeyOf(uid) is not { } caller) return LinkRowsReply.Failure("unknown caller");
+
+        // OFF OR RESTING IS SAID, NOT TRIED: the person switched seeing off, or the balance rested
+        // it while the phone is under pressure.
+        if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains("Seeing") == true)
+            return LinkRowsReply.Failure("Seeing is switched off. Turn it on to ask about pictures.");
+        if (Resting?.Invoke() is { } resting && resting.TryGetValue("Seeing", out var why))
+            return LinkRowsReply.Failure("Seeing is resting: " + why + ". Ask again when the phone is calm.");
+
+        var image = request.Image;
+        if (CircleAI.Inference.ImageBudget.NeedsShrinking(image, CircleAI.Inference.ImageBudget.VisionMaxEdge) && Shrink is { } shrink)
+        {
+            try { image = shrink(image); }
+            catch (Exception ex) { Log.Warn(Tag, "picture: could not shrink it, sending as it came: " + ex.Message); }
+        }
+
+        // THE PICTURE IS ON DISK BEFORE THE ASK EXISTS, under the request the ask will carry: the
+        // queue may start answering the moment it accepts, and must find the picture already there.
+        // An app that sent no request id gets one, so every picture ask has a key to find it by.
+        var requestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
+            ? "picture-" + Guid.NewGuid().ToString("N")
+            : request.ClientRequestId;
+        var held = images.Hold(image, caller, requestId);
+        var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+            caller, requestId, request.SessionId, CircleAI.Assistant.Requests.AskLane.Foreground,
+            string.IsNullOrWhiteSpace(request.Question) ? "What is in this picture?" : request.Question));
+        if (!admission.Accepted || admission.Record is null)
+        {
+            images.Drop(held);
+            return LinkRowsReply.Failure(admission.Refusal ?? CircleAI.Assistant.Requests.AskSentences.Busy);
+        }
+
+        // A REPEATED REQUEST ID IS THE SAME ASK, and the picture it found is that ask's: kept.
+        Log.Info(Tag, $"picture: ask {admission.Record.Id} accepted{(admission.Duplicate ? " (again)" : string.Empty)} "
+                      + $"({image.Length / 1024} kB, {CircleAI.Inference.ImageBudget.Describe(image)})");
+
+        return LinkRowsReply.Success(new[]
+        {
+            LinkAskRows.Ask(admission.Record, admission.Position, textFrom: 0, includeText: true, duplicate: admission.Duplicate),
+        });
+    }
+
+    /// <summary>Reads a picture's bytes back from the descriptor in a parcel.</summary>
+    private sealed class ParcelHandleReader(Parcel parcel) : LinkImageCodec.IHandleReader
+    {
+        public byte[]? ReadHandle(int length)
+        {
+            using var descriptor = parcel.ReadFileDescriptor();
+            if (descriptor is null || length <= 0) return null;
+            using var input = new Java.IO.FileInputStream(descriptor.FileDescriptor);
+            var bytes = new byte[length];
+            var at = 0;
+            while (at < length)
+            {
+                var read = input.Read(bytes, at, length - at);
+                if (read <= 0) return null; // shorter than it said: refused, never padded
+                at += read;
+            }
+            return bytes;
         }
     }
 

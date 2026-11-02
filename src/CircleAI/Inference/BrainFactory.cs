@@ -38,6 +38,12 @@ public sealed record BrainRequest(string ModelPath)
     /// <summary>Threads the host asked for; null lets the engine and the device decide.</summary>
     public int? Threads { get; init; }
 
+    /// <summary>
+    /// The working memory's bits for the C# engine; null builds it at 4 bits. The balance loop
+    /// asks for fewer under pressure (Step 4); MNN's working memory stays as A11 left it.
+    /// </summary>
+    public KvCompressionMode? KvMode { get; init; }
+
     /// <summary>What the brain must do - Vision picks MNN's vision runtime.</summary>
     public ChatCapability Capability { get; init; } = ChatCapability.Default;
 
@@ -91,18 +97,23 @@ public sealed class BrainFactory : IBrainFactory
             if (entry is not null && EngineChoice.Run(entry) is null)
                 throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
 
-            // THE DEVICE'S FAST CORES, ONE LEFT FOR THE PERSON (DeviceContext.BrainThreads), unless
-            // the host said otherwise. Working memory at 4 bits with keys in the MSE form (S3):
-            // measured on the 2B against the fork, it kept every one of 289 tokens in a quarter
-            // of fp16's memory.
-            var threads = tuning.Threads(request.Threads is > 0 ? request.Threads.Value : DeviceContext.Read().BrainThreads) ?? 1;
+            // THE THREAD COUNT THIS DEVICE MEASURED FASTEST (Step 4: primed before Ready), unless
+            // the host said otherwise - measured once per device and runtime by KernelThreads, with
+            // the device's fast cores less one (DeviceContext.BrainThreads) as the fallback - and
+            // then Wolverine's knob, when it has turned threads down (S6).
+            // Working memory at 4 bits with keys in the MSE form (S3): measured on the 2B against
+            // the fork, it kept every one of 289 tokens in a quarter of fp16's memory - fewer bits
+            // only when the balance or Wolverine asks for them, and then the leaner of the two.
+            var threads = tuning.Threads(request.Threads is > 0
+                ? request.Threads.Value
+                : Managed.Kernels.KernelThreads.Choose(fallback: DeviceContext.Read().BrainThreads)) ?? 1;
             Managed.Kernels.KernelChoice.ScalarOnly = tuning.ScalarKernels;
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={request.ModelId} cap={request.Capability}");
             return Managed.ManagedChatGenerator.Load(request.ModelPath, new Managed.ManagedGeneratorOptions
             {
                 ContextLength = contextSize,
                 Threads = threads,
-                KvMode = tuning.WorkingMemory ?? KvCompressionMode.TurboQuant4Bit,
+                KvMode = Leaner(tuning.WorkingMemory, request.KvMode) ?? KvCompressionMode.TurboQuant4Bit,
                 KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
                 ThinkingBudget = tuning.ThinkingBudget ?? 0,
             });
@@ -145,6 +156,11 @@ public sealed class BrainFactory : IBrainFactory
             systemPrompt: request.SystemPrompt,
             samplerJson: request.SamplerJson);
     }
+
+    // THE LEANER OF TWO WORKING MEMORIES. Wolverine's knob (S6) and the balance's shape (Step 4)
+    // both turn it down, and neither may undo the other; fewer bits is the larger mode.
+    private static KvCompressionMode? Leaner(KvCompressionMode? a, KvCompressionMode? b) =>
+        a is null ? b : b is null ? a : (KvCompressionMode)Math.Max((int)a.Value, (int)b.Value);
 
     /// <summary>The engine a model file needs, read from the file when no row says.</summary>
     /// <remarks>

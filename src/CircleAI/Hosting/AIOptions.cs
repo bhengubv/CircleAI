@@ -152,6 +152,20 @@ public sealed class AIOptions
     public int? ThreadCount { get; init; }
 
     /// <summary>
+    /// The working memory's bits for a brain on the C# engine; <c>null</c> builds it at 4 bits.
+    /// Settable, like <see cref="ModelId"/>, because the inference process's balance shape (Step 4)
+    /// reaches it after the host's options are built.
+    /// </summary>
+    public CircleAI.Core.KvCompressionMode? KvMode { get; set; }
+
+    /// <summary>
+    /// The share of the context window the brain is built with: 1 (default) is all of
+    /// <see cref="ContextSize"/> or the device tier's; the balance asks for half under pressure
+    /// (Step 4). Never below 512 tokens.
+    /// </summary>
+    public double ContextShare { get; set; } = 1.0;
+
+    /// <summary>
     /// When <c>true</c> (default) <see cref="AIService.StartAsync"/> runs
     /// a 1-token generation after loading so the first user request doesn't
     /// pay the cold-start cost.

@@ -613,6 +613,10 @@ public sealed class DeviceFacts : IDeviceFacts
             // thing the owner learns is that the switch does not work.
             DeclinedModels.Allow(best.Name);
 
+            // ON THE SETUP BOARD UNDER THE ABILITY'S OWN NAME (Step 4), so an app polling
+            // SetupProgress sees "Seeing - 40%" rather than a file name.
+            SetupBoard.Queue(best.Name, entry.Title, best.TotalBytes);
+
             progress?.Report($"Getting {best.Name}…");
             await loader.DownloadModelAsync(best.Name,
                 new Progress<float>(f => progress?.Report($"{f * 100:0}%")))
@@ -630,6 +634,46 @@ public sealed class DeviceFacts : IDeviceFacts
                 _ => $"{ex.GetType().Name}: {ex.Message}",
             };
         }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// OFF MEANS NOT FETCHED AGAIN, NOT DELETED (Step 4). Every model that serves the ability is put
+    /// on the declined list, so no fetcher - the background one, the hourly review, setup - brings it
+    /// back behind the person's back; what is already on the phone stays until they clear it. The
+    /// brain's abilities cannot be off: answering is what the brain is for.
+    /// </remarks>
+    public Task<string> TurnOffAsync(string title, CancellationToken ct = default)
+        => Task.Run(() =>
+        {
+            var entry = Catalogue.FirstOrDefault(a => a.Title == title);
+            if (entry is null) return $"No ability called '{title}'.";
+            if (NeedsBrain(title)) return $"{title} is what the brain does; it stays on.";
+            if (!entry.NeedsNoModel) Switch(title, on: false);
+            return "Off";
+        }, ct);
+
+    /// <summary>Whether an ability only works when the brain answers (Answering, Translating).</summary>
+    public static bool NeedsBrain(string title)
+        => Catalogue.FirstOrDefault(a => a.Title == title) is { Modality: ModelModality.Chat, NeedsNoModel: false };
+
+    /// <summary>
+    /// Allows, or refuses, every model that serves an ability, so the fetchers follow the person's
+    /// switch. Returns how many models it touched; 0 for an unknown ability or one that needs none.
+    /// </summary>
+    public static int Switch(string title, bool on)
+    {
+        var entry = Catalogue.FirstOrDefault(a => a.Title == title);
+        if (entry is null || entry.NeedsNoModel || entry.Modality == ModelModality.Chat) return 0;
+
+        using var registry = new ModelRegistryService();
+        var models = registry.AllModels.Where(m => m.Modality == entry.Modality && !m.Retired).Select(m => m.Name).ToList();
+        foreach (var name in models)
+        {
+            if (on) DeclinedModels.Allow(name);
+            else DeclinedModels.Decline(name);
+        }
+        return models.Count;
     }
 
     /// <inheritdoc />

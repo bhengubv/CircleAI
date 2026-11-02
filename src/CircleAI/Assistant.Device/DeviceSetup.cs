@@ -319,6 +319,14 @@ public sealed class DeviceSetup : ISetup
                 // costs them megabytes rather than only a wrong list.
                 var steps = PlanHere(registry, loader, _catalogue?.Invoke(), Language);
 
+                // THE WHOLE PLAN ON THE SETUP BOARD, IN ITS OWN WORDS, before the first byte
+                // (Step 4): an app polling SetupProgress sees every item queued, not only this one.
+                foreach (var step in steps)
+                {
+                    var (have, _) = loader.Progress(step.Model.Name);
+                    SetupBoard.Queue(step.Model.Name, step.Title, step.Model.TotalBytes, have);
+                }
+
                 // PREVENTION FOR THE ESSENTIALS TOO. First run is the largest
                 // download Circle AI ever asks for; refusing upfront with the
                 // reason beats filling the disk and dying on the last file. Cache

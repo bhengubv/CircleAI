@@ -101,6 +101,61 @@ public sealed class LinkedDeviceFacts(LinkedBrain brain)
             : ((int)LinkSetupRows.Number(row, 0), said);
     }
 
+    // ── Step 4: what it can do now, an ability on or off, and the person's settings ───
+
+    /// <summary>
+    /// What it can do right now, ability by ability, and the sentence to say. Empty rows and a null
+    /// sentence when the link is down or this app has no Settings grant.
+    /// </summary>
+    public async Task<(IReadOnlyList<CanDoRow> Rows, string? Sentence)> CanDoNowAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return ([], null);
+
+        var reply = await client.CanDoNowAsync(ct).ConfigureAwait(false);
+        if (!reply.Ok) return ([], null);
+
+        var rows = reply.Rows.Select(LinkSettingsRows.ReadCanDo).ToList();
+        var summary = rows.LastOrDefault(r => r.Title.Length == 0);
+        return (rows.Where(r => r.Title.Length > 0).ToList(), summary?.Detail);
+    }
+
+    /// <summary>Switch one ability on or off; its live row back, or why not.</summary>
+    public async Task<(CanDoRow? Row, string? Why)> SetAbilityAsync(string title, bool on, CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return (null, "CircleAI is not linked to this app yet.");
+
+        var reply = await client.SetAbilityAsync(title, on, ct).ConfigureAwait(false);
+        return reply.Ok && reply.Rows.Count > 0
+            ? (LinkSettingsRows.ReadCanDo(reply.Rows[0]), null)
+            : (null, reply.Error ?? "CircleAI could not switch that.");
+    }
+
+    /// <summary>The service's settings and the person's preferences; empty when the link is down.</summary>
+    public async Task<IReadOnlyList<CircleAI.Core.SettingRow>> SettingsAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return [];
+
+        var reply = await client.SettingsAsync(ct).ConfigureAwait(false);
+        return reply.Ok
+            ? reply.Rows.Select(LinkSettingsRows.ReadSetting).Where(r => r is not null).Select(r => r!).ToList()
+            : [];
+    }
+
+    /// <summary>Change one setting; its new row back, or why the value means nothing.</summary>
+    public async Task<(CircleAI.Core.SettingRow? Row, string? Why)> SetSettingAsync(string key, string value, CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return (null, "CircleAI is not linked to this app yet.");
+
+        var reply = await client.SetSettingAsync(key, value, ct).ConfigureAwait(false);
+        return reply.Ok && reply.Rows.Count > 0
+            ? (LinkSettingsRows.ReadSetting(reply.Rows[0]), null)
+            : (null, reply.Error ?? "CircleAI could not change that.");
+    }
+
     /// <summary>What Circle AI holds on this phone.</summary>
     /// <remarks>
     /// THE LAST TWO ROWS ARE THE TOTALS, not lines — the service appends them so a

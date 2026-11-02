@@ -67,8 +67,13 @@ public static class ModelSetup
     /// <summary>Every model with bytes down and bytes still owed, biggest first.</summary>
     /// <param name="loader">The model store.</param>
     /// <param name="engines">The engines this build ships; null asks the build.</param>
+    /// <param name="declined">
+    /// Models the person switched off, or this device refused; null refuses none. A download
+    /// stopped halfway is still not finished behind somebody's back once they said no to it.
+    /// </param>
     public static IReadOnlyList<(string Name, long Have, long Need)> Unfinished(
-        BundleModelLoader loader, IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null)
+        BundleModelLoader loader, IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null,
+        Func<string, bool>? declined = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         try
@@ -80,10 +85,15 @@ public static class ModelSetup
             //
             // AND NOT ONE THIS BUILD CANNOT OPEN, for the same reason: the Windows
             // service held half of a GGUF and ships no llama.cpp to run it.
+            //
+            // AND NOT ONE THE PERSON SWITCHED OFF (Step 4). The plan has always honoured the
+            // declined list; the resume did not, so a brain turned off halfway through its
+            // download came back on the next start.
             return Ids(loader)
                 .Where(loader.ModelPartial)
                 .Where(id => !loader.IsRetired(id))
                 .Where(id => loader.CanRunHere(id, engines))
+                .Where(id => declined is null || !Declined(declined, id))
                 .Select(id => { var (have, need) = loader.Progress(id); return (Name: id, Have: have, Need: need); })
                 .OrderByDescending(u => u.Need)
                 .ToList();
@@ -117,7 +127,7 @@ public static class ModelSetup
     /// </remarks>
     public static async Task ResumeUnfinishedAsync(
         BundleModelLoader loader, Action<string> say, CancellationToken ct = default,
-        Action<string>? landed = null)
+        Action<string>? landed = null, Func<string, bool>? declined = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(say);
@@ -128,7 +138,13 @@ public static class ModelSetup
             // spot is that silence looked exactly like health.
             say("setup: " + Describe(loader));
 
-            foreach (var (name, have, need) in Unfinished(loader))
+            // EVERYTHING THIS RUN WILL CARRY ON WITH IS QUEUED WHERE AN APP CAN SEE IT (Step 4),
+            // before the first byte moves, so the second item reads "waiting its turn" rather
+            // than not existing until the first is done.
+            var unfinished = Unfinished(loader, declined: declined);
+            foreach (var (name, have, need) in unfinished) SetupBoard.Queue(name, null, need, have);
+
+            foreach (var (name, have, need) in unfinished)
             {
                 ct.ThrowIfCancellationRequested();
                 say($"carrying on with {name}: {have} of {need} bytes already here");
@@ -212,6 +228,13 @@ public static class ModelSetup
     }
 
     private static IEnumerable<string> Ids(BundleModelLoader loader) => loader.InstalledIds();
+
+    // A predicate that throws refuses nothing: a resume is never cancelled on a guess.
+    private static bool Declined(Func<string, bool> declined, string id)
+    {
+        try { return declined(id); }
+        catch { return false; }
+    }
 
     /// <summary>
     /// Everything the first-run plan wants that this device does not have a single
@@ -323,6 +346,10 @@ public static class ModelSetup
                 ? $"{brainFirst} first, then smallest first"
                 : "smallest first";
             say($"setup: starting {todo.Count} download(s), {head}");
+
+            // THE WHOLE QUEUE, VISIBLE BEFORE THE FIRST BYTE (Step 4). A planner that knows the
+            // words for each item ("the ears") will have queued them already; this keeps them.
+            foreach (var (name, need) in todo) SetupBoard.Queue(name, null, need);
 
             foreach (var (name, need) in todo)
             {

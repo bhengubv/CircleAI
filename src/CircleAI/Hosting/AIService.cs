@@ -268,8 +268,8 @@ public sealed class AIService : IAIService
             // Device-tier defaults: when ContextSize is left null, derive it
             // from the resolved device tier (set in ResolveModelPathAsync
             // when the selector ran; otherwise Desktop default).
-            var contextSize = _options.ContextSize
-                ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
+            var contextSize = Shared(_options.ContextSize
+                ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier));
 
             // THE PERSONA AND THE SAMPLER GO IN BEFORE LOAD, which is the only moment
             // MNN reads them - see QwenTextGenerator's constructor for why the persona
@@ -1317,8 +1317,8 @@ public sealed class AIService : IAIService
         if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))
             throw new InvalidOperationException($"Model '{modelId}' resolution failed.");
 
-        var contextSize = _options.ContextSize
-            ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
+        var contextSize = Shared(_options.ContextSize
+            ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier));
 
         // A HOST-SUPPLIED FACTORY STILL WINS. Overriding it here would take a
         // decision away from a host that made one deliberately.
@@ -1329,6 +1329,15 @@ public sealed class AIService : IAIService
         }
 
         return BuildByEngine(modelId, modelPath, contextSize, capability);
+    }
+
+    // THE BALANCE'S SHARE OF THE CONTEXT (Step 4): all of it unless the device is under pressure,
+    // and never so little that a persona and a question no longer fit.
+    private int Shared(int contextSize)
+    {
+        var share = _options.ContextShare;
+        if (share is >= 1 or <= 0 || double.IsNaN(share)) return contextSize;
+        return Math.Max(Math.Min(512, contextSize), (int)(contextSize * share));
     }
 
     /// <summary>The generator that can actually OPEN this model, chosen by its engine.</summary>
@@ -1369,6 +1378,7 @@ public sealed class AIService : IAIService
             Engine = _options.Engine,
             ContextSize = contextSize,
             Threads = _options.ThreadCount,
+            KvMode = _options.KvMode,
             Capability = capability,
             SystemPrompt = _options.SystemPrompt,
             SamplerJson = ProfileFor(modelId)?.SamplerConfigJson(),
