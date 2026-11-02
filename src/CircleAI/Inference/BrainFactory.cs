@@ -104,6 +104,8 @@ public sealed class BrainFactory : IBrainFactory
             // Working memory at 4 bits with keys in the MSE form (S3): measured on the 2B against
             // the fork, it kept every one of 289 tokens in a quarter of fp16's memory - fewer bits
             // only when the balance or Wolverine asks for them, and then the leaner of the two.
+            // THE ROW'S GENERATION PROFILE samples the answers (S5) - the model card's numbers,
+            // data rather than code - and says whether it thinks by default.
             var threads = tuning.Threads(request.Threads is > 0
                 ? request.Threads.Value
                 : Managed.Kernels.KernelThreads.Choose(fallback: DeviceContext.Read().BrainThreads)) ?? 1;
@@ -115,6 +117,8 @@ public sealed class BrainFactory : IBrainFactory
                 Threads = threads,
                 KvMode = Leaner(tuning.WorkingMemory, request.KvMode) ?? KvCompressionMode.TurboQuant4Bit,
                 KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
+                Generation = entry?.Generation,
+                Thinking = entry?.Generation?.EnableThinking ?? false,
                 ThinkingBudget = tuning.ThinkingBudget ?? 0,
             });
         }
@@ -164,9 +168,9 @@ public sealed class BrainFactory : IBrainFactory
 
     /// <summary>The engine a model file needs, read from the file when no row says.</summary>
     /// <remarks>
-    /// A GGUF the C# engine reads - qwen35 in PTQ1_0, Bonsai 2 - is the C# engine's; any other
-    /// GGUF is llama.cpp's; anything else is an MNN bundle. A GGUF that cannot be opened is left
-    /// to llama.cpp, which will say why at load.
+    /// A GGUF the C# engine reads - qwen35 in PTQ1_0 or PQ2_0, Bonsai 2 - is the C# engine's; any
+    /// other GGUF is llama.cpp's; anything else is an MNN bundle. The packing is the first ternary
+    /// tensor's. A GGUF that cannot be opened is left to llama.cpp, which will say why at load.
     /// </remarks>
     public static ModelEngine EngineOf(string modelPath)
     {
@@ -175,14 +179,14 @@ public sealed class BrainFactory : IBrainFactory
         {
             using var file = Managed.Gguf.GgufFile.Open(modelPath);
             var architecture = file.TryGetValue("general.architecture", out var arch) ? arch.AsString() : null;
-            var ternary = false;
+            string? packing = null;
             foreach (var tensor in file.Tensors)
             {
-                if (tensor.Type != Managed.Gguf.GgmlType.PTQ1_0) continue;
-                ternary = true;
+                if (tensor.Type is not (Managed.Gguf.GgmlType.PTQ1_0 or Managed.Gguf.GgmlType.PQ2_0)) continue;
+                packing = tensor.Type.ToString();
                 break;
             }
-            return Managed.ManagedChatGenerator.Reads(architecture, ternary ? "PTQ1_0" : null)
+            return Managed.ManagedChatGenerator.Reads(architecture, packing)
                 ? ModelEngine.Managed
                 : ModelEngine.LlamaCpp;
         }

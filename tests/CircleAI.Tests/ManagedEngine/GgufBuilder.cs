@@ -124,28 +124,55 @@ internal sealed class GgufBuilder
     }
 }
 
-/// <summary>The real Bonsai 2 2B and its S0 fixtures, for the opt-in parity tests.</summary>
+/// <summary>The real Bonsai 2 files and their reference fixtures, for the opt-in parity tests.</summary>
 internal static class Bonsai2Model
 {
     /// <summary>Said by a parity test that cannot run here.</summary>
     public const string Missing = "SKIPPED: the 2B PTQ1_0 model is not on this machine; set BONSAI2_2B_GGUF to it to run this.";
 
-    /// <summary>The 2B PTQ1_0 file: BONSAI2_2B_GGUF, else where the app keeps it; null when neither is there.</summary>
-    public static string? TwoB()
+    // A fixture set (fixtures/bonsai2/<set>) and the file it was made from: the catalogue row's folder
+    // and file, and the environment variable that points at it elsewhere.
+    private static readonly Dictionary<string, (string Folder, string File, string Variable)> Sets = new(StringComparer.Ordinal)
     {
-        var path = Environment.GetEnvironmentVariable("BONSAI2_2B_GGUF");
+        ["2B"] = ("Ternary-Bonsai-2-2B", "Ternary-Bonsai-2-2B-PTQ1_0.gguf", "BONSAI2_2B_GGUF"),
+        ["4B"] = ("Ternary-Bonsai-2-4B", "Ternary-Bonsai-2-4B-PTQ1_0.gguf", "BONSAI2_4B_GGUF"),
+        ["2B-PQ2_0"] = ("Ternary-Bonsai-2-2B-PQ2_0", "Ternary-Bonsai-2-2B-PQ2_0.gguf", "BONSAI2_2B_PQ2_GGUF"),
+        ["4B-PQ2_0-MTP"] = ("Ternary-Bonsai-2-4B-PQ2_0-MTP", "Ternary-Bonsai-2-4B-PQ2_0-MTP-Q8_0.gguf", "BONSAI2_4B_MTP_GGUF"),
+    };
+
+    /// <summary>The 2B PTQ1_0 file: BONSAI2_2B_GGUF, else where the app keeps it; null when neither is there.</summary>
+    public static string? TwoB() => Of("2B");
+
+    /// <summary>The file a fixture set was made from: its variable, else where the app keeps it; null when neither is there.</summary>
+    public static string? Of(string set)
+    {
+        var (folder, file, variable) = Sets[set];
+        var path = Environment.GetEnvironmentVariable(variable);
         if (string.IsNullOrEmpty(path))
             path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CircleAI", "models", "Ternary-Bonsai-2-2B", "Ternary-Bonsai-2-2B-PTQ1_0.gguf");
+                "CircleAI", "models", folder, file);
         return File.Exists(path) ? path : null;
     }
 
+    /// <summary>Said by a parity test whose model is not here.</summary>
+    public static string MissingOf(string set) =>
+        $"SKIPPED: {Sets[set].File} is not on this machine; set {Sets[set].Variable} to it to run this.";
+
     /// <summary>A fixture of the 2B from fixtures/bonsai2/2B (linked into the test output).</summary>
-    public static JsonDocument Fixture(string name) =>
-        JsonDocument.Parse(File.ReadAllText(FixturePath(name)));
+    public static JsonDocument Fixture(string name) => Fixture("2B", name);
+
+    /// <summary>A fixture from fixtures/bonsai2/<paramref name="set"/> (linked into the test output).</summary>
+    public static JsonDocument Fixture(string set, string name) =>
+        JsonDocument.Parse(File.ReadAllText(FixturePath(set, name)));
+
+    /// <summary>Whether fixtures/bonsai2/<paramref name="set"/> holds <paramref name="name"/>.</summary>
+    public static bool HasFixture(string set, string name) => File.Exists(FixturePath(set, name));
 
     /// <summary>Where a file of fixtures/bonsai2/2B is in the test output.</summary>
-    public static string FixturePath(string name) => Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", "2B", name);
+    public static string FixturePath(string name) => FixturePath("2B", name);
+
+    /// <summary>Where a file of fixtures/bonsai2/<paramref name="set"/> is in the test output.</summary>
+    public static string FixturePath(string set, string name) => Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", set, name);
 
     /// <summary>Said by a vision test that cannot run here.</summary>
     public const string MissingTower = "SKIPPED: the 2B or its Q8_0 vision tower is not on this machine; set BONSAI2_2B_GGUF and BONSAI2_2B_MMPROJ to run this.";

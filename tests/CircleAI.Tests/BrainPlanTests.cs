@@ -251,11 +251,16 @@ public sealed class BrainPlanTests : IDisposable
     [Fact]
     public void The_catalogue_runs_the_Bonsai_2_fleet_on_the_CSharp_engine()
     {
+        // Every file of the fleet is on the C# engine (S5 catalogued the whole fleet); the brains in
+        // both packings, and the PQ2_0 files with their MTP head, run there today; the drafters and
+        // the vision towers wait for their code (Bonsai2FleetTests).
         using var registry = new ModelRegistryService();
         var fleet = registry.AllModels.Where(m => m.Name.StartsWith("Ternary-Bonsai-2-", StringComparison.Ordinal)).ToList();
-        Assert.Equal(4, fleet.Count);
+        Assert.Equal(16, fleet.Count);
         Assert.All(fleet, m => Assert.Equal(ModelEngine.Managed, m.Engine));
-        Assert.All(fleet, m => Assert.Equal(ModelEngine.Managed, EngineChoice.Run(m, [ModelEngine.Mnn, ModelEngine.Managed])));
+        var brains = fleet.Where(m => m.Quantization is "PTQ1_0" or "PQ2_0" or "PQ2_0-MTP").ToList();
+        Assert.Equal(10, brains.Count);
+        Assert.All(brains, m => Assert.Equal(ModelEngine.Managed, EngineChoice.Run(m, [ModelEngine.Mnn, ModelEngine.Managed])));
     }
 
     [Fact]

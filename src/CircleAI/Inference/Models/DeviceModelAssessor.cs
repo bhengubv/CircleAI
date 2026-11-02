@@ -294,7 +294,8 @@ public sealed class DeviceModelAssessor : IModelAssessor
             return false;
 
         // 1c. The same question for the C# engine, which ships in every build: it reads
-        //     qwen35 in PTQ1_0 and nothing else yet.
+        //     what ManagedChatGenerator.Reads says (qwen35 in PTQ1_0 or PQ2_0) and nothing else
+        //     yet - not an MTP file, a drafter or a vision tower before their code lands.
         if (e.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(e.Architecture, e.Quantization))
             return false;
 

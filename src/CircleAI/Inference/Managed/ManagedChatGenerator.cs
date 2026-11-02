@@ -76,6 +76,20 @@ public sealed record ManagedGeneratorOptions
     /// <summary>Whether the model thinks before it answers (the template's enable_thinking).</summary>
     public bool Thinking { get; init; }
 
+    /// <summary>
+    /// The catalogue row's generation profile: its samplers - thinking off and on - replace the
+    /// card numbers this engine carries (<see cref="SamplingSettings.Direct"/>, <see cref="SamplingSettings.Thinking"/>).
+    /// Null keeps those.
+    /// </summary>
+    public CircleAI.Core.Models.GenerationProfile? Generation { get; init; }
+
+    /// <summary>
+    /// Tokens the MTP head drafts ahead per step when the file has one (Bonsai 2's PQ2_0-MTP files):
+    /// the trunk checks them all in one pass and keeps what it would have chosen itself, so the reply
+    /// is the one plain decoding gives, token for token. 2 is the card's depth; 0 decodes plainly.
+    /// </summary>
+    public int Drafts { get; init; } = 2;
+
     /// <summary>Reply tokens when a call asks for none.</summary>
     public int MaxNewTokens { get; init; } = 512;
 
@@ -152,6 +166,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
     private Qwen35State _state;
     private int _disposed;
 
+    // Speculative decoding with the file's MTP head (S5): null for a file without one, or when the
+    // options ask for plain decoding.
+    private readonly Speculator? _speculator;
+
     // Seeing: the tower beside the model (its shape read at load, its weights on the first picture),
     // the template's picture token, and the last few pictures' tokens by their hash.
     private readonly string? _towerPath;
@@ -191,6 +209,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
         _modelIdentity = Identity(ggufPath, file.Length);
         _logits = new float[model.Config.Vocabulary];
         _state = model.NewState(options.ContextLength, options.KvMode, options.KeyForm);
+
+        if (model.HasMtp && options.Drafts > 0)
+            _speculator = new Speculator(model, new MtpDrafter(model, _state.Capacity), options.Drafts);
 
         foreach (var key in new[] { "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id" })
         {
@@ -238,12 +259,35 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
 
     /// <summary>
     /// Whether this engine reads a model of <paramref name="architecture"/> packed as
-    /// <paramref name="quantization"/>, as a catalogue row names them: qwen35 in PTQ1_0 (Bonsai 2).
-    /// The file itself is checked again when it is opened.
+    /// <paramref name="quantization"/>, as a catalogue row names them: qwen35 in PTQ1_0 or PQ2_0
+    /// (Bonsai 2). The file itself is checked again when it is opened.
     /// </summary>
+    /// <remarks>
+    /// THE ONE GATE FOR A ROW ON THIS ENGINE. EngineChoice, the device assessor and the brain factory
+    /// all ask it, so a row this engine cannot open yet - a packing it has no kernels for, an MTP
+    /// file, a drafter, a vision tower - is never selected, fetched or built.
+    /// </remarks>
     public static bool Reads(string? architecture, string? quantization) =>
         string.Equals(architecture, "qwen35", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(quantization, "PTQ1_0", StringComparison.OrdinalIgnoreCase);
+        && ReadPackings.Any(p => string.Equals(quantization, p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The packings <see cref="Reads"/> accepts for qwen35, as catalogue rows name them: PQ2_0-MTP is
+    /// the PQ2_0 brain with its multi-token-prediction head, which this engine drafts with.
+    /// </summary>
+    public static IReadOnlyList<string> ReadPackings { get; } = ["PTQ1_0", "PQ2_0", "PQ2_0-MTP"];
+
+    /// <summary>
+    /// What this engine delivers of a model's capabilities today: answers, a thinking mode, a long
+    /// context and tool calls - held to the template's XML form, which ToolCallReader reads (S8). Not
+    /// images: a brain sees only when its tower sits beside it (S8), which the setup plan fetches
+    /// behind it only where both fit (S7), so a row cannot promise sight.
+    /// </summary>
+    public static ChatCapability Delivers =>
+        ChatCapability.Default | ChatCapability.Tools | ChatCapability.Reasoning | ChatCapability.LongContext;
+
+    /// <summary>What this engine reads, said the way a refusal says it.</summary>
+    public static string WhatItReads => "qwen35 in " + string.Join(" or ", ReadPackings);
 
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
@@ -266,8 +310,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
                 var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options, towerPath, tower?.Config);
                 var thinking = options.Thinking ? "on" : "off";
                 var memory = options.KvMode == CircleAI.Core.KvCompressionMode.Off ? "fp16" : $"{options.KvMode}, keys {options.KeyForm}";
+                var drafting = generator._speculator is { } s ? $", the MTP head drafting {s.Drafts} ahead" : model.HasMtp ? ", its MTP head unused" : "";
                 var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
-                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Packing}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}{drafting}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
                 return generator;
             }
             catch
@@ -482,6 +527,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
             _state = state;
             _history.Clear();
             _history.AddRange(history);
+            _speculator?.Forget(); // the draft source's carry belongs to the state that was replaced
             return true;
         }
         finally
@@ -564,13 +610,19 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
                 if (i == lastTurn) _state.Mark();
                 if (built.Slots is { } slots && slots[i].Image >= 0)
                 {
+                    // A picture token goes in as the tower made it; an MTP head drafts from text, so
+                    // it does not see this position (its drafts there may miss - the reply cannot).
                     var (image, index) = slots[i];
                     var tokens = Seen(built.Images[image]);
                     _model.ForwardImageToken(tokens.Token(index), index, tokens.Columns, tokens.Rows, _state, i == prompt.Count - 1 ? _logits : default);
                 }
-                else
+                else if (_speculator is null)
                 {
                     _model.Forward(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
+                }
+                else
+                {
+                    _speculator.Run(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
                 }
                 _history.Add(prompt[i]);
             }
@@ -635,7 +687,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
             ToolCallGrammar.State? call = null;
             var overruled = 0;
 
-            while (generated.Count < maxTokens)
+            // ONE TOKEN OF THE REPLY from one position's logits: the tool call's form, the sampler, an
+            // end of generation (not added), the text, a stop sequence, the length. True when the reply
+            // ends with it - then it is not fed back. Plain and speculative decoding both draw every
+            // token through here, in order, so a speculative reply is the plain reply token for token.
+            (int Token, bool End) Step(float[] logits)
             {
                 ct.ThrowIfCancellationRequested();
                 int token;
@@ -648,9 +704,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
                 }
                 else
                 {
+                    // THIS POSITION'S LOGITS, the parameter: under speculative decoding they are the
+                    // verify pass's for this position, not the generator's own buffer.
                     if (call is { } held)
                     {
-                        var masked = grammar.Mask(_logits, held, _callPiece, _endOfGeneration);
+                        var masked = grammar.Mask(logits, held, _callPiece, _endOfGeneration);
                         if (masked == ToolCallGrammar.Masked.Overruled) overruled++;
                         if (masked == ToolCallGrammar.Masked.Nothing)
                         {
@@ -658,13 +716,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
                             call = null;
                         }
                     }
-                    token = sampler.Sample(_logits, generated);
+                    token = sampler.Sample(logits, generated);
                 }
                 if (firstAt == 0) firstAt = Stopwatch.GetTimestamp();
                 if (_endOfGeneration.Contains(token))
                 {
                     finish = FinishReason.Stop;
-                    break;
+                    return (token, true);
                 }
                 generated.Add(token);
                 if (call is { } open) call = grammar.TryAdvance(open, _callPiece(token), out var next) ? next : null;
@@ -683,13 +741,27 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
                     {
                         finish = FinishReason.Stop;
                         stopped = true;
-                        break;
+                        return (token, true);
                     }
                 }
+                return (token, generated.Count >= maxTokens);
+            }
 
-                if (generated.Count >= maxTokens) break;
-                _model.Forward(token, _state, _logits);
-                _history.Add(token);
+            _speculator?.TakeCounts();
+            if (maxTokens > 0)
+            {
+                var (token, end) = Step(_logits);
+                while (!end)
+                {
+                    if (_speculator is not null)
+                    {
+                        (token, end) = _speculator.Step(token, _state, _history, Step);
+                        continue;
+                    }
+                    _model.Forward(token, _state, _logits);
+                    _history.Add(token);
+                    (token, end) = Step(_logits);
+                }
             }
             if (!stopped)
             {
@@ -712,6 +784,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
             var pictures = built.Images.Length == 0 ? "" : Invariant($" ({built.Images.Length} pictures, {built.Images.Sum(p => p.Count)} of them picture tokens)");
             CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens{pictures}, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
             CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}"));
+            var (drafted, accepted) = _speculator?.TakeCounts() ?? (0L, 0L);
+            if (drafted > 0)
+                CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
             if (thinking) CircleLog.Info(Area, Invariant($"thought for {thoughtTokens} tokens{(closedByBudget ? $", closed by its {thinkingBudget}-token budget" : string.Empty)} ({options.Effort?.TemplateName() ?? "the generator's default"})"));
 
@@ -837,6 +912,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
             _state = state;
             _history.Clear();
             for (var i = 0; i < length; i++) _history.Add(prompt[i]);
+            _speculator?.Forget();
             _state.MarkPrimed();
             File.SetLastWriteTimeUtc(file, DateTime.UtcNow); // in use: the last to be pruned
             return true;
@@ -1154,9 +1230,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
         return functions.Count == 0 ? _toolCalls : new ToolCallGrammar(functions);
     }
 
-    // The model card's numbers for this mode, at the caller's temperature. A caller can tighten
-    // top-k and top-p but not loosen them past the card: GenerationOptions' own defaults (40 and
-    // 0.9) are generic, the card's are what this model is tuned for. Temperature 0 is plain greedy.
+    // The model card's numbers for this mode - the catalogue row's profile when it has one (S5) - at
+    // the caller's temperature. A caller can tighten top-k and top-p but not loosen them past the
+    // card: GenerationOptions' own defaults (40 and 0.9) are generic, the card's are what this model
+    // is tuned for. Temperature 0 is plain greedy.
     private SamplingSettings Settings(GenerationOptions options, bool thinking)
     {
         if (options.Temperature <= 0)
@@ -1164,12 +1241,32 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
             if (thinking) CircleLog.Warn(Area, "greedy decoding with thinking on can loop (the model card advises against it)");
             return SamplingSettings.Greedy;
         }
-        var card = thinking ? SamplingSettings.Thinking : SamplingSettings.Direct;
+        var card = Card(_options.Generation, thinking);
         return card with
         {
             Temperature = options.Temperature,
             TopK = options.TopK > 0 ? Math.Min(options.TopK, card.TopK) : card.TopK,
             TopP = options.TopP > 0 ? Math.Min(options.TopP, card.TopP) : card.TopP,
+        };
+    }
+
+    /// <summary>
+    /// The sampling a generation profile asks for with thinking on or off: the profile's sampler for
+    /// that mode, read as this engine samples - penalties over the last 64 generated tokens, as the
+    /// card says - or the engine's own card numbers when the profile has none.
+    /// </summary>
+    internal static SamplingSettings Card(CircleAI.Core.Models.GenerationProfile? profile, bool thinking)
+    {
+        var sampler = thinking ? profile?.ThinkingSampler ?? profile?.Sampler : profile?.Sampler;
+        if (sampler is null) return thinking ? SamplingSettings.Thinking : SamplingSettings.Direct;
+        const int window = 64;
+        return sampler.SamplerType switch
+        {
+            "greedy" => SamplingSettings.Greedy,
+            // MNN's "penalty": the repetition penalty, then the highest logit.
+            "penalty" => SamplingSettings.Greedy with { RepeatPenalty = (float)sampler.Penalty, PenaltyWindow = window },
+            _ => new SamplingSettings((float)sampler.Temperature, sampler.TopK, (float)sampler.TopP, (float)sampler.MinP,
+                (float)sampler.PresencePenalty, 0f, (float)sampler.Penalty, window),
         };
     }
 

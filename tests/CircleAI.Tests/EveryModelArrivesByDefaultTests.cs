@@ -76,10 +76,18 @@ public sealed class EveryModelArrivesByDefaultTests : IDisposable
     private IReadOnlyList<SetupStep> Plan(DeviceProbe probe) =>
         FirstRun.Plan(_registry, new BundleModelLoader(Store(), _registry), probe, speech: true);
 
+    // Runnable means an engine this build ships can open it, too: since S5 the catalogue holds the
+    // whole Bonsai 2 fleet, and its vision towers and DFlash drafters are rows no engine reads yet -
+    // FirstRun leaves them out (EngineChoice.Opens), and so must "this phone can run".
+    // A brain's vision tower is never opened as a model of its own: it runs beside a brain it
+    // belongs to (BrainCompanions.Usable), which is how setup plans it and the fetch admits it.
     private bool CanRun(ModelEntry m, DeviceProbe probe)
         => !m.Retired
         && ModelFit.CouldEverHold(m, probe)
-        && ModelFit.FitsStorage(m, probe.StorageFreeGb);
+        && ModelFit.FitsStorage(m, probe.StorageFreeGb)
+        && (EngineChoice.Opens(m, DeviceModelAssessor.ShippedEngines())
+            || (BrainCompanions.IsTower(m) && _registry.AllModels.Any(brain => BrainCompanions.Belongs(m, brain)
+                && BrainCompanions.Usable(new BrainCompanion(m, CompanionKind.VisionTower), brain, DeviceModelAssessor.ShippedEngines()))));
 
     [Fact]
     public void Every_voice_this_phone_can_run_is_fetched_without_being_asked_for()
@@ -120,8 +128,10 @@ public sealed class EveryModelArrivesByDefaultTests : IDisposable
             .Select(s => s.Model.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // A brain's tower is not an ability of its own: it arrives with its brain or not at all
+        // (StepFourPlanTests), so only the abilities' own models are counted here.
         var runnable = _registry.AllModels
-            .Where(m => m.Modality == modality && CanRun(m, probe))
+            .Where(m => m.Modality == modality && !BrainCompanions.IsCompanion(m) && CanRun(m, probe))
             .Select(m => m.Name)
             .ToList();
 

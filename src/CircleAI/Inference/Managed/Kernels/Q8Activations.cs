@@ -2,17 +2,28 @@
 //
 // The int8 form an activation vector takes before it meets ternary weights. Bonsai's
 // PTQ1_0 pairs with Q8_0: blocks of 32 values, one scale each. The rounding follows
-// the pinned fork's x86 path (ggml-cpu/arch/x86/quants.c, quantize_row_q8_0) exactly,
-// because that build made the S0 fixtures this engine is held to:
+// the AVX branch of the pinned fork's x86 quantize_row_q8_0 (ggml-cpu/arch/x86/quants.c):
 //
 //   d  = amax / 127, stored as fp16
-//   id = 127 / amax            (NOT 1/d - the reference quantiser and the x86 path
-//                               differ here, and the x86 path is the ruler)
+//   id = 127 / amax
 //   q  = round-half-to-even(x * id)
 //
 // Two values at a rounding midpoint go to different integers under half-away-from-
 // zero, which is what C's roundf does; MathF.Round's default is half-to-even, which
 // is what _mm256_round_ps(_MM_ROUND_NEAREST) does.
+//
+// THE RULER DOES NOT RUN THIS BRANCH - MEASURED, AND KEPT ON PURPOSE (S5). The shipped win-x64 fork
+// is built without AVX (its CMakeCache: GGML_AVX/AVX2 OFF, GGML_SSE42 ON), so its quantize_row_q8_0
+// is the reference one: id = 1 / d, C's roundf. Asked directly - ggml_get_type_traits_cpu(Q8_0)'s
+// from_float in the shipped ggml-cpu.dll - it puts amax 1.4285147, x 1.1304388 on 101 where this
+// puts it on 100, and 2.5 at amax 127 on 3 where this puts it on 2. (127 / amax and 1 / d differ in
+// the last bit for 27% of blocks.) S5 switched this file to the reference rounding and measured, over
+// all 12 x 32 parity steps: the text no closer (mean top-20 differences 0.036 for the 2B and 0.035 for
+// the 4B with it, 0.036 and 0.036 with this; worst 0.276 and 0.318 with it, 0.249 and 0.309 with this)
+// and the vision tower's worst value further from the fork's (0.148 against 0.029, beyond the fork's
+// own 0.11). So the switch was taken back, and which rounding the
+// engine keeps is a decision for the owner with that evidence. The fork on the phone (the NEON
+// branch) takes id = 1 / d with midpoints to even - neither this nor the reference.
 
 using System.Runtime.CompilerServices;
 

@@ -78,6 +78,53 @@ public static class EngineChoice
         => Run(entry, shipped) is not null;
 
     /// <summary>
+    /// Whether a row is worth having on this build at all - the question a setup plan, a fetch and a
+    /// resume ask before spending anybody's data on it.
+    /// </summary>
+    /// <remarks>
+    /// A ROW ON THE C# ENGINE NEEDS THE ENGINE TO READ IT, WHATEVER IT IS FOR. The Bonsai 2 fleet
+    /// catalogues files this engine does not open as rows of their own beside the brains it runs - a
+    /// vision tower (a Vision row, "clip": the engine sees with the 2B's when it sits beside the brain,
+    /// S8, and the setup plan fetches it right behind its brain, S7 - never as a model of its own), a
+    /// speculative drafter ("dflash", no code yet) - and the speech
+    /// stack's carve-out below ("not this list's") would have let the tower through: the setup
+    /// plan's eyes slot and its everything-else list take any Vision row that fits, and a fetch's
+    /// own check passed every row that was not chat. So the C# engine's pack rule
+    /// (<see cref="Run"/>) is asked of its rows of every modality, and they arrive the day their
+    /// code lands, with no catalogue edit. (The fetch asks a tower about its brain instead:
+    /// <c>BundleModelLoader.CanRunHere</c>.)
+    /// <para>
+    /// EVERY OTHER ROW IS ASKED WHAT IT WAS ASKED BEFORE: a brain needs an engine the build ships;
+    /// the speech stack's rows, on their own engines, are not this question's.
+    /// </para>
+    /// </remarks>
+    public static bool Opens(ModelEntry entry, IReadOnlyCollection<ModelEngine>? shipped = null)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var have = shipped ?? DeviceModelAssessor.ShippedEngines();
+        if (entry.Engine == ModelEngine.Managed) return Run(entry, have) is not null;
+        return entry.Modality != ModelModality.Chat || have.Contains(entry.Engine);
+    }
+
+    /// <summary>
+    /// The capabilities of <paramref name="declared"/> that <paramref name="entry"/>'s engine
+    /// delivers here today: what a selector may count when it matches a request to the row.
+    /// </summary>
+    /// <remarks>
+    /// THE ROW SAYS WHAT THE MODEL CAN DO; THIS SAYS WHAT THE ENGINE CAN DO WITH IT. The Bonsai 2
+    /// cards give the brains tool calls, thinking and a 262K context, and their rows say so. The C#
+    /// engine delivers the tool calls since S8 (the template's XML form, read by ToolCallReader); a
+    /// brain sees only with its tower beside it, which arrives behind the brain only where both fit
+    /// (S7), so a row cannot promise sight and a request needing it must not be routed to it. <see cref="Managed.ManagedChatGenerator.Delivers"/> is the engine's own list; when it
+    /// grows, the rows are already right.
+    /// </remarks>
+    public static ChatCapability Delivers(ModelEntry entry, ChatCapability declared)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.Engine == ModelEngine.Managed ? declared & Managed.ManagedChatGenerator.Delivers : declared;
+    }
+
+    /// <summary>
     /// A model this device could run that would be better than the one it is running,
     /// or null when there is nothing worth saying.
     /// </summary>
@@ -156,7 +203,7 @@ public static class EngineChoice
 
         if (entry.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(entry.Architecture, entry.Quantization))
             return $"{entry.Name} is {entry.Architecture ?? "an unnamed architecture"} packed as {entry.Quantization}, "
-                 + "which the C# engine does not read yet (it reads qwen35 in PTQ1_0)";
+                 + $"which the C# engine does not read yet (it reads {Managed.ManagedChatGenerator.WhatItReads})";
 
         return $"{entry.Name} opens here with {entry.Engine}";
     }

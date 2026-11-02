@@ -100,6 +100,9 @@ try
         ["sha256"] = sha,
         ["fork"] = ForkTag,
         ["runtime"] = "src/CircleAI/Inference/runtimes/win-x64/native/llama.dll",
+        // The instruction sets the ruler itself ran on: its float order depends on them (the
+        // shipped build is SSE4.2 - no AVX - so its PQ2_0 and Q8_0 paths are the SSE ones).
+        ["system_info"] = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(Llama.llama_print_system_info())?.Trim(),
         ["made"] = DateTime.UtcNow.ToString("yyyy-MM-dd"),
     };
 

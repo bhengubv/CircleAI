@@ -105,7 +105,9 @@ public static class ModelChoice
             // gates live, and there is no catalogue on that path. So a GGUF could be
             // named on a screen by a build with no llama.cpp, which is the display half
             // of the 2026-10-19 Windows incident.
-            .Where(m => modality != ModelModality.Chat || EngineChoice.CanRun(m, engines))
+            // And for every other job, not a row on the C# engine it cannot read yet - a Bonsai 2
+            // vision tower is a Vision row long before the engine can see (EngineChoice.Opens).
+            .Where(m => modality == ModelModality.Chat ? EngineChoice.CanRun(m, engines) : EngineChoice.Opens(m, engines))
             // NEVER A RETIRED ONE - "nothing less than Qwen3.5 is the LLM". The
             // installed-first rule below named Qwen3-0.6B, the first entry in the
             // registry, as the P30's brain on every screen and in the setup census,

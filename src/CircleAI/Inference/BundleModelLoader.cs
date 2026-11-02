@@ -733,7 +733,16 @@ public sealed class BundleModelLoader : IModelLoader
     /// A DOWNLOAD NOTHING HERE CAN OPEN IS NOT WORTH FINISHING. The Windows service on
     /// 2026-10-19 held 3.6 GB of Ternary-Bonsai-2-27B - a GGUF - in a build that ships
     /// no llama.cpp for Windows, and the resume would have spent 2.3 GB more on it.
-    /// Chat models only: the speech stack's engines are not the brain's.
+    /// Chat models only, but for the C# engine's rows of every kind: the speech stack's
+    /// engines are not the brain's, and a drafter on the C# engine is not fetched before the
+    /// engine reads it (EngineChoice.Opens, the one rule).
+    /// <para>
+    /// A BRAIN'S VISION TOWER ON THE C# ENGINE IS FETCHED FOR ITS BRAIN, never opened as a
+    /// model of its own: the setup plan puts it right behind the brain (BrainCompanions, S7)
+    /// and the brain finds it in the folder named after the tower's row (S8). So it is worth
+    /// having whenever a brain it belongs to can use it (BrainCompanions.Usable) - asking it
+    /// Opens alone, as a model of its own, dropped the plan's own step here, unfetched.
+    /// </para>
     /// </remarks>
     public bool CanRunHere(string modelName, IReadOnlyCollection<ModelEngine>? engines = null)
     {
@@ -741,8 +750,14 @@ public sealed class BundleModelLoader : IModelLoader
         {
             ThrowIfDisposed();
             var entry = _registry.GetLatestModel(modelName);
-            if (entry is null || entry.Modality != ModelModality.Chat) return true;
-            return (engines ?? DeviceModelAssessor.ShippedEngines()).Contains(entry.Engine);
+            if (entry is null) return true;
+            if (entry.Engine == ModelEngine.Managed && BrainCompanions.IsTower(entry))
+            {
+                var tower = new BrainCompanion(entry, CompanionKind.VisionTower);
+                return _registry.AllModels.Any(brain => brain.Modality == ModelModality.Chat && !brain.Retired
+                    && BrainCompanions.Belongs(entry, brain) && BrainCompanions.Usable(tower, brain, engines));
+            }
+            return EngineChoice.Opens(entry, engines);
         }
         catch
         {

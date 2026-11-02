@@ -506,7 +506,9 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
     {
         if (required == ChatCapability.None) return true;
 
-        var declared = ParseCapabilities(entry.Capabilities);
+        // What the row declares, as far as its engine delivers it here (EngineChoice.Delivers): a
+        // Bonsai brain is declared with tool calls, and the C# engine cannot hand them to the app yet.
+        var declared = EngineChoice.Delivers(entry, ParseCapabilities(entry.Capabilities));
         return (declared & required) == required;
     }
 

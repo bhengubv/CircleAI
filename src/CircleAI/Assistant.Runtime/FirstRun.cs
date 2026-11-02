@@ -327,9 +327,12 @@ public static class FirstRun
                 // that phone ran a lesser model for a week.
                 // AND NOT A BRAIN'S COMPANION (Step 4): a vision tower is not "the eyes" and a
                 // drafter is not "the brain" - each is fetched for its own brain, below, or not at all.
+                // AND A ROW THE C# ENGINE CANNOT READ AS A MODEL OF ITS OWN IS NOT ELIGIBLE, WHATEVER
+                // ITS MODALITY (EngineChoice.Opens): the Bonsai 2 fleet's drafters are catalogued
+                // before their code lands, and the eyes slot takes any Vision row.
                 var eligible = registry.AllModels
                     .Where(m => m.Modality == modality && !m.Retired)
-                    .Where(m => m.Modality != ModelModality.Chat || brainEngines.Contains(m.Engine))
+                    .Where(m => CircleAI.Inference.EngineChoice.Opens(m, brainEngines))
                     .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
                     .Where(m => !CircleAI.Inference.BrainCompanions.IsCompanion(m))
@@ -471,6 +474,7 @@ public static class FirstRun
             .Where(m => !m.Retired)
             .Where(m => m.Modality != ModelModality.Chat)
             .Where(m => !CircleAI.Inference.BrainCompanions.IsCompanion(m))
+            .Where(m => CircleAI.Inference.EngineChoice.Opens(m, brainEngines))
             .Where(m => !planned.Contains(m.Name))
             .Where(m => declined is null || !declined(m.Name))
             .Where(m => !loader.ModelPresent(m.Name))

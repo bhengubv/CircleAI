@@ -65,7 +65,10 @@ public sealed class TheBrainFloorTests : IDisposable
         // made it the same every time, and looped on two of eight typed answers; the
         // repetition penalty and then greedy did neither: maize four times out of four the
         // same and right, 28 of 28 spoken, no typed answer repeating itself.
-        var brains = Llms().Where(m => m.Generation?.Sampler is not null).ToList();
+        // MNN's brains: that config is what MNN reads at load. The C# engine's rows (Bonsai 2)
+        // carry the model card's samplers instead, which its own sampler applies - with the
+        // presence penalty MNN has no knob for (Bonsai2FleetTests).
+        var brains = Llms().Where(m => m.Engine == ModelEngine.Mnn && m.Generation?.Sampler is not null).ToList();
         Assert.NotEmpty(brains);
         foreach (var m in brains)
             Assert.True(m.Generation!.SamplerConfigJson() == "{\"sampler_type\":\"penalty\",\"penalty\":1.1,\"penalty_sampler\":\"greedy\"}",
@@ -143,8 +146,11 @@ public sealed class TheBrainFloorTests : IDisposable
     [Fact]
     public void Every_LLM_the_registry_will_run_is_Qwen3_5_or_newer()
     {
+        // A DFlash 2 drafter (architecture dflash) is a chat row that never answers: it drafts
+        // tokens for a Qwen3.5 brain, which is what this checks.
         var below = Llms()
             .Where(m => !m.Retired)
+            .Where(m => m.Architecture != "dflash")
             .Where(m => !Qwen35OrNewer.IsMatch(m.Name)
                         && m.Architecture is not ("qwen35" or "qwen3.5"))
             .Select(m => m.Name)
@@ -323,7 +329,9 @@ public sealed class TheBrainFloorTests : IDisposable
         var plan = FirstRun.Plan(_registry, loader,
             Probe(availableBytes: 24_000_000_000, totalBytes: 32_000_000_000), speech: false);
 
-        var eyes = Assert.Single(plan, s => s.Modality == ModelModality.Vision).Model;
+        // The eyes slot: a brain's own tower rides behind that brain as "the brain's eyes" (Step 4)
+        // and is not the eyes a desktop is given.
+        var eyes = Assert.Single(plan, s => s.Modality == ModelModality.Vision && !BrainCompanions.IsCompanion(s.Model)).Model;
         Assert.Equal("SmolVLM-256M-Instruct-MNN", eyes.Name);
         Assert.Equal("Apache-2.0", eyes.License);
     }

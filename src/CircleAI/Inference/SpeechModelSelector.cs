@@ -179,9 +179,12 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         // stayed invisible only because the one GGUF row in the catalogue carried a
         // placeholder MinRamGb of 24 that no test device could reach. Giving that row
         // its real requirements made the selector hand back a model nothing can run.
+        // AND A ROW ON THE C# ENGINE NEEDS THE ENGINE TO READ IT (EngineChoice.Opens): the C#
+        // engine ships in every build, and the Bonsai 2 vision towers are Vision rows catalogued
+        // before the engine can see - ranked above SmolVLM, they would win the eyes here.
         var shipped = DeviceModelAssessor.ShippedEngines();
         var ofModality = _registry.AllModels
-            .Where(e => e.Modality == modality && shipped.Contains(e.Engine))
+            .Where(e => e.Modality == modality && shipped.Contains(e.Engine) && EngineChoice.Opens(e, shipped))
             .ToList();
         if (ofModality.Count == 0) return null;   // nothing RUNNABLE for this modality — honest null
 
