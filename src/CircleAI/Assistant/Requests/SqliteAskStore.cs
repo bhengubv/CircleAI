@@ -33,7 +33,7 @@ public sealed class SqliteAskStore : IAskStore
     private const string Columns =
         "id, caller_key, client_request_id, session_id, lane, message, question, spoken, agentic, side_effect_free, "
         + "state, seq, text, kind, sentence, needs_permission, model_id, attempts, created_ms, updated_ms, started_ms, finished_ms, "
-        + "t_queue, t_wait, t_enrich, t_prefill, t_ptok, t_decode, t_otok, t_ttft, t_total, t_model, t_kv, t_finish";
+        + "t_queue, t_wait, t_enrich, t_prefill, t_ptok, t_decode, t_otok, t_ttft, t_total, t_model, t_kv, t_finish, plain";
 
     /// <summary>Opens (creating when needed) the store at <paramref name="databasePath"/>.</summary>
     public SqliteAskStore(string databasePath)
@@ -53,11 +53,17 @@ public sealed class SqliteAskStore : IAskStore
                  model_id TEXT, attempts INTEGER NOT NULL, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
                  started_ms INTEGER, finished_ms INTEGER,
                  t_queue INTEGER, t_wait INTEGER, t_enrich INTEGER, t_prefill INTEGER, t_ptok INTEGER,
-                 t_decode INTEGER, t_otok INTEGER, t_ttft INTEGER, t_total INTEGER, t_model TEXT, t_kv TEXT, t_finish TEXT);
+                 t_decode INTEGER, t_otok INTEGER, t_ttft INTEGER, t_total INTEGER, t_model TEXT, t_kv TEXT, t_finish TEXT,
+                 plain INTEGER NOT NULL DEFAULT 0);
                CREATE UNIQUE INDEX IF NOT EXISTS ix_asks_rid ON asks(caller_key, client_request_id) WHERE client_request_id IS NOT NULL;
                CREATE INDEX IF NOT EXISTS ix_asks_caller ON asks(caller_key, created_ms);
                CREATE INDEX IF NOT EXISTS ix_asks_state ON asks(state);
                CREATE INDEX IF NOT EXISTS ix_asks_seq ON asks(seq);");
+
+        // A STORE FROM BEFORE PLAIN ASKS GETS THE COLUMN, every ask in it a turn as it was. The
+        // phone's asks.db outlives an update; a column the reads expect and the file lacks
+        // would fail every read of it.
+        if (!HasColumn("asks", "plain")) Exec("ALTER TABLE asks ADD COLUMN plain INTEGER NOT NULL DEFAULT 0;");
 
         using var max = _db.CreateCommand();
         max.CommandText = "SELECT COALESCE(MAX(seq), 0) FROM asks;";
@@ -196,6 +202,16 @@ public sealed class SqliteAskStore : IAskStore
         cmd.ExecuteNonQuery();
     }
 
+    private bool HasColumn(string table, string column)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table});";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     private static readonly string[] Names = Columns.Split(',', StringSplitOptions.TrimEntries);
 
     private static string Placeholders() => string.Join(", ", Array.ConvertAll(Names, n => "$" + n));
@@ -220,6 +236,7 @@ public sealed class SqliteAskStore : IAskStore
         P("t_queue", t?.QueueMs); P("t_wait", t?.LoadWaitMs); P("t_enrich", t?.EnrichMs); P("t_prefill", t?.PrefillMs);
         P("t_ptok", t?.PromptTokens); P("t_decode", t?.DecodeMs); P("t_otok", t?.OutputTokens); P("t_ttft", t?.TtftMs);
         P("t_total", t?.TotalMs); P("t_model", t?.ModelId); P("t_kv", t?.KvPath); P("t_finish", t?.Finish);
+        P("plain", r.Plain ? 1 : 0);
         cmd.ExecuteNonQuery();
     }
 
@@ -269,6 +286,9 @@ public sealed class SqliteAskStore : IAskStore
             ModelId: S(r, 16), Attempts: r.GetInt32(17),
             CreatedAt: DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(18)),
             UpdatedAt: DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(19)),
-            StartedAt: T(r, 20), FinishedAt: T(r, 21), Timing: timing);
+            StartedAt: T(r, 20), FinishedAt: T(r, 21), Timing: timing)
+        {
+            Plain = !r.IsDBNull(34) && r.GetInt32(34) != 0,
+        };
     }
 }

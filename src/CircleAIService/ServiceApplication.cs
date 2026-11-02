@@ -474,7 +474,11 @@ public sealed class ServiceApplication : Application
                 readiness, conversations: null, shortcuts,
                 isFirstParty: key => CircleNeuronLinkService.FirstPartySignatures is { } sigs
                                      && sigs.Any(s => key.EndsWith(":" + s[..Math.Min(16, s.Length)], StringComparison.Ordinal)),
-                log: line => global::Android.Util.Log.Info("CircleAI.Asks", line));
+                log: line => global::Android.Util.Log.Info("CircleAI.Asks", line),
+                // HOW HARD THE BRAIN THINKS, PER QUESTION (S8): quick asks answer at once, hard ones
+                // think first within a budget of this phone's measured speed, and what the person
+                // cancels or asks again is learned here, in SelfModel, set further down this start.
+                effort: new CircleAI.Inference.EffortRouter());
             supervisor.SchedulerIdle = () => coordinator.IsIdle;
 
             CircleNeuronService.Brain = brain;

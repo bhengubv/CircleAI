@@ -88,6 +88,10 @@ public static class AskStates
 /// <param name="Spoken">The answer will be read aloud, so it is kept short.</param>
 /// <param name="Agentic">The caller allows tools for this turn.</param>
 /// <param name="SideEffectFree">Safe to run again after a crash. Anything that changes the world is false.</param>
+/// <param name="Plain">
+/// The message goes to the model exactly as written - no persona, notes or tools, no shortcut, no
+/// answer guard, no history: a service the brain performs on text (a translation), not a turn.
+/// </param>
 public sealed record AskSubmission(
     string CallerKey,
     string? ClientRequestId,
@@ -97,7 +101,8 @@ public sealed record AskSubmission(
     string? Question = null,
     bool Spoken = false,
     bool Agentic = false,
-    bool SideEffectFree = true)
+    bool SideEffectFree = true,
+    bool Plain = false)
 {
     /// <summary>The question to search and classify on: the raw question when given, else the message.</summary>
     public string Asked => string.IsNullOrWhiteSpace(Question) ? Message : Question!;
@@ -206,6 +211,13 @@ public sealed record AskRecord(
     /// <summary>The question to search and classify on.</summary>
     public string Asked => string.IsNullOrWhiteSpace(Question) ? Message : Question!;
 
+    /// <summary>
+    /// The message goes to the model as written: a service on text, not a turn (see
+    /// <see cref="AskSubmission.Plain"/>). Kept on the record so a plain ask resumed after a
+    /// crash is still plain.
+    /// </summary>
+    public bool Plain { get; init; }
+
     /// <summary>A new record for an accepted submission. The store assigns <see cref="Seq"/>.</summary>
     public static AskRecord Accept(string id, AskSubmission s, DateTimeOffset now) => new(
         Id: id,
@@ -230,7 +242,10 @@ public sealed record AskRecord(
         UpdatedAt: now,
         StartedAt: null,
         FinishedAt: null,
-        Timing: null);
+        Timing: null)
+    {
+        Plain = s.Plain,
+    };
 }
 
 /// <summary>The answer to a submission: accepted (new or the same one again), or refused at the door.</summary>

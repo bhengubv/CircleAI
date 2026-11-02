@@ -44,7 +44,15 @@ public sealed class SelfModel
     private readonly IMemoryService _memory;
     private readonly Action<string>? _say;
     private readonly Dictionary<string, ModelEvidence> _models = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<CircleAI.Inference.TurnWeight, List<CircleAI.Inference.EffortSignal>> _effort = [];
     private readonly object _gate = new();
+
+    /// <summary>How many of the latest signals about one kind of question the effort router weighs.</summary>
+    /// <remarks>
+    /// THE RECENT FEW, NOT ALL OF THEM: what a person wanted last month says less than what they
+    /// did this week, and a window lets a lesson be unlearned by the next ones.
+    /// </remarks>
+    public const int EffortWindow = 8;
 
     /// <param name="memory">The long-term memory. The same one the person's facts live in.</param>
     /// <param name="say">Where a line goes, so nothing here is ever silent.</param>
@@ -82,6 +90,32 @@ public sealed class SelfModel
     public IReadOnlyList<ModelEvidence> Models()
     {
         lock (_gate) return _models.Values.OrderBy(m => m.ModelId, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// How many steps of reasoning effort this device has learned to add to (positive) or take from
+    /// (negative) questions of this weight: one for every two re-asks more than cancels, among the
+    /// latest <see cref="EffortWindow"/>, at most two either way.
+    /// </summary>
+    /// <remarks>
+    /// TWO SIGNALS TO MOVE A STEP, so one impatient tap or one misheard question does not change
+    /// how every question after it is answered - and a cancel and a re-ask cancel each other out.
+    /// </remarks>
+    public int EffortShift(CircleAI.Inference.TurnWeight weight)
+    {
+        lock (_gate)
+        {
+            if (!_effort.TryGetValue(weight, out var signals) || signals.Count == 0) return 0;
+            var net = signals.Count(s => s == CircleAI.Inference.EffortSignal.AskedAgain)
+                    - signals.Count(s => s == CircleAI.Inference.EffortSignal.Cancelled);
+            return Math.Clamp(net / 2, -2, 2);
+        }
+    }
+
+    /// <summary>The latest signals about questions of this weight, oldest first.</summary>
+    public IReadOnlyList<CircleAI.Inference.EffortSignal> EffortSignals(CircleAI.Inference.TurnWeight weight)
+    {
+        lock (_gate) return _effort.TryGetValue(weight, out var signals) ? signals.ToList() : [];
     }
 
     // ── learning ─────────────────────────────────────────────────────────────
@@ -162,6 +196,45 @@ public sealed class SelfModel
                 ? $"{modelId} loaded and answered here"
                 : $"{modelId} did not: {detail ?? "no reason recorded"}",
         });
+    }
+
+    /// <summary>
+    /// Records what the person did with an answer given at <paramref name="effort"/>: cancelled it
+    /// while it was being written, or asked the same again once it was.
+    /// </summary>
+    /// <remarks>
+    /// A DECISION WITH ITS OUTCOME, APPENDED - the third cancel means more than the first, and
+    /// the router weighs the latest few. The question itself is never written down: the subject
+    /// holds its weight and the signal, the text the effort it was answered at.
+    /// </remarks>
+    public void LearnEffort(CircleAI.Inference.TurnWeight weight, CircleAI.Inference.EffortSignal signal,
+        CircleAI.Inference.ReasoningEffort effort)
+    {
+        Remember(weight, signal);
+        var kind = weight == CircleAI.Inference.TurnWeight.Hard ? "a hard question" : "a quick question";
+        Append(new MemoryAtom
+        {
+            Kind = AtomKind.Decision,
+            Subject = SelfSubjects.Effort(weight, signal),
+            Challenge = $"how hard to think about {kind} on this device",
+            Text = signal == CircleAI.Inference.EffortSignal.Cancelled
+                ? $"cancelled while it was answered at {CircleAI.Inference.ReasoningEfforts.TemplateName(effort)} effort"
+                : $"asked again after it was answered at {CircleAI.Inference.ReasoningEfforts.TemplateName(effort)} effort",
+        });
+        _say?.Invoke($"learned: {kind} answered at {CircleAI.Inference.ReasoningEfforts.TemplateName(effort)} effort was "
+                   + (signal == CircleAI.Inference.EffortSignal.Cancelled ? "cancelled" : "asked again")
+                   + $"; effort shift now {EffortShift(weight)}");
+    }
+
+    // Keeps the latest signals for a weight, oldest dropped first.
+    private void Remember(CircleAI.Inference.TurnWeight weight, CircleAI.Inference.EffortSignal signal)
+    {
+        lock (_gate)
+        {
+            if (!_effort.TryGetValue(weight, out var signals)) _effort[weight] = signals = [];
+            signals.Add(signal);
+            if (signals.Count > EffortWindow) signals.RemoveRange(0, signals.Count - EffortWindow);
+        }
     }
 
     /// <summary>Records something about the device itself.</summary>
@@ -252,8 +325,19 @@ public sealed class SelfModel
                 switches++;
             }
 
+            // AND HOW HARD IT LEARNED TO THINK, which a launch that forgot would relearn from
+            // scratch - one cancelled answer at a time. Oldest first, so the window keeps the latest.
+            var lessons = 0;
+            foreach (var lesson in all.OrderBy(a => a.RecordedAtUtc).Select(a => SelfSubjects.EffortOf(a.Subject)))
+            {
+                if (lesson is not { } learned) continue;
+                Remember(learned.Weight, learned.Signal);
+                lessons++;
+            }
+
             _say?.Invoke($"what this device knows about itself: {counted} record(s) over "
-                       + $"{_models.Count} model(s), and {switches} switch(es) it turned off");
+                       + $"{_models.Count} model(s), {switches} switch(es) it turned off, "
+                       + $"and {lessons} lesson(s) on how hard to think");
         }
         catch (Exception ex)
         {

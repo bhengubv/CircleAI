@@ -282,10 +282,27 @@ public static class Program
             };
             shortcuts.AddRange(CircleAI.Assistant.Requests.AskShortcuts.Standard());
 
+            // HOW HARD TO THINK, PER QUESTION (S8): a computer thinks a hard question through at
+            // xhigh, a quick one not at all - and what this machine learns from the answers it
+            // gives (an answer cancelled while it thought, a question asked again) is kept in its
+            // own memory of itself, as the phone keeps it, so the next start knows it too.
+            using var selfMemory = new CircleAI.Memory.MemoryService(Path.Combine(data, "self"));
+            try
+            {
+                var self = new CircleAI.SelfKnowledge.SelfModel(selfMemory, say);
+                CircleAI.SelfKnowledge.SelfModel.Current = self;
+                _ = self.LoadAsync();
+            }
+            catch (Exception ex)
+            {
+                say("this machine cannot keep a memory of itself: " + ex.Message);
+            }
+
             await using var coordinator = new CircleAI.Assistant.Requests.RequestCoordinator(
                 store2, brain, CircleAI.Assistant.Requests.ServiceLimits.For(DeviceProbe.Snapshot()),
                 readiness, conversations: null, shortcuts,
-                isFirstParty: _ => true, log: say);
+                isFirstParty: _ => true, log: say,
+                effort: new EffortRouter());
             coordinator.Start();
 
             await using var endpoint = new HttpLoopbackEndpoint(options)

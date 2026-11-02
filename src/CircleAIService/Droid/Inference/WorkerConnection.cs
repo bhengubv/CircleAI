@@ -141,6 +141,7 @@ public sealed class WorkerConnection : IAsyncDisposable
             [WorkerWire.DeadlineMs] = WorkerWire.L(job.Deadline.ToUnixTimeMilliseconds()),
         };
         if (job.RetrievalQuery is not null) start[WorkerWire.Retrieval] = job.RetrievalQuery;
+        WorkerWire.PutJobSettings(start, job);
         WorkerWire.PutMessages(start, job.Messages);
         Check(await CallAsync(start, WorkPhase.Prefill, ct).ConfigureAwait(false), WorkPhase.Prefill);
 

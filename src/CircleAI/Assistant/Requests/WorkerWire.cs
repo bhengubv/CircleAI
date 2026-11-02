@@ -39,7 +39,26 @@ public static class WorkerWire
                         Since = "since", WaitMs = "wait", Text = "text", Length = "len", Final = "final",
                         Pid = "pid", StartedMs = "started", Phase = "phase", Step = "step", RetryS = "retry",
                         RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim",
-                        Engine = "engine";
+                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain";
+
+    // ── a job's own settings ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Write a job's effort, thinking budget and plainness - only what it sets, so an older
+    /// worker reads a job exactly as it always did.
+    /// </summary>
+    public static void PutJobSettings(IDictionary<string, string> map, BrainJob job)
+    {
+        if (job.Effort is { } effort) map[Effort] = effort.ToString();
+        if (job.ThinkingBudget > 0) map[Think] = I(job.ThinkingBudget);
+        if (job.Plain) map[Plain] = "1";
+    }
+
+    /// <summary>A job's effort, thinking budget and plainness, read back.</summary>
+    public static (ReasoningEffort? Effort, int ThinkingBudget, bool Plain) GetJobSettings(IReadOnlyDictionary<string, string> map) =>
+        (map.TryGetValue(Effort, out var named) ? ReasoningEfforts.Parse(named) : null,
+         Math.Max(0, Int(map, Think)),
+         Flag(map, Plain));
 
     // ── messages ─────────────────────────────────────────────────────────────
 

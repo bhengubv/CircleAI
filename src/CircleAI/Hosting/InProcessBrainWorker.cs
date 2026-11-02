@@ -145,7 +145,17 @@ public sealed class InProcessBrainWorker : IBrainWorker
             if (left > TimeSpan.Zero) deadline.CancelAfter(left);
 
             var recorder = new TurnTimingRecorder();
-            var options = new GenerationOptions { MaxTokens = job.MaxTokens, RetrievalQuery = job.RetrievalQuery, Timing = recorder };
+            // THE QUESTION'S OWN EFFORT, chosen where the question came in (EffortRouter), and a
+            // plain job's messages as given - both decided in the service, both carried here.
+            var options = new GenerationOptions
+            {
+                MaxTokens = job.MaxTokens,
+                RetrievalQuery = job.RetrievalQuery,
+                Timing = recorder,
+                Effort = job.Effort,
+                ThinkingBudget = job.ThinkingBudget,
+                Plain = job.Plain,
+            };
             var clock = Stopwatch.StartNew();
             long ttft = -1;
             var pieces = 0;
