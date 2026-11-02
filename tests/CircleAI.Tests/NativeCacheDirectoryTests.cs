@@ -16,6 +16,14 @@ using Xunit;
 
 namespace CircleAI.Tests;
 
+// THE WORKING DIRECTORY IS ONE PER PROCESS. These tests write through relative paths into it, and
+// PrefixCachePathTests moves it for each of its tests; run side by side, a write here landed in that
+// test's folder - two failures in a full run on 2026-11-02 (S5), none when run alone. Every test that
+// reads or moves the working directory runs in this collection, one at a time.
+[CollectionDefinition(nameof(WorkingDirectoryCollection), DisableParallelization = true)]
+public sealed class WorkingDirectoryCollection;
+
+[Collection(nameof(WorkingDirectoryCollection))]
 public sealed class NativeCacheDirectoryTests
 {
     [Fact]

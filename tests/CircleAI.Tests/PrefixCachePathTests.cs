@@ -21,6 +21,8 @@ using Xunit;
 
 namespace CircleAI.Tests;
 
+// It moves the process's one working directory for each test: see WorkingDirectoryCollection.
+[Collection(nameof(WorkingDirectoryCollection))]
 public sealed class PrefixCachePathTests : IDisposable
 {
     private readonly string _was = Directory.GetCurrentDirectory();
