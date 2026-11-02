@@ -37,6 +37,32 @@ public sealed record Qwen35Config(
     /// <summary>Whether <paramref name="layer"/> is a Gated DeltaNet layer (three of every four) rather than full attention.</summary>
     public bool IsRecurrent(int layer) => (layer + 1) % FullAttentionInterval != 0;
 
+    /// <summary>
+    /// The interleaved multi-section RoPE's sections (t, h, w, e), counted in rotary pairs, as
+    /// rope.dimension_sections gives them; empty when the file gives none, and then every pair
+    /// takes the token's one position.
+    /// </summary>
+    public int[] RopeSections { get; init; } = [];
+
+    /// <summary>
+    /// The position component that turns rotary pair <paramref name="pair"/> under IMROPE
+    /// (ggml_mrope_cache_init with is_imrope): 0 the token's position t, 1 an image token's row
+    /// h, 2 its column w, 3 the fourth component e. Text has t = h = w; an image token's are
+    /// where the fork places it.
+    /// </summary>
+    public int RopeSection(int pair)
+    {
+        var s = RopeSections;
+        if (s.Length < 3) return 0;
+        var total = s.Sum();
+        if (total <= 0) return 0;
+        var sector = pair % total;
+        if (sector % 3 == 1 && sector < 3 * s[1]) return 1;
+        if (sector % 3 == 2 && sector < 3 * s[2]) return 2;
+        if (sector % 3 == 0 && sector < 3 * s[0]) return 0;
+        return 3;
+    }
+
     /// <summary>The shape of <paramref name="file"/>'s qwen35 model; anything else is refused.</summary>
     public static Qwen35Config FromGguf(GgufFile file)
     {
@@ -69,34 +95,31 @@ public sealed record Qwen35Config(
             SsmState: Int("ssm.state_size"),
             SsmGroups: Int("ssm.group_count"),
             SsmHeads: Int("ssm.time_step_rank"),
-            Vocabulary: file["tokenizer.ggml.tokens"].AsArray().Count);
+            Vocabulary: file["tokenizer.ggml.tokens"].AsArray().Count)
+        {
+            RopeSections = file.TryGetValue("qwen35.rope.dimension_sections", out var sections) ? sections.AsArray().ToInt32Array() : [],
+        };
 
         if (config.Heads % config.KvHeads != 0) throw new NotSupportedException("Query heads must be whole groups of key/value heads.");
         if (config.SsmInner % config.SsmHeads != 0 || config.SsmHeadDim != config.SsmState)
             throw new NotSupportedException("DeltaNet heads whose value width differs from the state width are not supported.");
         if (config.RopeDims % 2 != 0 || config.RopeDims > config.HeadDim) throw new NotSupportedException("Rotary dims must be even and fit a head.");
-        CheckTextRope(file, config.RopeDims);
+        CheckRope(config);
         return config;
     }
 
-    // qwen35 uses interleaved multi-section RoPE (IMROPE). For text every position component
-    // is the token's position, so it is plain rotate-half RoPE - provided every rotary pair
-    // falls in the t, h or w sections. A pair falling to the fourth (extra) component would
-    // take a position text does not have, so such a file is refused, not guessed at.
-    private static void CheckTextRope(GgufFile file, int ropeDims)
+    // qwen35 uses interleaved multi-section RoPE (IMROPE). For text every position component is
+    // the token's position, so it is plain rotate-half RoPE; an image token's row and column turn
+    // the h and w pairs. Every rotary pair must fall in the t, h or w sections: a pair falling to
+    // the fourth (extra) component would take a position neither text nor an image is given, so
+    // such a file is refused, not guessed at.
+    private static void CheckRope(Qwen35Config config)
     {
-        if (!file.TryGetValue("qwen35.rope.dimension_sections", out var value)) return;
-        var sections = value.AsArray().ToInt32Array();
-        if (sections.Length < 3) throw new NotSupportedException("rope.dimension_sections needs at least three sections.");
-        var total = sections.Sum();
-        if (total <= 0) return;
-        for (var pair = 0; pair < ropeDims / 2; pair++)
+        if (config.RopeSections.Length == 0) return;
+        if (config.RopeSections.Length < 3) throw new NotSupportedException("rope.dimension_sections needs at least three sections.");
+        for (var pair = 0; pair < config.RopeDims / 2; pair++)
         {
-            var sector = pair % total;
-            var covered = (sector % 3 == 1 && sector < 3 * sections[1])
-                || (sector % 3 == 2 && sector < 3 * sections[2])
-                || (sector % 3 == 0 && sector < 3 * sections[0]);
-            if (!covered) throw new NotSupportedException($"Rotary pair {pair} falls outside the t, h and w sections.");
+            if (config.RopeSection(pair) == 3) throw new NotSupportedException($"Rotary pair {pair} falls outside the t, h and w sections.");
         }
     }
 }

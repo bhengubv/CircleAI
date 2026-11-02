@@ -21,5 +21,8 @@
     <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml.dll" Link="ggml.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml-base.dll" Link="ggml-base.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml-cpu.dll" Link="ggml-cpu.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- `vision` needs the fork's mtmd.dll, which that build left out: build it with
+         tools/bonsai-ref/mtmd/CMakeLists.txt and pass -p:MtmdDll=<its path>. -->
+    <None Include="$(MtmdDll)" Link="mtmd.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(MtmdDll)' != ''" />
   </ItemGroup>
 </Project>
