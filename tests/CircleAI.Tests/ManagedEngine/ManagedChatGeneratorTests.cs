@@ -173,7 +173,7 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
     }
 
     [Fact]
-    public void System_messages_merge_into_the_one_system_turn_and_images_are_refused()
+    public void System_messages_merge_into_the_one_system_turn_and_a_picture_is_written_where_the_template_puts_it()
     {
         var g = Generator();
         if (g is null) return;
@@ -182,7 +182,13 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
         Assert.Equal("<|im_start|>system\nOne.\n\nTwo.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n" +
                      "<|im_start|>assistant\n<think>\n\n</think>\n\n", prompt);
 
-        Assert.Throws<NotSupportedException>(() => g.RenderPrompt([new("user", "What is this?") { ImageBytes = [1, 2, 3] }]));
+        // The 2B sees when its tower is beside it (ManagedVisionTests holds it to the fork); one that
+        // cannot see refuses the picture rather than answering blind.
+        ChatMessage[] picture = [new("user", "What is this?") { ImageBytes = [1, 2, 3] }];
+        if (g.CanSee)
+            Assert.Equal("<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>What is this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", g.RenderPrompt(picture));
+        else
+            Assert.Throws<NotSupportedException>(() => g.RenderPrompt(picture));
     }
 
     [Fact]

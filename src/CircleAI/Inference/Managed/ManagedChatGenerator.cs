@@ -28,6 +28,15 @@
 // to that one, because the template writes the history back the same way each time); else from
 // the beginning. Checked token by token, the reuse needs neither ContinueConversation nor
 // UsePrefixCache to make it safe. One call at a time.
+//
+// IT SEES WHEN ITS VISION TOWER IS BESIDE IT. A ChatMessage's ImageBytes become a picture in the
+// turn as the model's own template writes one (<|vision_start|><|image_pad|><|vision_end|>), and
+// the one <|image_pad|> becomes the picture's tokens from the tower (VisionTower), placed in the
+// model by their row and column (Qwen35Model.ForwardImageToken) - the sequence the fork's mtmd
+// builds. Each picture token's id in the prompt is negative and made from the picture's hash, so
+// the reuse above compares pictures as it compares words, and a picture already in the state is
+// not read again. A picture is decoded by the platform (ImageDecoder) and brought within the
+// VisionMaxEdge budget only when its tokens must run.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -41,6 +50,8 @@ using CircleAI.Inference.Managed.Model;
 using CircleAI.Inference.Managed.Runtime;
 using CircleAI.Inference.Managed.Sampling;
 using CircleAI.Inference.Managed.Text;
+using CircleAI.Inference.Managed.Vision;
+using CircleAI.Vision;
 
 namespace CircleAI.Inference.Managed;
 
@@ -78,6 +89,20 @@ public sealed record ManagedGeneratorOptions
     /// app's own cache); empty keeps them in memory only.
     /// </summary>
     public string? PrimedStartDirectory { get; init; }
+
+    /// <summary>
+    /// The vision tower - an mmproj GGUF - that lets the model see. Null looks for this model's
+    /// tower: a GGUF with "mmproj" in its name, in the model's folder or a folder beside it named
+    /// after the model, with the model's general.name and tokens as wide as its embedding (a Q8_0
+    /// one first). Empty turns seeing off.
+    /// </summary>
+    public string? VisionTowerPath { get; init; }
+
+    /// <summary>
+    /// How large a picture the tower reads: within the area of a square of this edge, its shape
+    /// kept, so at most (edge / 32)^2 tokens. <see cref="ImageBudget.VisionMaxEdge"/> unless given.
+    /// </summary>
+    public int VisionMaxEdge { get; init; } = ImageBudget.VisionMaxEdge;
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
@@ -114,6 +139,16 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private Qwen35State _state;
     private int _disposed;
 
+    // Seeing: the tower beside the model (its shape read at load, its weights on the first picture),
+    // the template's picture token, and the last few pictures' tokens by their hash.
+    private readonly string? _towerPath;
+    private readonly VisionConfig? _towerConfig;
+    private readonly int _imagePad;
+    private GgufFile? _towerFile;
+    private VisionTower? _tower;
+    private readonly List<(string Key, ImageEmbeddings Tokens)> _seen = [];
+    private const int PicturesKept = 2;
+
     // A primed start on disk: what it is, then the state. Bumped with the engine's arithmetic, so a
     // start primed by older numbers is never read as this engine's.
     private const ulong PrimedMagic = 0x3144_454D_4952_5043; // "CPRIMED1", little-endian
@@ -121,8 +156,13 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private const int PrimedStartsKept = 4;
 
     private ManagedChatGenerator(string ggufPath, GgufFile file, WorkerPool pool, Qwen35Model model, ByteLevelBpe tokenizer,
-        JinjaTemplate template, ManagedGeneratorOptions options)
+        JinjaTemplate template, ManagedGeneratorOptions options, string? towerPath, VisionConfig? towerConfig)
     {
+        _towerPath = towerPath;
+        _towerConfig = towerConfig;
+        _imagePad = tokenizer.TryGetSpecial("<|image_pad|>", out var pad) ? pad : -1;
+        if (towerPath is not null && _imagePad < 0) throw new NotSupportedException("The model's vocabulary has no <|image_pad|>, so a picture has nowhere to go.");
+        if (options.VisionMaxEdge <= 0) throw new ArgumentOutOfRangeException(nameof(options), options.VisionMaxEdge, "VisionMaxEdge must be positive.");
         _file = file;
         _pool = pool;
         _model = model;
@@ -166,7 +206,22 @@ public sealed class ManagedChatGenerator : IChatGenerator
     /// <summary>Tokens one conversation can hold.</summary>
     public int ContextLength => _state.Capacity;
 
+    /// <summary>Whether the model can see: its vision tower was found and read.</summary>
+    public bool CanSee => _towerPath is not null;
+
+    /// <summary>The vision tower the model sees with, or null.</summary>
+    public string? VisionTowerPath => _towerPath;
+
     internal ByteLevelBpe Tokenizer => _tokenizer;
+
+    /// <summary>How long the last picture read took: decoded, fitted and through the tower.</summary>
+    internal TimeSpan LastPicture { get; private set; }
+
+    /// <summary>How long the tower alone took on the last picture.</summary>
+    internal TimeSpan LastTower => _tower?.LastEncode ?? TimeSpan.Zero;
+
+    // The most pixels a picture is brought within: the area of a square of VisionMaxEdge.
+    private int MaxPixels => (int)Math.Min(int.MaxValue, (long)_options.VisionMaxEdge * _options.VisionMaxEdge);
 
     /// <summary>
     /// Whether this engine reads a model of <paramref name="architecture"/> packed as
@@ -193,10 +248,13 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 var model = Qwen35Model.Load(file, pool);
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
-                var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options);
+                var tower = FindTower(ggufPath, options.VisionTowerPath, file, model.Config);
+                var towerPath = tower?.Path;
+                var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options, towerPath, tower?.Config);
                 var thinking = options.Thinking ? "on" : "off";
                 var memory = options.KvMode == CircleAI.Core.KvCompressionMode.Off ? "fp16" : $"{options.KvMode}, keys {options.KeyForm}";
-                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+                var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
+                CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
                 return generator;
             }
             catch
@@ -210,6 +268,90 @@ public sealed class ManagedChatGenerator : IChatGenerator
             file.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// The vision tower to see with, and its shape: <paramref name="asked"/> when given (empty for
+    /// none; one that does not fit the model is refused), else the first tower found that is this
+    /// model's - a GGUF with "mmproj" in its name, in the model's folder or in a folder beside it
+    /// named after the model (where the catalogue keeps a tower as an entry of its own), with the
+    /// model's general.name and tokens as wide as the model's embedding; a Q8_0 one first, the
+    /// model's own folder first. A candidate that is not this model's is passed over. Null when
+    /// there is none.
+    /// </summary>
+    internal static (string Path, VisionConfig Config)? FindTower(string modelPath, string? asked, GgufFile model, Qwen35Config config)
+    {
+        var name = model.TryGetValue("general.name", out var value) && value.Type == GgufType.String ? value.AsString() : null;
+        if (asked is not null)
+        {
+            if (asked.Length == 0) return null;
+            if (!File.Exists(asked)) throw new FileNotFoundException("No vision tower where one was named.", asked);
+            var path = Path.GetFullPath(asked);
+            return (path, ReadTower(path, config, name));
+        }
+
+        var folder = Path.GetDirectoryName(Path.GetFullPath(modelPath));
+        if (folder is null || !Directory.Exists(folder)) return null;
+        // Beside it: the folders the catalogue names after this model (Ternary-Bonsai-2-2B-Vision
+        // beside Ternary-Bonsai-2-2B), and only those - a model kept in a crowded folder costs no scan.
+        var parent = Path.GetDirectoryName(folder);
+        IEnumerable<string> beside = parent is null || string.IsNullOrEmpty(name) ? [] : Folders(parent).Where(d =>
+            !string.Equals(d, folder, StringComparison.OrdinalIgnoreCase) && Path.GetFileName(d).StartsWith(name, StringComparison.OrdinalIgnoreCase));
+        var candidates = new[] { folder }.Concat(beside)
+            .SelectMany((dir, rank) => Towers(dir).Select(file => (File: file, Rank: rank)))
+            .OrderBy(c => Path.GetFileName(c.File).Contains("Q8_0", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(c => c.Rank == 0 ? 0 : 1)
+            .ThenBy(c => c.File, StringComparer.Ordinal);
+        foreach (var (file, _) in candidates)
+        {
+            try
+            {
+                return (file, ReadTower(file, config, name));
+            }
+            catch (Exception e) when (e is NotSupportedException or InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                CircleLog.Info(Area, $"{Path.GetFileName(file)} is not {name ?? "this model"}'s vision tower: {e.Message}");
+            }
+        }
+        return null;
+
+        static IEnumerable<string> Towers(string dir)
+        {
+            try
+            {
+                return Directory.EnumerateFiles(dir, "*.gguf").Where(f => Path.GetFileName(f).Contains("mmproj", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return [];
+            }
+        }
+
+        static IEnumerable<string> Folders(string dir)
+        {
+            try
+            {
+                return Directory.EnumerateDirectories(dir).ToList();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return [];
+            }
+        }
+    }
+
+    // A tower's shape, read and checked against the model now - one for another model fails here,
+    // not on the first picture; its weights are bound on the first picture.
+    private static VisionConfig ReadTower(string towerPath, Qwen35Config model, string? modelName)
+    {
+        using var tower = GgufFile.Open(towerPath);
+        var config = VisionConfig.FromGguf(tower);
+        if (config.Projection != model.Embedding)
+            throw new InvalidDataException($"{Path.GetFileName(towerPath)} makes tokens {config.Projection} wide; the model reads {model.Embedding}.");
+        if (modelName is not null && tower.TryGetValue("general.name", out var name) && name.Type == GgufType.String
+            && !string.Equals(name.AsString(), modelName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{Path.GetFileName(towerPath)} is {name.AsString()}'s tower, not {modelName}'s.");
+        return config;
     }
 
     /// <inheritdoc/>
@@ -344,6 +486,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
         {
             _pool.Dispose();
             _file.Dispose();
+            _towerFile?.Dispose();
         }
         finally
         {
@@ -375,7 +518,8 @@ public sealed class ManagedChatGenerator : IChatGenerator
     {
         var started = Stopwatch.GetTimestamp();
         var timing = options.Timing;
-        var prompt = _tokenizer.Encode(RenderPrompt(messages), parseSpecial: true);
+        var built = BuildPrompt(messages);
+        var prompt = built.Ids;
         if (prompt.Count >= _state.Capacity)
             throw new InvalidOperationException($"The prompt is {prompt.Count} tokens; this generator holds {_state.Capacity}.");
         var requested = options.MaxTokens > 0 ? options.MaxTokens : _options.MaxNewTokens;
@@ -395,7 +539,16 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 ct.ThrowIfCancellationRequested();
                 if (i == primed && _state.PrimedPosition != i) Prime(prompt, i);
                 if (i == lastTurn) _state.Mark();
-                _model.Forward(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
+                if (built.Slots is { } slots && slots[i].Image >= 0)
+                {
+                    var (image, index) = slots[i];
+                    var tokens = Seen(built.Images[image]);
+                    _model.ForwardImageToken(tokens.Token(index), index, tokens.Columns, tokens.Rows, _state, i == prompt.Count - 1 ? _logits : default);
+                }
+                else
+                {
+                    _model.Forward(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
+                }
                 _history.Add(prompt[i]);
             }
             var prefilled = Stopwatch.GetTimestamp();
@@ -519,7 +672,8 @@ public sealed class ManagedChatGenerator : IChatGenerator
             var prefillMs = Stopwatch.GetElapsedTime(started, prefilled).TotalMilliseconds;
             var decodeSeconds = Stopwatch.GetElapsedTime(prefilled, done).TotalSeconds;
             var rate = decodeSeconds > 0 ? generated.Count / decodeSeconds : 0;
-            CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
+            var pictures = built.Images.Length == 0 ? "" : Invariant($" ({built.Images.Length} pictures, {built.Images.Sum(p => p.Count)} of them picture tokens)");
+            CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens{pictures}, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
             CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}"));
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
 
@@ -724,8 +878,16 @@ public sealed class ManagedChatGenerator : IChatGenerator
         if (system.Length > 0) turns.Add(Turn("system", system));
         foreach (var m in messages)
         {
-            if (string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)) continue;
-            if (m.ImageBytes is { Length: > 0 }) throw new NotSupportedException("This engine has no vision tower yet; images go to a vision brain.");
+            var isSystem = string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase);
+            if (m.ImageBytes is { Length: > 0 })
+            {
+                if (isSystem) throw new NotSupportedException("A system message cannot carry a picture: the model's own template refuses one.");
+                if (_towerPath is null)
+                    throw new NotSupportedException($"{Path.GetFileName(_file.FilePath)} has no vision tower beside it (a *mmproj*.gguf in its folder), so it cannot see; images go to a vision brain.");
+                turns.Add(new OrderedDictionary<string, object?>(StringComparer.Ordinal) { ["role"] = m.Role.ToLowerInvariant(), ["content"] = Picture(m.Content) });
+                continue;
+            }
+            if (isSystem) continue;
             turns.Add(Turn(m.Role.ToLowerInvariant(), m.Content ?? ""));
         }
         return _template.Render(new Dictionary<string, object?>
@@ -738,6 +900,148 @@ public sealed class ManagedChatGenerator : IChatGenerator
 
         static OrderedDictionary<string, object?> Turn(string role, string content) =>
             new(StringComparer.Ordinal) { ["role"] = role, ["content"] = content };
+
+        // The picture, then the words, as the template's content items: it writes the picture as
+        // <|vision_start|><|image_pad|><|vision_end|>.
+        static List<object?> Picture(string? text)
+        {
+            var items = new List<object?> { new OrderedDictionary<string, object?>(StringComparer.Ordinal) { ["type"] = "image" } };
+            if (!string.IsNullOrEmpty(text))
+                items.Add(new OrderedDictionary<string, object?>(StringComparer.Ordinal) { ["type"] = "text", ["text"] = text });
+            return items;
+        }
+    }
+
+    /// <summary>A picture in a prompt: its bytes, their SHA-256, and the grid of tokens the tower makes of it.</summary>
+    internal sealed record PromptImage(byte[] Bytes, string Hash, int Columns, int Rows)
+    {
+        public int Count => Columns * Rows;
+    }
+
+    /// <summary>
+    /// A prompt's ids - each picture's tokens in place of the <|image_pad|> the template wrote for
+    /// it - its pictures, and per position the picture and the token there (-1 for a word).
+    /// </summary>
+    internal sealed record PromptIds(List<int> Ids, PromptImage[] Images, (int Image, int Index)[]? Slots);
+
+    /// <summary>
+    /// The conversation as ids for the model: rendered and tokenized, each picture's one
+    /// <|image_pad|> replaced by as many ids as the picture has tokens. Those ids are negative -
+    /// never a word's - and made from the picture's hash and the token's place, so the state's
+    /// reuse, which compares ids, compares pictures too.
+    /// </summary>
+    internal PromptIds BuildPrompt(IReadOnlyList<ChatMessage> messages)
+    {
+        var ids = _tokenizer.Encode(RenderPrompt(messages), parseSpecial: true);
+        var pictures = messages.Where(m => m.ImageBytes is { Length: > 0 }).Select(m => Plan(m.ImageBytes!)).ToArray();
+        if (pictures.Length == 0) return new PromptIds(ids, [], null);
+
+        var expanded = new List<int>(ids.Count + pictures.Sum(p => p.Count));
+        var slots = new List<(int, int)>(expanded.Capacity);
+        var next = 0;
+        foreach (var id in ids)
+        {
+            if (id != _imagePad)
+            {
+                expanded.Add(id);
+                slots.Add((-1, -1));
+                continue;
+            }
+            if (next == pictures.Length) throw new InvalidDataException("The prompt holds more pictures than the conversation gave.");
+            var picture = pictures[next];
+            var key = ulong.Parse(picture.Hash.AsSpan(0, 16), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            for (var j = 0; j < picture.Count; j++)
+            {
+                expanded.Add(SlotId(key, j));
+                slots.Add((next, j));
+            }
+            next++;
+        }
+        if (next != pictures.Length) throw new InvalidDataException($"The prompt holds {next} pictures; the conversation gave {pictures.Length}.");
+        return new PromptIds(expanded, pictures, slots.ToArray());
+    }
+
+    // A picture's grid, from its header when the header gives the size the picture decodes to
+    // (ImageBudget reads it without decoding a pixel), else from decoding it.
+    private PromptImage Plan(byte[] bytes)
+    {
+        var config = _towerConfig!;
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var (width, height) = HeaderGivesTheFrame(bytes) && ImageBudget.Measure(bytes) is { Width: > 0, Height: > 0 } size
+            ? size
+            : Size(ImageDecoder.Decode(bytes));
+        var (w, h) = config.Fit(width, height, MaxPixels);
+        return new PromptImage(bytes, hash, w / config.TokenSide, h / config.TokenSide);
+
+        static (int, int) Size(RasterImage image) => (image.Width, image.Height);
+    }
+
+    // Whether a picture's header size is the size its first frame decodes to. Not for a GIF, whose
+    // header gives the screen its frames are drawn on, nor an extended WebP (VP8X), whose header
+    // gives the canvas of an animation: Windows decodes the first frame alone, which can be smaller,
+    // and a grid planned from the canvas would not be the grid the tower makes.
+    internal static bool HeaderGivesTheFrame(ReadOnlySpan<byte> bytes)
+    {
+        var gif = bytes.Length >= 3 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F';
+        var extendedWebP = bytes.Length >= 16 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+            && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P'
+            && bytes[12] == 'V' && bytes[13] == 'P' && bytes[14] == '8' && bytes[15] == 'X';
+        return !gif && !extendedWebP;
+    }
+
+    // A picture token's id: negative, from the picture's hash and the token's index, mixed so that
+    // two pictures' tokens differ wherever the pictures do.
+    private static int SlotId(ulong picture, int index)
+    {
+        var h = picture + (ulong)index * 0x9E37_79B9_7F4A_7C15UL;
+        h ^= h >> 33;
+        h *= 0xFF51_AFD7_ED55_8CCDUL;
+        h ^= h >> 33;
+        h *= 0xC4CE_B9FE_1A85_EC53UL;
+        h ^= h >> 33;
+        return -1 - (int)(h & 0x3FFF_FFFF);
+    }
+
+    // A picture's tokens: from the last few seen, else decoded by the platform, brought within the
+    // budget and run through the tower now.
+    private ImageEmbeddings Seen(PromptImage picture)
+    {
+        var key = picture.Hash + ":" + MaxPixels.ToString(CultureInfo.InvariantCulture);
+        foreach (var (k, tokens) in _seen)
+        {
+            if (k == key) return tokens;
+        }
+        var tower = Tower();
+        var started = Stopwatch.GetTimestamp();
+        var raster = ImageDecoder.Decode(picture.Bytes);
+        var seen = tower.Encode(raster, MaxPixels);
+        if (seen.Columns != picture.Columns || seen.Rows != picture.Rows)
+            throw new InvalidDataException($"The picture decoded to {raster.Width}x{raster.Height}, not the size its header gave: {seen.Columns}x{seen.Rows} tokens where {picture.Columns}x{picture.Rows} were planned.");
+        LastPicture = Stopwatch.GetElapsedTime(started);
+        CircleLog.Info(Area, Invariant($"a {raster.Width}x{raster.Height} picture seen as {seen.Columns}x{seen.Rows} tokens in {LastPicture.TotalMilliseconds:F0} ms (the tower {tower.LastEncode.TotalMilliseconds:F0} ms)"));
+        _seen.Add((key, seen));
+        if (_seen.Count > PicturesKept) _seen.RemoveAt(0);
+        return seen;
+    }
+
+    // The tower's weights, bound on the first picture: until then only its shape is read.
+    private VisionTower Tower()
+    {
+        if (_tower is not null) return _tower;
+        var started = Stopwatch.GetTimestamp();
+        var file = GgufFile.Open(_towerPath!);
+        try
+        {
+            _tower = VisionTower.Load(file, _pool);
+            _towerFile = file;
+        }
+        catch
+        {
+            file.Dispose();
+            throw;
+        }
+        CircleLog.Info(Area, Invariant($"vision tower ready: {Path.GetFileName(_towerPath)}, {_tower.Config.Layers} layers of {_tower.Config.Embedding}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+        return _tower;
     }
 
     // The model card's numbers for this mode, at the caller's temperature. A caller can tighten

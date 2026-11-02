@@ -8,6 +8,7 @@
 //   bonsai-ref tokens <model.gguf> <out.json>
 //   bonsai-ref logits <model.gguf> <templates.json> <out.json>
 //   bonsai-ref detok  <model.gguf> <logits.json>
+//   bonsai-ref vision <model.gguf> <mmproj.gguf> <image> <out.json>
 //
 // meta    every metadata key with a short value, the chat template, the vocab size.
 // tokens  token ids and the raw bytes of each piece for a fixed multilingual corpus.
@@ -19,11 +20,19 @@
 //         deterministic, so its run-to-run spread is zero and useless as a tolerance.
 // detok   writes each case's greedy continuation into logits.json as readable text,
 //         so a person can see the reference answered sensibly before trusting it.
+// vision  one image through the fork's own multimodal code (tools/mtmd, built as mtmd.dll
+//         by tools/bonsai-ref/mtmd and placed beside this tool): the prompt as the fork
+//         tokenizes it around the image, the image's token grid and decoder positions, its
+//         embeddings from the vision tower (1 thread), how far 2 and 4 threads and the
+//         tower's other attention path (flash attention off) move them, then the language
+//         model on those embeddings - 32 greedy steps with the top 20 logits, and the spread
+//         at 2 and 4 threads and with flash attention off, fed the same tokens.
 //
 // templates.json comes from render_templates.py, which renders the model's own chat
 // template with jinja2 the way Hugging Face does; this tool only tokenizes and runs it.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -40,6 +49,12 @@ if (args.Length < 3)
     Console.Error.WriteLine("usage: bonsai-ref meta|tokens <model.gguf> <out.json>");
     Console.Error.WriteLine("       bonsai-ref logits <model.gguf> <templates.json> <out.json>");
     Console.Error.WriteLine("       bonsai-ref detok <model.gguf> <logits.json>");
+    Console.Error.WriteLine("       bonsai-ref vision <model.gguf> <mmproj.gguf> <image> <out.json>");
+    return 2;
+}
+if (args[0] == "vision" && args.Length < 5)
+{
+    Console.Error.WriteLine("usage: bonsai-ref vision <model.gguf> <mmproj.gguf> <image> <out.json>");
     return 2;
 }
 
@@ -93,12 +108,13 @@ try
         "meta"   => Meta(model, vocab, source),
         "tokens" => Tokens(vocab, source),
         "logits" => Logits(model, vocab, source, args[2]),
+        "vision" => Vision(model, vocab, source, Path.GetFullPath(args[2]), Path.GetFullPath(args[3])),
         _        => throw new ArgumentException($"unknown mode '{mode}'"),
     };
 
-    var outPath = Path.GetFullPath(args[mode == "logits" ? 3 : 2]);
+    var outPath = Path.GetFullPath(args[mode switch { "logits" => 3, "vision" => 4, _ => 2 }]);
     Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-    File.WriteAllText(outPath, output.ToJsonString(Json(indented: mode != "logits")) + "\n");
+    File.WriteAllText(outPath, output.ToJsonString(Json(indented: mode is not ("logits" or "vision"))) + "\n");
     Console.WriteLine($"wrote : {outPath}");
     return 0;
 }
@@ -332,6 +348,297 @@ static unsafe JsonObject Logits(nint model, nint vocab, JsonObject source, strin
         ["greedy_steps"] = GreedySteps,
         ["cases"] = cases,
     };
+}
+
+// One image through the fork's own multimodal path, then the language model on it.
+static unsafe JsonObject Vision(nint model, nint vocab, JsonObject source, string mmprojPath, string imagePath)
+{
+    const string Question = "What is in this picture? Answer in one short sentence.";
+    if (!File.Exists(mmprojPath)) throw new FileNotFoundException("no vision tower", mmprojPath);
+    if (!File.Exists(imagePath)) throw new FileNotFoundException("no image", imagePath);
+    var nVocab = Llama.llama_vocab_n_tokens(vocab);
+    var nEmbd = Llama.llama_model_n_embd(model);
+
+    // The model's own chat template with thinking off, for a user turn of [image, question]. The
+    // fork's chat code writes its media marker where the template writes
+    // <|vision_start|><|image_pad|><|vision_end|>, and mtmd puts <|vision_start|> and
+    // <|vision_end|> back around the image's embeddings.
+    var marker = Marshal.PtrToStringUTF8((nint)Mtmd.mtmd_default_marker())!;
+    var prompt = "<|im_start|>user\n" + marker + Question + "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+
+    // The tower at 1, 2 and 4 threads, and through its other attention path. The 1-thread
+    // context and its chunks are kept for the language model.
+    float[]? reference = null;
+    JsonArray? chunkLayout = null;
+    var towerSpread = new JsonObject();
+    nint keptCtx = 0, keptChunks = 0;
+    foreach (var (threads, flash, label) in new[] { (1, -1, "1"), (2, -1, "2"), (4, -1, "4"), (1, 0, "flash_off") })
+    {
+        var ctx = InitMtmd(mmprojPath, model, threads, flash);
+        var chunks = TokenizeWithImage(ctx, prompt, imagePath);
+        var sw = Stopwatch.StartNew();
+        var embeddings = Encode(ctx, ImageChunk(chunks), nEmbd);
+        Console.WriteLine($"  tower ({label}): {embeddings.Length / nEmbd} tokens in {sw.Elapsed.TotalSeconds:F1} s");
+        if (reference is null)
+        {
+            reference = embeddings;
+            chunkLayout = Layout(chunks);
+            (keptCtx, keptChunks) = (ctx, chunks);
+            continue;
+        }
+        towerSpread[label] = MaxAbsDiff(embeddings, reference);
+        Console.WriteLine($"    max |delta| vs 1 thread: {MaxAbsDiff(embeddings, reference):G4}");
+        Mtmd.mtmd_input_chunks_free(chunks);
+        Mtmd.mtmd_free(ctx);
+    }
+
+    try
+    {
+        // The language model on the 1-thread embeddings: greedy, with the top 20 at each step.
+        var sw = Stopwatch.StartNew();
+        var path = new List<int>();
+        var full = new List<float[]>();
+        var steps = new JsonArray();
+        RunVisionSteps(model, keptCtx, keptChunks, reference!, threads: 1, flash: -1, nVocab, forced: null, (step, logits) =>
+        {
+            var copy = logits.ToArray();
+            full.Add(copy);
+            var order = TopIndices(copy, TopK);
+            var token = order[0];
+            path.Add(token);
+            steps.Add(new JsonObject
+            {
+                ["token"] = token,
+                ["gap"] = copy[order[0]] - copy[order[1]],
+                ["top"] = new JsonArray(order.Select(i => (JsonNode)new JsonArray(i, copy[i])).ToArray()),
+            });
+            return Llama.llama_vocab_is_eog(vocab, token) != 0 ? -1 : token;
+        });
+        Console.WriteLine($"  language model (1): {path.Count} steps in {sw.Elapsed.TotalSeconds:F1} s");
+
+        // The same embeddings and tokens at 2 and 4 threads, and with flash attention off.
+        var spread = new JsonObject();
+        foreach (var (threads, flash, label) in new[] { (2, -1, "2"), (4, -1, "4"), (1, 0, "flash_off") })
+        {
+            var perStep = new float[path.Count];
+            RunVisionSteps(model, keptCtx, keptChunks, reference!, threads, flash, nVocab, path, (step, logits) =>
+            {
+                var expected = full[step];
+                var max = 0f;
+                for (var i = 0; i < nVocab; i++) max = MathF.Max(max, MathF.Abs(logits[i] - expected[i]));
+                perStep[step] = max;
+                return path[step];
+            });
+            spread[label] = new JsonArray(perStep.Select(v => (JsonNode)v).ToArray());
+            Console.WriteLine($"  language model ({label}): max |delta logit| {perStep.Max():G4}");
+        }
+
+        var bytes = new List<byte>();
+        foreach (var token in path) bytes.AddRange(Piece(vocab, token));
+        var continuation = Encoding.UTF8.GetString(bytes.ToArray());
+        Console.WriteLine($"  answer: {JsonSerializer.Serialize(continuation, Json(indented: false))}");
+
+        var described = source.DeepClone().AsObject();
+        described["runtime"] = "src/CircleAI/Inference/runtimes/win-x64/native/llama.dll, with mtmd.dll built from the fork's tools/mtmd by tools/bonsai-ref/mtmd";
+        described["mmproj"] = Path.GetFileName(mmprojPath);
+        described["mmproj_sha256"] = Sha256(mmprojPath);
+        described["image"] = Path.GetFileName(imagePath);
+        described["image_sha256"] = Sha256(imagePath);
+        return new JsonObject
+        {
+            ["_comment"] = "One image through the pinned fork's multimodal path: the prompt's chunks as mtmd tokenizes them (text ids, then the image's token grid and its decoder positions [t, y, x]), the tower's output embeddings (float32 little-endian, base64, tokens x n_embd) and their largest drift at 2 and 4 threads and with the tower's flash attention off, then the language model on those embeddings: 32 greedy steps with the top 20 logits (1 thread) and the whole-vocabulary drift at 2 and 4 threads and with flash attention off, fed the same tokens.",
+            ["_source"] = described,
+            ["question"] = Question,
+            ["prompt"] = prompt,
+            ["chunks"] = chunkLayout,
+            ["n_embd"] = nEmbd,
+            ["embeddings_f32_base64"] = Convert.ToBase64String(MemoryMarshal.AsBytes(reference!.AsSpan())),
+            ["tower_spread_vs_1_thread"] = towerSpread,
+            ["greedy_steps"] = GreedySteps,
+            ["steps"] = steps,
+            ["spread_vs_1_thread"] = spread,
+            ["continuation"] = continuation,
+        };
+    }
+    finally
+    {
+        Mtmd.mtmd_input_chunks_free(keptChunks);
+        Mtmd.mtmd_free(keptCtx);
+    }
+}
+
+static unsafe nint InitMtmd(string mmprojPath, nint model, int threads, int flash)
+{
+    var p = Mtmd.mtmd_context_params_default();
+    p.UseGpu = 0;
+    p.PrintTimings = 0;
+    p.NThreads = threads;
+    p.FlashAttnType = flash;
+    p.Warmup = 0; // a warm-up encodes a 46x46-token image first: minutes on one thread, and nothing to learn from
+    var z = Encoding.UTF8.GetBytes(mmprojPath + "\0");
+    fixed (byte* zp = z)
+    {
+        var ctx = Mtmd.mtmd_init_from_file(zp, model, p);
+        if (ctx == 0) throw new InvalidOperationException("mtmd_init_from_file returned NULL");
+        if (Mtmd.mtmd_decode_use_mrope(ctx) == 0) throw new InvalidOperationException("the fork does not place this tower's tokens with M-RoPE");
+        return ctx;
+    }
+}
+
+// The prompt as mtmd tokenizes it around the image, loaded and preprocessed by the fork itself.
+static unsafe nint TokenizeWithImage(nint ctx, string prompt, string imagePath)
+{
+    var file = Encoding.UTF8.GetBytes(imagePath + "\0");
+    MtmdBitmapWrapper loaded;
+    fixed (byte* f = file) loaded = Mtmd.mtmd_helper_bitmap_init_from_file(ctx, f, 0);
+    if (loaded.Bitmap == 0) throw new InvalidOperationException($"the fork could not load {imagePath}");
+    var chunks = Mtmd.mtmd_input_chunks_init();
+    try
+    {
+        var text = Encoding.UTF8.GetBytes(prompt + "\0");
+        fixed (byte* t = text)
+        {
+            var input = new MtmdInputText { Text = (nint)t, TextLen = (nuint)(text.Length - 1), AddSpecial = 1, ParseSpecial = 1 };
+            var bitmap = loaded.Bitmap;
+            var rc = Mtmd.mtmd_tokenize(ctx, chunks, &input, &bitmap, 1);
+            if (rc != 0) throw new InvalidOperationException($"mtmd_tokenize returned {rc}");
+        }
+        return chunks;
+    }
+    catch
+    {
+        Mtmd.mtmd_input_chunks_free(chunks);
+        throw;
+    }
+    finally
+    {
+        Mtmd.mtmd_bitmap_free(loaded.Bitmap);
+    }
+}
+
+static nint ImageChunk(nint chunks)
+{
+    for (nuint i = 0; i < Mtmd.mtmd_input_chunks_size(chunks); i++)
+    {
+        var chunk = Mtmd.mtmd_input_chunks_get(chunks, i);
+        if (Mtmd.mtmd_input_chunk_get_type(chunk) == Mtmd.ChunkImage) return chunk;
+    }
+    throw new InvalidOperationException("the prompt has no image chunk");
+}
+
+static unsafe float[] Encode(nint ctx, nint chunk, int nEmbd)
+{
+    var rc = Mtmd.mtmd_encode_chunk(ctx, chunk);
+    if (rc != 0) throw new InvalidOperationException($"mtmd_encode_chunk returned {rc}");
+    var tokens = (int)Mtmd.mtmd_input_chunk_get_n_tokens(chunk);
+    return new ReadOnlySpan<float>(Mtmd.mtmd_get_output_embd(ctx), tokens * nEmbd).ToArray();
+}
+
+// The chunks in order: each text chunk's ids, and the image's grid with the decoder position
+// [t, y, x] of every one of its tokens, placed where the text before it leaves off.
+static unsafe JsonArray Layout(nint chunks)
+{
+    var layout = new JsonArray();
+    var nPast = 0;
+    for (nuint c = 0; c < Mtmd.mtmd_input_chunks_size(chunks); c++)
+    {
+        var chunk = Mtmd.mtmd_input_chunks_get(chunks, c);
+        if (Mtmd.mtmd_input_chunk_get_type(chunk) == Mtmd.ChunkImage)
+        {
+            var image = Mtmd.mtmd_input_chunk_get_tokens_image(chunk);
+            var tokens = (int)Mtmd.mtmd_input_chunk_get_n_tokens(chunk);
+            var positions = new JsonArray();
+            for (var i = 0; i < tokens; i++)
+            {
+                var p = Mtmd.mtmd_image_tokens_get_decoder_pos(image, nPast, (nuint)i);
+                positions.Add(new JsonArray((int)p.T, (int)p.Y, (int)p.X));
+            }
+            var nPos = Mtmd.mtmd_input_chunk_get_n_pos(chunk);
+            layout.Add(new JsonObject
+            {
+                ["image"] = new JsonObject
+                {
+                    ["tokens"] = tokens,
+                    ["nx"] = (int)Mtmd.mtmd_image_tokens_get_nx(image),
+                    ["ny"] = (int)Mtmd.mtmd_image_tokens_get_ny(image),
+                    ["n_pos"] = nPos,
+                    ["n_past"] = nPast,
+                    ["positions"] = positions,
+                },
+            });
+            nPast += nPos;
+        }
+        else
+        {
+            nuint count;
+            var ids = Mtmd.mtmd_input_chunk_get_tokens_text(chunk, &count);
+            var text = new JsonArray();
+            for (nuint i = 0; i < count; i++) text.Add(ids[i]);
+            layout.Add(new JsonObject { ["text"] = text });
+            nPast += (int)count;
+        }
+    }
+    return layout;
+}
+
+static float MaxAbsDiff(float[] a, float[] b)
+{
+    if (a.Length != b.Length) throw new InvalidOperationException($"{a.Length} values against {b.Length}");
+    var max = 0f;
+    for (var i = 0; i < a.Length; i++) max = MathF.Max(max, MathF.Abs(a[i] - b[i]));
+    return max;
+}
+
+// The prompt's chunks into the language model - text by the fork's helper, the image from the
+// given embeddings with its M-RoPE positions - then as RunSteps.
+static unsafe void RunVisionSteps(nint model, nint mctx, nint chunks, float[] embeddings, int threads, int flash, int nVocab,
+                                  List<int>? forced, Func<int, ReadOnlySpan<float>, int> onStep)
+{
+    var p = Llama.llama_context_default_params();
+    p.NCtx = 4096;
+    p.NBatch = 512;
+    p.NUbatch = 512;
+    p.NThreads = threads;
+    p.NThreadsBatch = threads;
+    p.NoPerf = 1;
+    p.FlashAttnType = flash;
+    var ctx = Llama.llama_init_from_model(model, p);
+    if (ctx == 0) throw new InvalidOperationException("llama_init_from_model returned NULL");
+    try
+    {
+        var nPast = 0;
+        var count = (int)Mtmd.mtmd_input_chunks_size(chunks);
+        for (var c = 0; c < count; c++)
+        {
+            var chunk = Mtmd.mtmd_input_chunks_get(chunks, (nuint)c);
+            var next = nPast;
+            int rc;
+            if (Mtmd.mtmd_input_chunk_get_type(chunk) == Mtmd.ChunkImage)
+            {
+                fixed (float* e = embeddings) rc = Mtmd.mtmd_helper_decode_image_chunk(mctx, ctx, chunk, e, nPast, 0, 512, &next, 0, 0);
+            }
+            else
+            {
+                rc = Mtmd.mtmd_helper_eval_chunk_single(mctx, ctx, chunk, nPast, 0, 512, (byte)(c == count - 1 ? 1 : 0), &next);
+            }
+            if (rc != 0) throw new InvalidOperationException($"chunk {c} returned {rc}");
+            nPast = next;
+        }
+
+        var limit = forced?.Count ?? GreedySteps;
+        for (var step = 0; step < limit; step++)
+        {
+            var logits = new ReadOnlySpan<float>(Llama.llama_get_logits_ith(ctx, -1), nVocab);
+            var token = onStep(step, logits);
+            if (token < 0 || step == limit - 1) break;
+            var rc = Llama.llama_decode(ctx, Llama.llama_batch_get_one(&token, 1));
+            if (rc != 0) throw new InvalidOperationException($"llama_decode(step {step}) returned {rc}");
+        }
+    }
+    finally
+    {
+        Llama.llama_free(ctx);
+    }
 }
 
 static void Detok(nint vocab, string logitsPath)

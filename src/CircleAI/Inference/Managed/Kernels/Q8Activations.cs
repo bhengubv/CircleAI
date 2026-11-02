@@ -48,16 +48,28 @@ public sealed class Q8Activations
     {
         if (x.Length != Length)
             throw new ArgumentException($"Expected {Length} values, got {x.Length}.", nameof(x));
+        QuantizeInto(x, Scales, Quants);
+    }
 
-        for (var b = 0; b < Scales.Length; b++)
+    /// <summary>
+    /// Quantises <paramref name="x"/> - a multiple of 32 values - into <paramref name="scales"/>
+    /// (one per block) and <paramref name="quants"/>, rounding exactly as <see cref="Quantize"/>
+    /// does: every Q8_0 product in the engine reads activations rounded this one way.
+    /// </summary>
+    public static void QuantizeInto(ReadOnlySpan<float> x, Span<float> scales, Span<sbyte> quants)
+    {
+        if (x.Length % BlockSize != 0 || scales.Length < x.Length / BlockSize || quants.Length < x.Length)
+            throw new ArgumentException("Q8_0 takes whole blocks of 32, with room for each block's scale and values.", nameof(x));
+
+        for (var b = 0; b < x.Length / BlockSize; b++)
         {
             var block = x.Slice(b * BlockSize, BlockSize);
             var amax = 0f;
             for (var j = 0; j < BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(block[j]));
 
-            Scales[b] = (float)(Half)(amax / 127f);
+            scales[b] = (float)(Half)(amax / 127f);
             var id = amax != 0f ? 127f / amax : 0f;
-            var q = Quants.AsSpan(b * BlockSize, BlockSize);
+            var q = quants.Slice(b * BlockSize, BlockSize);
             for (var j = 0; j < BlockSize; j++) q[j] = RoundToInt8(block[j] * id);
         }
     }
