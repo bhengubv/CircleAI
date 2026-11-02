@@ -219,6 +219,56 @@ public sealed class SetupBoardTests : IDisposable
     }
 
     [Fact]
+    public void A_brain_that_lands_while_another_answers_waits_to_be_the_brain_and_setup_can_finish()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var file = Path.Combine(Path.GetTempPath(), "circleai-readiness-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var tracker = new ReadinessTracker(file);
+            using var follow = SetupBoardFollow.Follow(tracker);
+            tracker.Report(ComponentState.Of(ReadinessComponents.Brain, BrainPhase.Ready, "", now, "small-brain"));
+            Assert.Equal(SetupBoard.Answering, SetupBoard.Of("small-brain")!.Detail);
+
+            // A BETTER BRAIN FETCHED IN THE BACKGROUND lands while the small one answers: it is here
+            // and checked, not "priming" until somebody promotes it - so setup reads done.
+            SetupBoard.Queue("better-brain", "the brain", 1_000);
+            SetupBoard.Arrived("better-brain", primes: true);
+            var waiting = SetupBoard.Of("better-brain")!;
+            Assert.Equal(SetupItemState.Ready, waiting.State);
+            Assert.Equal(SetupBoard.WaitingToBeTheBrain, waiting.Detail);
+            Assert.True(SetupBoard.Summary()!.Done);
+
+            // PROMOTED: it primes, then answers - and the small one no longer says it answers.
+            tracker.Report(new ComponentState(ReadinessComponents.Brain, BrainPhase.Loading, LoadStep.Warming, null,
+                PauseReason.None, "", "better-brain", now));
+            Assert.Equal(SetupItemState.Priming, SetupBoard.Of("better-brain")!.State);
+            tracker.Report(ComponentState.Of(ReadinessComponents.Brain, BrainPhase.Ready, "", now, "better-brain"));
+            Assert.Equal(SetupBoard.Answering, SetupBoard.Of("better-brain")!.Detail);
+            Assert.Equal(SetupBoard.WaitingToBeTheBrain, SetupBoard.Of("small-brain")!.Detail);
+        }
+        finally { try { File.Delete(file); } catch { } }
+    }
+
+    [Fact]
+    public void The_first_brain_to_land_primes_and_one_landing_with_no_brain_answering_does_too()
+    {
+        SetupBoard.RunningBrain = () => null;
+        SetupBoard.Arrived("first-brain", primes: true);
+        Assert.Equal(SetupItemState.Priming, SetupBoard.Of("first-brain")!.State);
+
+        // The brain that lands IS the one answering (a re-fetch): it is not waiting for itself.
+        SetupBoard.RunningBrain = () => "same-brain";
+        SetupBoard.Arrived("same-brain", primes: true);
+        Assert.Equal(SetupItemState.Priming, SetupBoard.Of("same-brain")!.State);
+
+        // A hook that throws is no brain answering, and never stops an arrival.
+        SetupBoard.RunningBrain = () => throw new InvalidOperationException("tracker gone");
+        SetupBoard.Arrived("third-brain", primes: true);
+        Assert.Equal(SetupItemState.Priming, SetupBoard.Of("third-brain")!.State);
+    }
+
+    [Fact]
     public void A_tracker_change_reaches_the_board_until_the_follow_is_disposed()
     {
         var file = Path.Combine(Path.GetTempPath(), "circleai-readiness-" + Guid.NewGuid().ToString("N") + ".json");

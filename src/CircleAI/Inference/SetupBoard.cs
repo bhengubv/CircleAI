@@ -37,6 +37,7 @@ public static class SetupBoard
     private static readonly object Gate = new();
     private static readonly Dictionary<string, SetupItemStatus> Items = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<string> Order = [];
+    private static readonly HashSet<string> LandedBrains = new(StringComparer.OrdinalIgnoreCase);
     private static long _version;
 
     /// <summary>
@@ -115,14 +116,76 @@ public static class SetupBoard
     }
 
     /// <summary>
+    /// Which brain is loaded, warmed and answering now; null while none is. Set by
+    /// <c>SetupBoardFollow</c> from the readiness tracker.
+    /// </summary>
+    public static Func<string?>? RunningBrain { get; set; }
+
+    /// <summary>What a brain that is here, but not the one answering, says on the board.</summary>
+    public const string WaitingToBeTheBrain = "on the phone and checked; it is loaded and warmed when it becomes the brain";
+
+    /// <summary>What the brain answering now says on the board.</summary>
+    public const string Answering = "loaded, warmed and answering";
+
+    /// <summary>
     /// Every byte is here and checked. A brain still has to be loaded and warmed before it is
     /// ready (<paramref name="primes"/>); anything else is ready now.
     /// </summary>
+    /// <remarks>
+    /// A BRAIN THAT IS NOT GOING TO ANSWER YET IS NOT "PRIMING" FOR EVER. A better brain fetched in
+    /// the background lands while another answers, and the supervisor moves to it only once it is
+    /// proven - so it would have read "priming" until then, and setup would never have read done.
+    /// While another brain is answering, a brain that lands is ready-and-waiting, and says so; it
+    /// reads priming again the moment the supervisor starts loading it.
+    /// </remarks>
     public static void Arrived(string modelId, bool primes)
-        => Update(modelId, null, current => Make(current, modelId, null,
-            primes ? SetupItemState.Priming : SetupItemState.Ready,
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return;
+
+        // ASKED OUTSIDE THE BOARD'S LOCK: the tracker has a lock of its own, and a board that held
+        // its own while it asked would be one lock order away from a deadlock.
+        var running = primes ? RunningBrainNow() : null;
+        if (primes)
+        {
+            lock (Gate) LandedBrains.Add(modelId);
+        }
+        var waits = running is not null && !string.Equals(running, modelId, StringComparison.OrdinalIgnoreCase);
+
+        Update(modelId, null, current => Make(current, modelId, null,
+            primes && !waits ? SetupItemState.Priming : SetupItemState.Ready,
             current?.BytesTotal ?? 0, current?.BytesTotal ?? 0,
-            primes ? "on the phone; it is loaded and warmed when it becomes the brain" : string.Empty));
+            !primes ? string.Empty
+            : waits ? WaitingToBeTheBrain
+            : "on the phone; it is loaded and warmed before it answers"));
+    }
+
+    /// <summary>
+    /// <paramref name="modelId"/> is the brain answering now: every other brain that landed and was
+    /// left priming is here and waiting to be the brain, not still on its way - and one that was
+    /// answering before (the balance moved to a smaller brain, or a better one was proven) no
+    /// longer says it answers.
+    /// </summary>
+    public static void BrainIsNow(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return;
+        List<string> waiting;
+        lock (Gate)
+        {
+            waiting = Items.Values
+                .Where(item => !string.Equals(item.ModelId, modelId, StringComparison.OrdinalIgnoreCase)
+                               && ((item.State == SetupItemState.Priming && LandedBrains.Contains(item.ModelId))
+                                   || (item.State == SetupItemState.Ready && item.Detail == Answering)))
+                .Select(item => item.ModelId)
+                .ToList();
+        }
+        foreach (var id in waiting) Ready(id, WaitingToBeTheBrain);
+    }
+
+    private static string? RunningBrainNow()
+    {
+        try { return RunningBrain?.Invoke() is { Length: > 0 } id ? id : null; }
+        catch { return null; }
+    }
 
     /// <summary>It cannot download now: no network, or only one the person said not to use.</summary>
     public static void WaitingForNetwork(string modelId, string why)
@@ -199,8 +262,10 @@ public static class SetupBoard
         {
             Items.Clear();
             Order.Clear();
+            LandedBrains.Clear();
             _version++;
         }
+        RunningBrain = null;
     }
 
     // ── internals ──────────────────────────────────────────────────────────────

@@ -23,8 +23,18 @@ public static class SetupBoardFollow
         ArgumentNullException.ThrowIfNull(tracker);
         EventHandler<ReadinessSnapshot> handler = (_, snapshot) => Apply(snapshot);
         tracker.Changed += handler;
+
+        // AND THE BOARD CAN ASK WHICH BRAIN ANSWERS, so a brain that lands while another answers
+        // reads as waiting to be the brain rather than priming until somebody promotes it.
+        Func<string?> running = () => tracker.Current.Brain is { Phase: BrainPhase.Ready, ModelId: { Length: > 0 } id } ? id : null;
+        SetupBoard.RunningBrain = running;
+
         Apply(tracker.Current);
-        return new Unfollow(() => tracker.Changed -= handler);
+        return new Unfollow(() =>
+        {
+            tracker.Changed -= handler;
+            if (SetupBoard.RunningBrain == running) SetupBoard.RunningBrain = null;
+        });
     }
 
     /// <summary>One snapshot onto the board. Exposed for tests.</summary>
@@ -33,8 +43,8 @@ public static class SetupBoardFollow
         if (snapshot is null) return;
         try
         {
-            Mirror(snapshot.Brain);
-            foreach (var component in snapshot.Components) Mirror(component);
+            Mirror(snapshot.Brain, isBrain: true);
+            foreach (var component in snapshot.Components) Mirror(component, isBrain: false);
         }
         catch
         {
@@ -42,7 +52,7 @@ public static class SetupBoardFollow
         }
     }
 
-    private static void Mirror(ComponentState state)
+    private static void Mirror(ComponentState state, bool isBrain)
     {
         if (string.IsNullOrWhiteSpace(state.ModelId)) return;
         var id = state.ModelId!;
@@ -52,7 +62,8 @@ public static class SetupBoardFollow
                 SetupBoard.Priming(id, ReadinessSentences.For(state));
                 break;
             case BrainPhase.Ready:
-                SetupBoard.Ready(id, "loaded, warmed and answering");
+                SetupBoard.Ready(id, isBrain ? SetupBoard.Answering : "built and warmed");
+                if (isBrain) SetupBoard.BrainIsNow(id);
                 break;
             case BrainPhase.Failed or BrainPhase.Paused when state.RetryAfter is not null:
                 SetupBoard.Healing(id, ReadinessSentences.For(state));
