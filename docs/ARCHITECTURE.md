@@ -69,6 +69,18 @@ beside it named after the model): `Inference/Managed/Vision` runs the tower, and
 `<|vision_start|><|image_pad|><|vision_end|>`, the pad expanded to one
 hash-derived id per picture token, each placed by IMROPE at (p, p+row, p+col).
 
+A generator that takes tools in its template (`IToolCallingGenerator` - the C#
+engine) gets them as `GenerationOptions.Tools`, rendered by the model's own
+template, and its sampler holds a call to the offered signatures
+(`ToolCallGrammar`); `ToolCallReader` reads the call back typed, and the agentic
+loop runs it. Any other generator is told about the tools in a note, as before.
+Each question gets an effort (`EffortRouter`, from its weight, the device's form
+factor and measured speed, and what this device learned): a quick one does not
+think, a hard one thinks within a budget in the device's own time, and the
+generator closes the thought when the budget is spent. Translation is a plain ask
+through the same front door (`AskFrontGenerator`), on whichever brain the plan
+picked.
+
 ```csharp
 public interface IChatGenerator : IDisposable
 {
