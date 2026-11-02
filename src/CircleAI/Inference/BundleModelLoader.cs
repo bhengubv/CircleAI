@@ -306,7 +306,7 @@ public sealed class BundleModelLoader : IModelLoader
         // so handing back a config.json for a GGUF names a file that will never appear
         // however completely the model arrives, and the test can only ever say "still
         // missing". The catalogued file name is the honest expectation.
-        if (entry.Engine == ModelEngine.LlamaCpp &&
+        if (IsGguf(entry) &&
             entry.BundleFiles?.FirstOrDefault(f =>
                 !f.Name.Contains("mmproj", StringComparison.OrdinalIgnoreCase)) is { } weight)
             return Path.Combine(modelDir, weight.Name);
@@ -671,6 +671,17 @@ public sealed class BundleModelLoader : IModelLoader
         }
     }
 
+    /// <summary>Whether a model's files are a GGUF rather than an MNN bundle.</summary>
+    /// <remarks>
+    /// TWO ENGINES READ GGUF, AND FOUR CHECKS HERE KNEW ONE. Each asked "is the engine
+    /// llama.cpp" to mean "is this a single .gguf with no config.json" - true until S4 moved
+    /// the Bonsai 2 rows to the C# engine, which reads the same file. On the P30 that made the
+    /// 2B "not on this device" with all 429 MB of it on disk (2026-11-02): ModelPresent asked
+    /// it for MNN's config.json. One predicate, so the next engine that reads GGUF is one line.
+    /// </remarks>
+    private static bool IsGguf(ModelEntry entry) =>
+        entry.Engine is ModelEngine.LlamaCpp or ModelEngine.Managed;
+
     public bool ModelPresent(string modelName)
     {
         try
@@ -703,7 +714,7 @@ public sealed class BundleModelLoader : IModelLoader
                 // shape. A GGUF then falls through to the every-file check below - there
                 // is no llm.mnn.weight for it to anchor on - which requires the .gguf to
                 // exist at its catalogued length, and that is the right question for it.
-                if (entry.Modality == ModelModality.Chat && entry.Engine != ModelEngine.LlamaCpp &&
+                if (entry.Modality == ModelModality.Chat && !IsGguf(entry) &&
                     !File.Exists(Path.Combine(modelDir, ConfigFileName)))
                     return false;
 
@@ -779,7 +790,7 @@ public sealed class BundleModelLoader : IModelLoader
                 // MNN does. See ModelPresent for why asking it of a GGUF made every one
                 // of them permanently absent; the two checks have to agree, or verify
                 // would fail a model present says is here.
-                if (entry.Modality == ModelModality.Chat && entry.Engine != ModelEngine.LlamaCpp &&
+                if (entry.Modality == ModelModality.Chat && !IsGguf(entry) &&
                     !File.Exists(Path.Combine(modelDir, ConfigFileName)))
                     return false;
 
@@ -852,7 +863,7 @@ public sealed class BundleModelLoader : IModelLoader
         // A GGUF IS A GGUF WHATEVER THE MODALITY, so this asks the engine first and the
         // modality second. No speech entry declares llama.cpp - every Tts, Asr, Vad and
         // WakeWord row in this registry is MNN or Onnx - so nothing else moves.
-        var path = entry.Engine == ModelEngine.LlamaCpp ? FindGguf() : entry.Modality switch
+        var path = IsGguf(entry) ? FindGguf() : entry.Modality switch
         {
             ModelModality.Tts      => Find("*.onnx"),
             ModelModality.Asr      => Find("*.bin", "*.onnx"),

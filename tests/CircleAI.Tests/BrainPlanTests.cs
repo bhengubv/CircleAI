@@ -256,6 +256,32 @@ public sealed class BrainPlanTests : IDisposable
     }
 
     [Fact]
+    public void A_Bonsai_row_on_the_CSharp_engine_is_present_and_resolves_to_its_gguf()
+    {
+        // FOUND ON THE P30, 2026-11-02: once the rows moved to the C# engine, the loader asked the
+        // 2B for MNN's config.json - four checks there read "llama.cpp" as "a GGUF" - and called
+        // all 429 MB of it "not on this device".
+        using var registry = new ModelRegistryService();
+        var twoB = registry.GetLatestModel("Ternary-Bonsai-2-2B")!;
+        Assert.Equal(ModelEngine.Managed, twoB.Engine);
+
+        var store = Path.Combine(Path.GetTempPath(), "circleai-bonsai-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            foreach (var f in twoB.BundleFiles!)
+                SparseStore.Write(Path.Combine(store, twoB.Name, f.Name), f.SizeBytes);
+
+            using var loader = new BundleModelLoader(store, registry);
+            Assert.True(loader.ModelPresent(twoB.Name));
+            Assert.EndsWith(".gguf", loader.GetModelPath(twoB.Name), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(store)) Directory.Delete(store, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Every_site_that_builds_a_brain_asks_the_one_factory()
     {
         // The three that wrote `new QwenTextGenerator` themselves now go through BrainFactory, and
