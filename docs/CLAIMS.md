@@ -196,6 +196,13 @@ against the pinned llama.cpp fork the repo already ships.
 | The 2B answers on the phone in C#, the desktop's words exactly: 81 prompt tokens in 78 s, 0.94 tokens a second | measured | P30 Lite MAR-LX1M, 2026-10-31 (through the soak broadcast, not the app's own path) |
 | It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
 | It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
+| The vision tower makes the fork's picture tokens from the same picture | tested | The_tower_makes_the_forks_tokens_from_the_same_picture |
+| The 2B reads the picture tokens where the fork places them | tested | The_2B_reads_the_forks_picture_tokens_where_the_fork_places_them |
+| A picture is described in the fork's words, and the next turn reuses it | tested | The_picture_is_described_as_the_fork_describes_it_and_a_next_turn_reuses_it |
+| The one brain factory builds a 2B that finds its tower and sees | tested | The_one_brain_factory_builds_a_2B_that_finds_its_tower_and_sees |
+| A model with no tower refuses a picture instead of answering blind | tested | A_model_with_no_tower_refuses_a_picture_instead_of_answering_blind |
+| A photo is described in 34 s: the picture 8.3 s, the 261-token prompt 22 s, 33 tokens in 3.4 s | measured | win-x64 dev PC, 7 threads, 2026-11-02 |
+| The 2B sees on the phone | unproven | never run on the P30; its tower runs the scalar path there |
 
 ## Choosing the brain
 

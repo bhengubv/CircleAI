@@ -62,7 +62,12 @@ else the one the file needs - an MNN folder opens on MNN, a GGUF the C# engine
 can read on the C# engine, any other GGUF on llama.cpp. The C# engine holds its attention
 keys and values as TurboQuant codes - 4 bits by default (`KvCompressionMode`) -
 and keeps the state after a system turn as a primed start, so a conversation
-that opens with the same persona does not read it again.
+that opens with the same persona does not read it again. It sees when the
+model's vision tower is found (an `*mmproj*.gguf` in its folder, or in a folder
+beside it named after the model): `Inference/Managed/Vision` runs the tower, and a
+`ChatMessage.ImageBytes` turn becomes the template's
+`<|vision_start|><|image_pad|><|vision_end|>`, the pad expanded to one
+hash-derived id per picture token, each placed by IMROPE at (p, p+row, p+col).
 
 ```csharp
 public interface IChatGenerator : IDisposable
