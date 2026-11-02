@@ -266,7 +266,8 @@ does - the vector instructions the runtime exposes (`System.Runtime.Intrinsics`:
 AdvSimd, the ARM dot product, AVX2, AVX-VNNI, AVX-512), and the battery,
 charging, heat and form factor a platform head supplies (`PowerProbe`,
 `FormFactorProbe`; the Android service installs both). A brain on the C# engine
-gets the fast cores less one.
+runs on the thread count this device measured fastest (`KernelThreads`, once per
+device and runtime), falling back to the fast cores less one.
 
 The choice itself stays the selector's, made speed-aware: `BrainSpeed` keeps out
 a brain this device measured - or estimates from a measured sibling on the same
@@ -345,6 +346,29 @@ Every Load/Unload increments
 existing OpenTelemetry Meter set up by `CircleAI.Core` 1.1.0 picks these
 up automatically — Prometheus / Jaeger / Loki exporters see them with
 zero extra wiring.
+
+### On the device: healing and Step 4
+
+Every failure becomes a `HealthEvent`, and `DeviceWolverine` - composed in the
+service by `ServiceApplication.ComposeWolverine` - answers it: rules first, the
+brain asked only about a fault no rule covers and only to pick from the safe
+fixes. A fix turns a knob (threads, working-memory bits, context, thinking
+budget, scalar kernels, a smaller brain, a fresh download) that crosses to the
+inference process in `state/wolverine/brain-tuning.json`, read where every brain
+is built (`BrainFactory`); a step that never ended leaves a marker in
+`state/risky/inference`, read as the fault at the next start. Apps read and
+change it through the `Healing` and `HealingSet` verbs. Reports leave through the
+outbox with nothing a person said.
+
+Step 4 is wired in `Droid/StepFour.cs`: `SetupBoard` keeps one record per model
+(queued to ready, with bytes, speed and time left) for the `SetupProgress` verb;
+the person's preferences and the download gate sit under `LinkScope.Settings`
+(`SettingsGet`, `SettingsSet`, `AbilitySet`, `CanDoNow`); `BrainBalance` gives
+ground under heat and a low battery cheapest first - fewer working-memory bits,
+half the context, the drafter and eyes off, a smaller brain, release - and
+remembers per device what worked; and a picture crosses the link as its own
+transaction (`TransactImage`), inside the parcel when small and by file handle
+when large.
 
 ---
 

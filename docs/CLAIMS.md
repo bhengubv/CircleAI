@@ -243,6 +243,53 @@ translation on the brain the plan picked.
 | A spoken translation crosses the link as version 2, and transcribing and speaking stay version 1 | tested | A_spoken_translation_crosses_as_version_two_and_comes_back_with_what_was_heard |
 | Tools, effort and translation through the brain work on the phone | unproven | never run on the P30 |
 
+## Healing itself
+
+Step 3 on the device: Wolverine fixes what it can, checks the fix took, remembers what worked, and
+reports upstream with nothing a person said.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A known fault is fixed by its rule without asking the brain | tested | A_known_fault_is_fixed_by_its_rule_without_asking_the_brain |
+| An unknown fault is put to the brain with the list of remedies that exist | tested | An_unknown_fault_is_put_to_the_brain_with_the_list_of_remedies_that_exist |
+| An action the brain invented is not a fix | tested | An_action_the_brain_invented_is_not_a_fix |
+| The brain is never asked about its own failure | tested | The_brain_is_never_asked_about_its_own_failure |
+| A knob turned down is what the brain will be built with | tested | A_knob_turned_down_is_what_the_brain_will_be_built_with |
+| A knob whose value does not reach the brain did not take | tested | A_knob_whose_value_does_not_reach_the_brain_did_not_take |
+| An answer after the remedy proves it, and the device remembers what worked | tested | An_answer_after_the_remedy_proves_it_and_the_device_remembers_what_worked |
+| What worked on this device before is tried first | tested | What_worked_on_this_device_before_is_tried_first |
+| A step that never ended is read as the fault at the next start | tested | A_step_that_never_ended_is_the_fault_read_at_the_next_look |
+| A thinking budget closes the reasoning and an answer follows | tested | A_thinking_budget_closes_the_reasoning_and_an_answer_follows_it |
+| A tool call nobody could read is asked for again in its form | tested | A_call_nobody_could_read_is_asked_for_again_in_its_form_and_wolverine_hears_the_retry_read |
+| No prompt or answer text reaches the outbox | tested | No_prompt_or_answer_text_reaches_the_outbox |
+| With no endpoint, reports stay on the device across a restart | tested | With_no_endpoint_the_reports_stay_on_the_device_across_a_restart |
+| The person is told once that reports are on | tested | The_person_is_told_once_that_reports_are_on |
+| Switched off, the outbox keeps nothing and sends nothing | tested | Switched_off_it_keeps_nothing_sends_nothing_and_remembers_it_is_off |
+| A fingerprint names the method, not its state machine, so it survives a rebuild | tested | An_async_method_is_its_own_site_not_its_state_machine |
+| Wolverine heals on the phone | unproven | never run on the P30 |
+
+## Every brain on, primed and balanced
+
+Step 4 on the device: what is fetched by default, progress an app can show, priming before Ready,
+the settings an app can change, and giving ground under heat and a low battery.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A queued model downloads with bytes, speed and time left, then is checked and ready | tested | A_queued_model_downloads_with_bytes_speed_and_time_left_then_is_checked_and_ready |
+| A setup item row carries every member and round-trips | tested | A_setup_item_row_carries_every_member_and_round_trips |
+| A brain that lands while another answers waits to be the brain, and setup can finish | tested | A_brain_that_lands_while_another_answers_waits_to_be_the_brain_and_setup_can_finish |
+| The plan puts a brain's tower and drafter right behind it, never on their own | tested | The_plan_puts_the_brains_tower_and_drafter_right_behind_it_and_never_on_their_own |
+| A download stopped halfway is not resumed once the person switched it off | tested | A_download_stopped_halfway_is_not_resumed_once_the_person_switched_it_off |
+| No link verb falls through to the chat floor by default | tested | No_verb_falls_through_to_the_chat_floor_by_default |
+| Each ability says what it can do now | tested | Each_ability_says_what_it_can_do_now_from_the_brain_the_switches_the_balance_and_the_board |
+| The balance gives ground cheapest first | tested | The_ladder_gives_ground_cheapest_first |
+| Heat that comes back goes straight to what it needed last time, and a restart remembers | tested | Heat_that_comes_back_goes_straight_to_what_it_needed_last_time_and_a_restart_remembers |
+| The balance changes only between turns, then primes and rests when released | tested | The_loop_changes_only_between_turns_then_primes_and_rests_when_released |
+| The thread count is measured once per device and read back after | tested | The_choice_is_measured_once_per_device_and_read_back_after_that |
+| A small picture rides inline and a big one behind a file handle | tested | A_small_picture_rides_inline_and_a_big_one_behind_a_file_handle |
+| The queue hands the brain the picture its ask is about | tested | The_queue_hands_the_brain_the_picture_its_ask_is_about |
+| The balance acts on a phone | unproven | never run on the P30 |
+
 ## Balance and readiness
 
 What the brain does with the phone's heat and battery, and what it says while it gets ready.
