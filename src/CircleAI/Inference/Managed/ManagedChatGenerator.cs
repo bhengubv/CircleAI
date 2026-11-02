@@ -63,6 +63,13 @@ public sealed record ManagedGeneratorOptions
     public int MaxNewTokens { get; init; } = 512;
 
     /// <summary>
+    /// The most tokens a reply may spend thinking before the reasoning is closed and the answer
+    /// begins; 0 is no budget. Wolverine tightens it when a reply thought its whole length away
+    /// and said nothing (S6).
+    /// </summary>
+    public int ThinkingBudget { get; init; }
+
+    /// <summary>
     /// How the attention layers hold their keys and values: Off is fp16, as the fork holds them; a
     /// TurboQuant mode holds codes at that many bits a coordinate (S3).
     /// </summary>
@@ -457,6 +464,11 @@ public sealed class ManagedChatGenerator : IChatGenerator
             ToolCallGrammar.State? call = null;
             var overruled = 0;
 
+            // THE THINKING BUDGET (S6): past it, the reasoning is closed for the model - the next
+            // token is </think> - so the reply cannot spend its whole length thinking and say nothing.
+            var thinkingTokens = 0;
+            var budget = _thinkEnd >= 0 ? Math.Max(0, _options.ThinkingBudget) : 0;
+
             while (generated.Count < maxTokens)
             {
                 ct.ThrowIfCancellationRequested();
@@ -470,7 +482,17 @@ public sealed class ManagedChatGenerator : IChatGenerator
                         call = null;
                     }
                 }
-                var token = sampler.Sample(_logits, generated);
+                int token;
+                if (reasoning && budget > 0 && thinkingTokens >= budget)
+                {
+                    token = _thinkEnd;
+                    CircleLog.Info(Area, Invariant($"thinking budget of {budget} tokens spent; the answer begins"));
+                }
+                else
+                {
+                    token = sampler.Sample(_logits, generated);
+                }
+                if (reasoning && token != _thinkEnd) thinkingTokens++;
                 if (firstAt == 0) firstAt = Stopwatch.GetTimestamp();
                 if (_endOfGeneration.Contains(token))
                 {

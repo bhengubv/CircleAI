@@ -177,7 +177,7 @@ public sealed class BundleModelLoader : IModelLoader
         var key = Path.GetFullPath(Path.Combine(_storageRoot, modelName));
         return InFlightDownloads.RunAsync(
             key, progress,
-            relay => DownloadOnceAsync(modelName, relay, ct),
+            relay => DownloadReportedAsync(modelName, relay, ct),
             joined: _ => Console.WriteLine(
                 $"CIRCLEAI-DOWNLOAD {modelName}: joined the download already in flight"),
             completed: _ => { if (!wasHere) Arrived(modelName); });
@@ -200,6 +200,29 @@ public sealed class BundleModelLoader : IModelLoader
                 Console.WriteLine(
                     $"CIRCLEAI-DOWNLOAD {modelName}: is here, and what was waiting for it failed: {ex.Message}");
             }
+        }
+    }
+
+    /// <summary>The download, with its failure said as a HealthEvent - once, whoever joined it.</summary>
+    /// <remarks>
+    /// EVERY PULL PATH PASSES HERE (S6), which is why the event is raised here rather than in
+    /// each of the four callers: a file that failed its hash, or a download that stalled past
+    /// every retry and both addresses, reaches Wolverine whichever path started it, and its rule
+    /// re-downloads or resumes it. A refusal by the metered-connection gate is the owner's rule
+    /// working, not a fault, and a cancellation is somebody's choice; neither is raised.
+    /// </remarks>
+    private async Task<string> DownloadReportedAsync(
+        string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress, CancellationToken ct)
+    {
+        try
+        {
+            return await DownloadOnceAsync(modelName, progress, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ModelDownloadBlockedException)
+        {
+            CircleAI.Core.Logging.HealthEvents.Raise(
+                CircleAI.Core.Logging.HealthEvents.From("Models", "download " + modelName, ex, subject: modelName));
+            throw;
         }
     }
 

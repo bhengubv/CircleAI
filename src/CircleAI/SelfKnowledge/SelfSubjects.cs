@@ -88,6 +88,23 @@ public static class SelfSubjects
     public static string? HealedOf(string? subject) =>
         IsAboutHealing(subject) ? subject![(Prefix.Length + "healed:".Length)..] : null;
 
+    /// <summary>What was done here about one failure, and whether it worked. One per fingerprint.</summary>
+    /// <remarks>
+    /// APPENDED, LIKE A TRIP (S6): the record of a remedy is the history - which one worked on
+    /// this device, which did not - and the next time the same failure comes the one that worked
+    /// here is tried first. Keyed on the fingerprint (CircleAI:ErrorType:Site), which is the same
+    /// key WolverineAPI de-duplicates on, so the phone and the server mean one thing by it.
+    /// </remarks>
+    public static string Remedy(string fingerprint) => $"{Prefix}remedy:{Normalise(fingerprint)}";
+
+    /// <summary>Every subject that records a remedy, for a sweep.</summary>
+    public static bool IsAboutRemedy(string? subject) =>
+        subject is not null && subject.StartsWith(Prefix + "remedy:", StringComparison.Ordinal);
+
+    /// <summary>The fingerprint out of a remedy subject, or null.</summary>
+    public static string? RemedyOf(string? subject) =>
+        IsAboutRemedy(subject) ? subject![(Prefix.Length + "remedy:".Length)..] : null;
+
     /// <summary>Every subject that is about one model, for a sweep.</summary>
     public static bool IsAboutModel(string? subject) =>
         subject is not null && subject.StartsWith(Prefix + "model:", StringComparison.Ordinal);

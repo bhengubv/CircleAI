@@ -159,7 +159,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 if (!await VerifySha256Async(tempPath, expectedSha256, ct).ConfigureAwait(false))
                 {
                     File.Delete(tempPath);
-                    throw new InvalidOperationException(
+                    throw new ModelIntegrityException(modelId, Path.GetFileName(filePath),
                         $"SHA-256 mismatch for model '{modelId}'. The downloaded file has been deleted.");
                 }
             }
@@ -347,6 +347,10 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 // otherwise viable bundle download.
                 var primary = BuildPrimaryUrl(source, repo, file.Name);
                 var fallback = BuildFallbackUrl(source, repo, file.Name);
+
+                // ANOTHER MIRROR FIRST, after this model's download stalled on the usual one and
+                // Wolverine resumed it (S6). The bytes on disk are resumed either way.
+                if (DownloadMirrors.StartsFromAlternate(modelId)) (primary, fallback) = (fallback, primary);
                 try
                 {
                     await DownloadWithRetryAsync(primary, tempPath, perFile, ct,
@@ -381,7 +385,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 if (!await VerifySha256Async(tempPath, file.Sha256, ct).ConfigureAwait(false))
                 {
                     File.Delete(tempPath);
-                    throw new InvalidOperationException(
+                    throw new ModelIntegrityException(modelId, file.Name,
                         $"SHA-256 mismatch for bundle file '{file.Name}' of model '{modelId}'. " +
                         "The downloaded file has been deleted.");
                 }
