@@ -224,6 +224,30 @@ it through one factory, and say why.
 | The P30 chooses by itself and says why: Qwen3.5-0.8B on MNN, not the Bonsai 4B, estimated at 0.8 tokens a second from the 2B's measured 1.66 on the C# engine | measured | P30 Lite MAR-LX1M, 2026-11-02 (the supervisor's plan line, before and after its inference process was ended) |
 | The P30 keeps those speeds across a reinstall and chooses the same way without measuring again | measured | P30 Lite MAR-LX1M, 2026-11-02 (2 records read back at start; the same plan line at start and after the inference process was ended) |
 
+## The rest of the fleet
+
+Step 2 for the whole Bonsai 2 fleet: the second packing, the 4B held to the fork, every file
+catalogued and gated, and drafting with the MTP head that changes no token.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Every file of the fleet is catalogued with the plan's size and SHA-256 | tested | Every_file_of_the_fleet_is_catalogued_with_the_plans_size_and_hash |
+| The 4B predicts the fork's tokens and logits | tested | The_4B_predicts_the_forks_tokens_and_logits |
+| A PQ2_0 file answers as its PTQ1_0 twin | tested | A_PQ2_0_model_and_its_PTQ1_0_twin_give_the_same_answers |
+| Tokens run together get each its own logits, to the bit | tested | Tokens_run_together_give_each_its_own_logits_to_the_bit |
+| Drafting changes no token and leaves the plain state | tested | Drafts_right_half_right_and_wrong_leave_the_plain_reply_and_the_plain_state |
+| The 4B's MTP drafts are kept and the reply is the plain reply | tested | The_4B_MTP_heads_drafts_are_kept_and_the_reply_is_the_plain_reply |
+| Through the generator, the 4B MTP file answers the same drafting or not | tested | Through_the_generator_the_4B_MTP_file_answers_the_same_with_its_head_drafting_or_not |
+| The C# engine runs the ten brains, and no drafter or tower as a model of its own | tested | Today_the_CSharp_engine_runs_the_ten_brains_and_neither_the_drafters_nor_the_towers |
+| A drafter is never fetched or resumed; a brain and its tower are | tested | A_drafter_is_never_fetched_or_resumed_and_a_brain_and_its_tower_are |
+| Setup plans a tower only right behind its brain, and never a drafter | tested | Setup_never_plans_a_companion_the_engine_cannot_open |
+| No screen or ability names a tower as the eyes | tested | No_screen_or_ability_names_a_tower_as_the_eyes |
+| The upgrade path never offers a companion | tested | The_upgrade_path_never_offers_a_companion |
+| Tool requests go to the Bonsai brains, and requests needing sight do not | tested | A_request_needing_sight_is_not_sent_to_a_Bonsai_brain_and_one_needing_tool_calls_or_thought_is |
+| The 2B in PQ2_0 predicts within the fork's own spread | unproven | fails at full length: 5 of 6,340 top-20 logits beyond the fork's 0.3096 (OPEN-GAPS C5) |
+| MTP drafting makes the 4B faster | unproven | slower in S5's run on this PC; never run on the P30 (OPEN-GAPS C7) |
+| The fleet's second packing, the 4B and drafting run on a phone | unproven | never run on the P30 (OPEN-GAPS D8) |
+
 ## Tools, effort and translation
 
 Step 2's abilities on the fleet: a tool call held to its form, thought sized to the question, and

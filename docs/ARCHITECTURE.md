@@ -54,7 +54,8 @@ All inference flows through two contracts. There are no parallel paths.
 The low-level "give me tokens for these messages" contract, implemented
 by `QwenTextGenerator` over `MnnInterop` - and by `ManagedChatGenerator`,
 CircleAI's own C# engine (`Inference/Managed`, `ModelEngine.Managed`), which
-runs Bonsai 2 (qwen35 packed as PTQ1_0) with no native code at all.
+runs Bonsai 2 (qwen35 packed as PTQ1_0 or PQ2_0, one packing per file) with no
+native code at all.
 One factory builds every generator: `BrainFactory` (`IBrainFactory`), asked by
 `AIService`, `AddCircleAI`, `CircleAISession` and the inference bridge alike. It
 takes the engine the host names (`AIOptions.Engine`), else the catalogue row's,
@@ -68,6 +69,17 @@ beside it named after the model): `Inference/Managed/Vision` runs the tower, and
 `ChatMessage.ImageBytes` turn becomes the template's
 `<|vision_start|><|image_pad|><|vision_end|>`, the pad expanded to one
 hash-derived id per picture token, each placed by IMROPE at (p, p+row, p+col).
+A file with an MTP head drafts with it: `Speculator` checks two drafted tokens
+in one pass of the trunk (`ForwardBatch`, each token's logits identical to its
+own `Forward`'s), draws every token through the reply's own step, and rolls
+rejected drafts out of the DeltaNet layers from `Qwen35State.Checkpoint`, so the
+reply equals plain decoding token for token. The row's generation profile (the
+model card's samplers) reaches the engine through `BrainFactory`.
+`EngineChoice.Opens` keeps a row the engine cannot open as a model of its own (a
+DFlash 2 drafter, a vision tower) out of every selector, plan and fetch, and
+`EngineChoice.Delivers` keeps a request needing what the engine cannot hand back
+(sight) away from its brains; a brain's tower is fetched only right behind that
+brain (`BrainCompanions`, `BundleModelLoader.CanRunHere`).
 
 A generator that takes tools in its template (`IToolCallingGenerator` - the C#
 engine) gets them as `GenerationOptions.Tools`, rendered by the model's own
