@@ -73,19 +73,31 @@ A file with an MTP head drafts with it: `Speculator` checks two drafted tokens
 in one pass of the trunk (`ForwardBatch`, each token's logits identical to its
 own `Forward`'s), draws every token through the reply's own step, and rolls
 rejected drafts out of the DeltaNet layers from `Qwen35State.Checkpoint`, so the
-reply equals plain decoding token for token. The row's generation profile (the
+reply equals plain decoding token for token. Drafting is off unless a host asks
+for it (`ManagedGeneratorOptions.Drafts`): lossless, and slower everywhere it was
+measured, a phone above all (OPEN-GAPS C7). The row's generation profile (the
 model card's samplers) reaches the engine through `BrainFactory`.
 `EngineChoice.Opens` keeps a row the engine cannot open as a model of its own (a
 DFlash 2 drafter, a vision tower) out of every selector, plan and fetch, and
 `EngineChoice.Delivers` keeps a request needing what the engine cannot hand back
 (sight) away from its brains; a brain's tower is fetched only right behind that
-brain (`BrainCompanions`, `BundleModelLoader.CanRunHere`).
+brain (`BrainCompanions`, `BundleModelLoader.CanRunHere`). A picture through the
+service goes to a brain that can see: a vision specialist admitted beside the
+brain (`SightRouter`), on Android an installed C# brain and its tower first where
+this device's kernels are quick enough for a turn (`SeeingSelector`); a generator
+that cannot see (`ISeeingGenerator`) is never let answer about a picture
+(`AIService.CannotSeeIt`).
 
 A generator that takes tools in its template (`IToolCallingGenerator` - the C#
 engine) gets them as `GenerationOptions.Tools`, rendered by the model's own
 template, and its sampler holds a call to the offered signatures
 (`ToolCallGrammar`); `ToolCallReader` reads the call back typed, and the agentic
 loop runs it. Any other generator is told about the tools in a note, as before.
+Through the service, an ask that allows tools is answered as a tool turn: the
+coordinator gives its job `Tools`, the worker wire carries it to the inference
+process, and the worker answers it whole through `ToolTurn` - the engine's own
+tool for a battery or live-web question, else the agentic loop - with
+`CircleAIToolBridge` there, each run logged by name; every other job streams.
 Each question gets an effort (`EffortRouter`, from its weight, the device's form
 factor and measured speed, and what this device learned): a quick one does not
 think, a hard one thinks within a budget in the device's own time, and the
@@ -283,8 +295,10 @@ device and runtime), falling back to the fast cores less one.
 
 The choice itself stays the selector's, made speed-aware: `BrainSpeed` keeps out
 a brain this device measured - or estimates from a measured sibling on the same
-engine, scaled by weight - below 4 tokens a second, and a brain with no measured
-sibling is never called too slow. Speeds are learned from every answer and every
+engine, scaled by weight, in its own packing where one has run and across
+packings by how fast this device's kernels read each (`KernelThreads` measures
+both) - below 4 tokens a second, and a brain with no measured sibling is never
+called too slow. The first choice waits for the speeds to be read back. Speeds are learned from every answer and every
 engine check (`SelfModel.LearnSpeed`). `BrainPlan.Explain` puts the choice in one
 line, which the inference supervisor logs as `plan:`.
 

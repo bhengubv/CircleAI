@@ -192,17 +192,20 @@ against the pinned llama.cpp fork the repo already ships.
 | At 4 bits the working memory keeps the fork's tokens, and the MSE form beats the second stage at every width | tested | Each_working_memory_mode_measured_against_the_forks_tokens |
 | A compressed working memory survives a session | tested | A_compressed_state_survives_a_session |
 | A conversation that opens with the same system turn starts primed, and answers as a cold start does | tested | A_conversation_with_the_same_system_turn_starts_primed_and_answers_as_a_cold_start_does |
-| A primed start shortens the first answer on the phone | unproven | not yet run on the P30 |
+| A primed start shortens the first answer on the phone: 18 of the question's 81 tokens read, in 9.4 s, where all 81 took 78 s with none | measured | P30 Lite MAR-LX1M, 2026-11-02 (the soak engine check, primed by the warm-up; OPEN-GAPS D5) |
 | The 2B answers on the phone in C#, the desktop's words exactly: 81 prompt tokens in 78 s, 0.94 tokens a second | measured | P30 Lite MAR-LX1M, 2026-10-31 (through the soak broadcast, not the app's own path) |
-| It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
-| It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
+| It answers through the inference process's own build site on the phone: ready in 44 s, 13 tokens at 1.47 a second | measured | P30 Lite MAR-LX1M, 2026-11-02 (the soak engine check; OPEN-GAPS D5) |
+| On the phone it writes at about half the native fork's speed: 1.47 against 3.27 tokens a second | measured | P30 Lite MAR-LX1M, 2026-11-02 (both through the soak engine check, the same path and question; OPEN-GAPS D5) |
 | The vision tower makes the fork's picture tokens from the same picture | tested | The_tower_makes_the_forks_tokens_from_the_same_picture |
 | The 2B reads the picture tokens where the fork places them | tested | The_2B_reads_the_forks_picture_tokens_where_the_fork_places_them |
 | A picture is described in the fork's words, and the next turn reuses it | tested | The_picture_is_described_as_the_fork_describes_it_and_a_next_turn_reuses_it |
 | The one brain factory builds a 2B that finds its tower and sees | tested | The_one_brain_factory_builds_a_2B_that_finds_its_tower_and_sees |
 | A model with no tower refuses a picture instead of answering blind | tested | A_model_with_no_tower_refuses_a_picture_instead_of_answering_blind |
 | A photo is described in 34 s: the picture 8.3 s, the 261-token prompt 22 s, 33 tokens in 3.4 s | measured | win-x64 dev PC, 7 threads, 2026-11-02 |
-| The 2B sees on the phone | unproven | never run on the P30; its tower runs the scalar path there |
+| The 2B sees on the phone: S8's 100×60 picture as 12 tokens, the tower 25 s, described right in 19 tokens at 1.65 a second | measured | P30 Lite MAR-LX1M, 2026-11-02 (the soak engine check with --es image, twice, S9) |
+| A cold start after the inference process is ended answers from the primed start kept on disk | measured | P30 Lite MAR-LX1M, 2026-11-02 (13 of 76 tokens read at load, 19 of 82 for the question, S9) |
+| The log file holds what logcat shows, and reads back on the phone | measured | P30 Lite MAR-LX1M, 2026-11-02 (the logs broadcast: the kernel measurement, the engine's load and the tool that ran, in both, S9) |
+| A 30-minute soak answers every question with no restart | measured | P30 Lite MAR-LX1M, 2026-11-02 (6 asked, 6 correct, no restart, no fatal line, S9) |
 
 ## Choosing the brain
 
@@ -245,8 +248,13 @@ catalogued and gated, and drafting with the MTP head that changes no token.
 | The upgrade path never offers a companion | tested | The_upgrade_path_never_offers_a_companion |
 | Tool requests go to the Bonsai brains, and requests needing sight do not | tested | A_request_needing_sight_is_not_sent_to_a_Bonsai_brain_and_one_needing_tool_calls_or_thought_is |
 | The 2B in PQ2_0 predicts within the fork's own spread | unproven | fails at full length: 5 of 6,340 top-20 logits beyond the fork's 0.3096 (OPEN-GAPS C5) |
-| MTP drafting makes the 4B faster | unproven | slower in S5's run on this PC; never run on the P30 (OPEN-GAPS C7) |
-| The fleet's second packing, the 4B and drafting run on a phone | unproven | never run on the P30 (OPEN-GAPS D8) |
+| On the P30, PQ2_0's lookup kernel is slower than PTQ1_0's: 8.2 ms at best against 7.3 ms for one 6144×2048 product | measured | P30 Lite MAR-LX1M, 2026-11-02 (the kernel bench in the Release service, S9) |
+| A brain's speed is estimated from one in its own packing before one in another | tested | A_brain_is_estimated_from_its_own_packing_before_another |
+| Across packings, the device's own kernels scale the estimate - the PQ2_0 2B is quick on a PC whose kernels read PQ2_0 4x faster, and still too slow on the P30 | tested | Across_packings_the_devices_own_kernels_scale_the_estimate |
+| Both packings' kernels are measured once per device and read back by the process that plans | tested | Both_packings_are_measured_once_and_read_back_by_the_planner |
+| MTP drafting is off unless a host asks for it | tested | Drafting_is_off_unless_a_host_asks_for_it |
+| MTP drafting makes the 4B faster | unproven | slower in S5's run on this PC; on the P30 the check pass alone is 2.4 times slower than single passes (OPEN-GAPS C7) |
+| The fleet's second packing, the 4B and drafting run on a phone | unproven | PQ2_0's kernels timed on the P30 on 2026-11-02, slower there than PTQ1_0's; no PQ2_0 file, the 4B or drafting has run on it (OPEN-GAPS D8) |
 
 ## Tools, effort and translation
 
@@ -265,7 +273,15 @@ translation on the brain the plan picked.
 | Translation runs on the service's brain as a plain ask through the queue | tested | The_engine_runs_on_the_services_brain_as_a_plain_ask_through_the_queue |
 | Spoken translation: the ears transcribe, the brain translates, the voice speaks | tested | The_ears_transcribe_the_brain_translates_and_the_voice_speaks_in_that_order |
 | A spoken translation crosses the link as version 2, and transcribing and speaking stay version 1 | tested | A_spoken_translation_crosses_as_version_two_and_comes_back_with_what_was_heard |
-| Tools, effort and translation through the brain work on the phone | unproven | never run on the P30 |
+| A tool turn runs through the service on the phone: the battery tool in 13 ms, the answer from it in 275 ms | measured | P30 Lite MAR-LX1M, 2026-11-02 (an ask with tools allowed, S9: "Your battery is at 100%.") |
+| The effort router gives a quick question no thought on the phone | measured | P30 Lite MAR-LX1M, 2026-11-02 (every S9 question: "effort: quick on a phone: off") |
+| Translation through the brain works on the phone | unproven | not run in S9; tools and effort were |
+| An app's tool turn reaches the brain as a tool turn through the service's door | tested | An_ask_that_allows_tools_reaches_the_brain_as_a_tool_turn |
+| "Tools allowed" crosses to the inference process, and a job without tools writes nothing new | tested | The_wire_carries_tools_and_a_job_without_them_writes_nothing |
+| A battery or live-web question runs the engine's own tool; any other goes to the agentic loop | tested | A_plain_intent_runs_the_engines_own_tool_and_the_rest_go_to_the_agentic_loop |
+| The service's worker answers a tool turn whole through the tool turn, and streams every other | tested | The_worker_answers_a_tool_job_whole_through_the_tool_turn_and_streams_the_rest |
+| Each tool that runs in the service is logged by name, never by its arguments or result | tested | Each_tool_that_runs_is_logged_by_name_and_never_by_its_arguments_or_result |
+| The service's inference process holds the tools, and tells apps that turns carry them | tested | The_service_gives_its_inference_process_the_tools_and_says_turns_carry_them |
 
 ## Healing itself
 
@@ -290,7 +306,7 @@ reports upstream with nothing a person said.
 | The person is told once that reports are on | tested | The_person_is_told_once_that_reports_are_on |
 | Switched off, the outbox keeps nothing and sends nothing | tested | Switched_off_it_keeps_nothing_sends_nothing_and_remembers_it_is_off |
 | A fingerprint names the method, not its state machine, so it survives a rebuild | tested | An_async_method_is_its_own_site_not_its_state_machine |
-| Wolverine heals on the phone | unproven | never run on the P30 |
+| Wolverine heals on the phone: a brain too big for it, loaded and killed for memory, is stepped down from for an hour and the next brain is built without it | measured | P30 Lite MAR-LX1M, 2026-11-02 (Qwen3.5-2B on MNN, fetched and pinned by broadcast; HEALTH OutOfMemory, then "smaller-brain: stepped down", read back from the log file, S9) |
 
 ## Every brain on, primed and balanced
 
@@ -312,7 +328,12 @@ the settings an app can change, and giving ground under heat and a low battery.
 | The thread count is measured once per device and read back after | tested | The_choice_is_measured_once_per_device_and_read_back_after_that |
 | A small picture rides inline and a big one behind a file handle | tested | A_small_picture_rides_inline_and_a_big_one_behind_a_file_handle |
 | The queue hands the brain the picture its ask is about | tested | The_queue_hands_the_brain_the_picture_its_ask_is_about |
-| The balance acts on a phone | unproven | never run on the P30 |
+| A picture handed to a brain that cannot see is refused in words, never answered | tested | A_picture_handed_to_a_brain_that_cannot_see_is_refused_in_words_and_never_answered |
+| A brain that can see is handed the picture; one whose eyes are missing is not | tested | A_brain_that_can_see_is_handed_the_picture_and_one_whose_eyes_are_missing_is_not |
+| The service routes a picture, and only a picture, to a brain that can see | tested | Only_a_picture_is_routed_and_only_to_a_brain_that_can_see |
+| An empty model folder a stopped download left is removed at start-up, and nothing resumable or installed is touched | tested | An_empty_model_folder_a_stopped_download_left_is_removed_and_nothing_else_is |
+| Setup and the brain's first choice wait for the speeds this device measured | tested | The_first_plans_wait_for_the_speeds_this_device_measured |
+| The balance acts on a phone: a flat, hot phone steps the brain down in 12 s, and it grows back after ten calm minutes | measured | P30 Lite MAR-LX1M, 2026-11-02 (8%, unplugged and heat 2 pretended by broadcast - no device setting, S9) |
 
 ## Balance and readiness
 
@@ -325,7 +346,7 @@ What the brain does with the phone's heat and battery, and what it says while it
 | A nearly flat battery steps the power budget down without the caller saying so | tested | A_nearly_flat_battery_steps_the_budget_down_without_the_caller_saying_so |
 | A hot device steps a high power budget down | tested | A_hot_device_steps_a_high_budget_down |
 | MNN's own 4-bit working memory costs the 0.8B its answers, so an MNN brain loads with it off | measured | desktop win-x64 MNN bridge, 2026-11-01 (0 of 6 answers alike at 4 bits; off, 6 of 6 twice) |
-| The phone reads its heat and battery while it answers | unproven | built 2026-11-01; not yet run on the P30 |
+| The phone reads its heat and battery while it answers | measured | P30 Lite MAR-LX1M, 2026-11-02 (the plan line: "battery 100% charging"; "thermal state Normal" at every start, S9) |
 
 ## Who said what
 
