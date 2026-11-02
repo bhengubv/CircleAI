@@ -103,6 +103,10 @@ public sealed class WorkerConnection : IAsyncDisposable
             [WorkerWire.SkipHash] = request.SkipLoadHash ? "1" : "0",
         };
         if (request.Engine is { } engine) map[WorkerWire.Engine] = engine.ToString();
+        // THE BALANCE'S SHAPE (Step 4), sent only when it differs from the brain as built.
+        if (request.KvMode is { } kv) map[WorkerWire.KvMode] = kv.ToString();
+        if (request.ContextShare is > 0 and < 1)
+            map[WorkerWire.ContextShare] = request.ContextShare.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
         Check(await CallAsync(map, WorkPhase.Load, ct).ConfigureAwait(false), WorkPhase.Load);
 
         while (true)
@@ -141,8 +145,29 @@ public sealed class WorkerConnection : IAsyncDisposable
             [WorkerWire.DeadlineMs] = WorkerWire.L(job.Deadline.ToUnixTimeMilliseconds()),
         };
         if (job.RetrievalQuery is not null) start[WorkerWire.Retrieval] = job.RetrievalQuery;
-        WorkerWire.PutMessages(start, job.Messages);
-        Check(await CallAsync(start, WorkPhase.Prefill, ct).ConfigureAwait(false), WorkPhase.Prefill);
+        // A PICTURE GOES AS A FILE, NOT THROUGH THE MAP (Step 4): both processes are this app and
+        // share its cache, and a photo would be most of the transaction's megabyte.
+        var spilled = new List<string>();
+        WorkerWire.PutMessages(start, job.Messages, spill: image =>
+        {
+            var path = Spill(job.AskId, spilled.Count, image);
+            spilled.Add(path);
+            return path;
+        });
+        try
+        {
+            Check(await CallAsync(start, WorkPhase.Prefill, ct).ConfigureAwait(false), WorkPhase.Prefill);
+        }
+        finally
+        {
+            // THE FILE WAS ONLY EVER A WAY ACROSS: the worker reads the messages before it answers
+            // the start, so by now it has the picture or never will.
+            foreach (var path in spilled)
+            {
+                try { File.Delete(path); }
+                catch { /* the cache is the system's to clear */ }
+            }
+        }
 
         var since = 0;
         try
@@ -244,6 +269,17 @@ public sealed class WorkerConnection : IAsyncDisposable
     }
 
     // ── plumbing ─────────────────────────────────────────────────────────────
+
+    // An ask's picture, written where the inference process can read it: this app's cache, one file
+    // per picture of the ask, replaced if the ask runs again and deleted once the worker has read it.
+    private string Spill(string askId, int index, byte[] image)
+    {
+        var dir = Path.Combine(_context.CacheDir?.AbsolutePath ?? Path.GetTempPath(), "worker-images");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, string.Concat(askId.Split(Path.GetInvalidFileNameChars())) + "-" + index + ".img");
+        File.WriteAllBytes(path, image);
+        return path;
+    }
 
     private static void Check(IReadOnlyDictionary<string, string> reply, WorkPhase phase)
     {

@@ -168,30 +168,48 @@ public sealed class LinkedBrain : IBrain, IDisposable
 
     /// <inheritdoc />
     /// <remarks>
-    /// ZERO, which the contract defines as "do not resize", because there is nothing
-    /// to resize FOR: the link carries text only. A screen that asks this gets the
-    /// honest answer rather than a plausible 1024 that would have it shrink a photo
-    /// before sending it somewhere that cannot take one.
+    /// THE LINK CARRIES PICTURES NOW (Step 4), shrunk to the edge a vision model accepts before they
+    /// leave this app - the same budget the in-process head answers (DeviceBrain), so a screen that
+    /// asks gets the one the service will use. It was zero, "do not resize", while the link carried
+    /// text only.
     /// </remarks>
-    public int MaxImageEdge => 0;
+    public int MaxImageEdge => CircleAI.Inference.ImageBudget.VisionMaxEdge;
 
     /// <inheritdoc />
-    public Task<string> SeeAsync(string question, byte[] image, Action<string>? token = null,
-                                 CancellationToken ct = default)
+    /// <remarks>
+    /// A QUESTION ABOUT A PICTURE IS A QUESTION AS A RECORD, with the picture beside it in the
+    /// service (Step 4): accepted with an id, answered by whichever brain on the phone can see, and
+    /// streamed back as it is written. An older service says it cannot take pictures, rather than a
+    /// text model answering politely and wrongly about one it never saw.
+    /// </remarks>
+    public async Task<string> SeeAsync(string question, byte[] image, Action<string>? token = null,
+                                       CancellationToken ct = default)
     {
-        // THE WIRE HAS NO IMAGE VERB. LinkVerb covers recall, remember, skills and
-        // capabilities; a turn carries a string. So a linked client cannot ask about
-        // a picture, and this says so rather than returning something that reads like
-        // an answer about an image it never saw — which is exactly the failure this
-        // repo has already had once, when a throw was swallowed and the TEXT model
-        // answered about a photograph politely and wrongly.
-        //
-        // Closing it is a protocol change: a transaction that carries bytes, with its
-        // own scope so a person approves picture-reading separately from chat.
-        _ = question; _ = image; _ = token; _ = ct;
-        return Task.FromResult(
-            "Reading pictures is not available over the CircleAI link yet — "
-            + "the link carries text only.");
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null) return NotLinked();
+
+        var streamed = string.Empty;
+        var reply = await client.AskAboutPictureAsync(question, image, _session,
+            partial: text =>
+            {
+                if (text.Length <= streamed.Length || !text.StartsWith(streamed, StringComparison.Ordinal)) return;
+                var delta = text[streamed.Length..];
+                streamed = text;
+                token?.Invoke(delta);
+            }, ct).ConfigureAwait(false);
+
+        if (!reply.Ok)
+        {
+            var why = reply.Error ?? "CircleAI could not look at that picture.";
+            token?.Invoke(why);
+            return why;
+        }
+
+        var answer = reply.Reply ?? string.Empty;
+        if (streamed.Length == 0) token?.Invoke(answer);
+        else if (answer.Length > streamed.Length && answer.StartsWith(streamed, StringComparison.Ordinal))
+            token?.Invoke(answer[streamed.Length..]);
+        return answer;
     }
 
     /// <summary>Transcribe audio this app recorded, using the service's recogniser.</summary>

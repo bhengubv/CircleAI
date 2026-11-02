@@ -329,6 +329,16 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         }
         if (view is null) return LinkTurnReply.Failure("Circle AI could not take that question.");
 
+        return await FollowAsync(view, partial, give, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Follows an accepted ask until it is answered, reporting its text as it grows. Shared by the
+    /// typed question and the question about a picture, so the two cannot follow differently.
+    /// </summary>
+    private async Task<LinkTurnReply> FollowAsync(
+        LinkAskView view, Action<string>? partial, DateTimeOffset give, CancellationToken ct)
+    {
         var text = view.TextOffset == 0 ? view.Text : string.Empty;
         if (text.Length > 0) partial?.Invoke(text);
         var seq = view.Seq;
@@ -567,6 +577,97 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     /// <summary>What Circle AI holds here: lines, then total and freeable as the last two rows.</summary>
     public Task<LinkRowsReply> FootprintAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Footprint), ct);
+
+    // ── Step 4: settings, an ability on or off, what it can do now, pictures ─────
+
+    /// <summary>Every preference: rows read with <see cref="LinkSettingsRows.ReadSetting"/>. Needs a Settings grant.</summary>
+    public Task<LinkRowsReply> SettingsAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SettingsGet), ct);
+
+    /// <summary>Set one preference; its new row back, or why the value means nothing. Needs a Settings grant.</summary>
+    public Task<LinkRowsReply> SetSettingAsync(string key, string value, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SettingsSet, Query: key, Text: value), ct);
+
+    /// <summary>Switch one ability on or off; its live row back. Needs a Settings grant.</summary>
+    public Task<LinkRowsReply> SetAbilityAsync(string title, bool on, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.AbilitySet, Query: title, Text: on ? "on" : "off"), ct);
+
+    /// <summary>
+    /// What it can do right now: one row per ability, then a summary row with an empty title whose
+    /// detail is the sentence to say. Needs a Settings grant.
+    /// </summary>
+    public Task<LinkRowsReply> CanDoNowAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.CanDoNow), ct);
+
+    /// <summary>
+    /// Ask about a picture, followed until it is answered (Step 4). The picture is shrunk to what a
+    /// vision model can use (ImageBudget) before it leaves this app, and goes by file descriptor when
+    /// it is still bigger than a transaction can carry.
+    /// </summary>
+    /// <param name="question">What to ask about it.</param>
+    /// <param name="image">The encoded picture.</param>
+    /// <param name="sessionId">This app's conversation id.</param>
+    /// <param name="partial">Called with the whole answer so far, each time it grows.</param>
+    /// <param name="ct">Stops following; the ask is withdrawn.</param>
+    public async Task<LinkTurnReply> AskAboutPictureAsync(
+        string question, byte[] image, string sessionId, Action<string>? partial = null, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (await ProtocolAsync(ct).ConfigureAwait(false) < 3)
+            return LinkTurnReply.Failure("This CircleAI cannot take pictures yet - update it to ask about one.");
+
+        var small = CircleAI.Device.AndroidImageShrink.Shrink(image, CircleAI.Inference.ImageBudget.VisionMaxEdge);
+        if (!LinkImage.Fits(small.Length, out var refusal)) return LinkTurnReply.Failure(refusal!);
+
+        var request = new LinkImageRequest(question ?? string.Empty, sessionId ?? string.Empty, Guid.NewGuid().ToString("N"), small);
+        string? writeRefusal = null;
+        string? spilled = null;
+        try
+        {
+            var reply = await TransactAsync(
+                LinkIpc.TransactImage,
+                data =>
+                {
+                    var handles = new ParcelHandleWriter(data, _context);
+                    if (!LinkImageCodec.TryWriteRequest(new ParcelWriter(data), handles, request, out var why))
+                        writeRefusal = why;
+                    spilled = handles.Spilled;
+                },
+                reply => LinkVerbCodec.DecodeReply(ReadMap(reply)),
+                LinkRowsReply.Failure,
+                ct).ConfigureAwait(false);
+
+            if (writeRefusal is not null) return LinkTurnReply.Failure(writeRefusal);
+            if (!reply.Ok || reply.Rows.Count == 0 || LinkAskRows.ReadAsk(reply.Rows[0]) is not { } view)
+                return LinkTurnReply.Failure(reply.Error ?? "Circle AI could not take that picture.");
+
+            return await FollowAsync(view, partial, DateTimeOffset.UtcNow.AddMinutes(6), ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // THE FILE WAS ONLY EVER A WAY ACROSS: the service has read it by the time the reply came.
+            if (spilled is not null) try { System.IO.File.Delete(spilled); } catch { }
+        }
+    }
+
+    /// <summary>Puts a picture's bytes in a file of this app's and its descriptor in the parcel.</summary>
+    private sealed class ParcelHandleWriter(Parcel parcel, Context context) : LinkImageCodec.IHandleWriter
+    {
+        /// <summary>The file written, for the caller to delete once the transaction is done.</summary>
+        public string? Spilled { get; private set; }
+
+        public void WriteHandle(byte[] bytes)
+        {
+            var dir = System.IO.Path.Combine(context.CacheDir?.AbsolutePath ?? System.IO.Path.GetTempPath(), "link-pictures");
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, Guid.NewGuid().ToString("N") + ".img");
+            System.IO.File.WriteAllBytes(path, bytes);
+            Spilled = path;
+            using var descriptor = ParcelFileDescriptor.Open(new Java.IO.File(path), ParcelFileMode.ReadOnly)
+                                   ?? throw new System.IO.IOException("the picture's file could not be opened");
+            parcel.WriteFileDescriptor(descriptor.FileDescriptor!);
+        }
+    }
 
     /// <summary>What to tell a person when the transaction itself failed.</summary>
     /// <remarks>

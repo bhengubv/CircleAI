@@ -165,6 +165,21 @@ public sealed class LinkedSetup(LinkedBrain brain)
         }
     }
 
+    /// <summary>
+    /// Every model on its way in, as the service's setup board says: queued, waiting for a network,
+    /// downloading with bytes, speed and time left, verifying, priming, ready, failed or healing
+    /// (Step 4) - whichever path is fetching it, the background one included. Empty when the link
+    /// is down or nothing is being set up.
+    /// </summary>
+    public async Task<IReadOnlyList<CircleAI.Core.SetupItemStatus>> ItemsAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return [];
+
+        var reply = await client.SetupProgressAsync(ct).ConfigureAwait(false);
+        return reply.Ok ? LinkSettingsRows.ReadItems(reply.Rows) : [];
+    }
+
     private static Readiness NotLinked => new(
         ReadyStage.NeedsSetup,
         "CircleAI is not linked yet",

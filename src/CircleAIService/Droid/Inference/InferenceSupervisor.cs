@@ -60,6 +60,7 @@ public sealed class InferenceSupervisor : IBrainWorker
     private string? _pendingCandidate;
     private bool _nothingRunnable;
     private DateTimeOffset _lastUse = DateTimeOffset.UtcNow;
+    private BalanceShape _shape = BalanceShape.Full;
 
     /// <summary>A supervisor over a worker connection.</summary>
     public InferenceSupervisor(
@@ -284,6 +285,62 @@ public sealed class InferenceSupervisor : IBrainWorker
         }
     }
 
+    // ── balance (Step 4) ─────────────────────────────────────────────────────
+
+    /// <summary>The shape the balance gave the brain: its working memory, context, and how much of it runs.</summary>
+    public BalanceShape Shape { get { lock (_gate) return _shape; } }
+
+    /// <summary>When Android last said memory was critically short (TRIM_MEMORY_COMPLETE), for the balance.</summary>
+    /// <remarks>
+    /// A TIME, NOT A LEVEL: the last level is kept for ever, so one bad minute last week would read
+    /// as pressure today. The balance counts it only while it is recent.
+    /// </remarks>
+    public DateTimeOffset LastCriticalTrim { get { lock (_gate) return _lastCriticalTrim; } }
+
+    private DateTimeOffset _lastCriticalTrim = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Gives the brain a new shape, between turns: the next load takes it; a loaded brain whose
+    /// working memory, context or size must change is let go now, and the balance loop primes it
+    /// again; on the released rung it is let go and stays so until a question loads it.
+    /// </summary>
+    /// <remarks>
+    /// THE CALLER CHECKS THE QUEUE IS IDLE (BalanceLoop does), and this checks again: a brain
+    /// in the middle of an answer is never taken away for a shape.
+    /// </remarks>
+    public async Task ReshapeAsync(BalanceShape shape, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(shape);
+        BalanceShape before;
+        lock (_gate) { before = _shape; _shape = shape; }
+        if (before == shape) return;
+
+        _log($"balance: the brain's shape is now {shape.Describe()} (was {before.Rung})");
+        if (Status.Phase != BrainPhase.Ready || SchedulerIdle?.Invoke() == false) return; // the next load takes it
+
+        // ONLY THE C# ENGINE READS THE WORKING MEMORY'S BITS: a change of bits alone does not reload
+        // an MNN brain, which would come back exactly as it went.
+        bool managed;
+        using (var registry = new ModelRegistryService())
+            managed = Status.ModelId is { } running && registry.GetLatestModel(running)?.Engine == ModelEngine.Managed;
+        if (shape.Released || shape.Rebuilds(before, workingMemoryCounts: managed))
+            await ReleaseAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// On the released rung: lets go of a brain a question loaded since, once nothing has been
+    /// asked for two minutes.
+    /// </summary>
+    public async Task RestIfIdleAsync(CancellationToken ct)
+    {
+        DateTimeOffset lastUse;
+        lock (_gate) lastUse = _lastUse;
+        if (!Shape.Released || Status.Phase != BrainPhase.Ready || SchedulerIdle?.Invoke() != true) return;
+        if (DateTimeOffset.UtcNow - lastUse < TimeSpan.FromMinutes(2)) return;
+        _log("balance: resting - the brain is let go until the next question");
+        await ReleaseAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>Android asked the app to trim memory.</summary>
     /// <remarks>
     /// THE OWNER'S RULE: Qwen3.5 stays loaded unless the phone is critically short of
@@ -293,7 +350,12 @@ public sealed class InferenceSupervisor : IBrainWorker
     public void OnTrimMemory(int level)
     {
         DateTimeOffset lastUse;
-        lock (_gate) { _lastTrim = level; lastUse = _lastUse; }
+        lock (_gate)
+        {
+            _lastTrim = level;
+            lastUse = _lastUse;
+            if (level >= 80) _lastCriticalTrim = DateTimeOffset.UtcNow; // the balance reads memory from this (Step 4)
+        }
 
         // NOT BETWEEN TWO QUESTIONS. Measured on the P30 on 2026-10-17: RUNNING_CRITICAL
         // (15) arrives while the model is resident - a 3.87 GB phone is always near the
@@ -399,7 +461,8 @@ public sealed class InferenceSupervisor : IBrainWorker
             try
             {
                 using var limit = new CancellationTokenSource(LoadLimit);
-                await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash),
+                var shape = Shape; // the balance's working memory and context (Step 4)
+                await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash, null, shape.KvMode, shape.ContextShare),
                     new Progress<LoadStep>(step => Report(BrainPhase.Loading, step, model, null, ReadinessSentences.For(step))),
                     limit.Token).ConfigureAwait(false);
             }
@@ -612,6 +675,25 @@ public sealed class InferenceSupervisor : IBrainWorker
                 _log($"{wanted} has not loaded on this phone yet; keeping {proven.Entry.Name} until it is validated");
                 wanted = proven.Entry.Name;
             }
+        }
+
+        // A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE (Step 4's balance), when one is here:
+        // the best-ranked brain on the device that is smaller than this one and runs here. None
+        // smaller is not a reason to have no brain; the chosen one stays, lean.
+        if (Shape.SmallerBrain && registry.GetLatestModel(wanted!) is { } current)
+        {
+            var smaller = loader.InstalledIds()
+                .Select(id => registry.GetLatestModel(id))
+                .Where(e => e is { Retired: false, Modality: ModelModality.Chat } && e.TotalBytes > 0
+                            && e.TotalBytes < current.TotalBytes && !BrainCompanions.IsCompanion(e)
+                            && EngineChoice.CanRun(e) && loader.ModelPresent(e.Name)
+                            && !CrashVerdict.IsRefused(catalogue, e.Name))
+                .OrderByDescending(e => e!.QualityRank)
+                .FirstOrDefault();
+            _log(smaller is null
+                ? $"balance: no brain smaller than {wanted} is on this phone; it stays, lean"
+                : $"balance: {smaller.Name} answers instead of {wanted} while the phone is under pressure");
+            if (smaller is not null) wanted = smaller.Name;
         }
 
         return wanted;

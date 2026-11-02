@@ -38,6 +38,12 @@ public sealed record BrainRequest(string ModelPath)
     /// <summary>Threads the host asked for; null lets the engine and the device decide.</summary>
     public int? Threads { get; init; }
 
+    /// <summary>
+    /// The working memory's bits for the C# engine; null builds it at 4 bits. The balance loop
+    /// asks for fewer under pressure (Step 4); MNN's working memory stays as A11 left it.
+    /// </summary>
+    public KvCompressionMode? KvMode { get; init; }
+
     /// <summary>What the brain must do - Vision picks MNN's vision runtime.</summary>
     public ChatCapability Capability { get; init; } = ChatCapability.Default;
 
@@ -84,17 +90,21 @@ public sealed class BrainFactory : IBrainFactory
             if (entry is not null && EngineChoice.Run(entry) is null)
                 throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
 
-            // THE DEVICE'S FAST CORES, ONE LEFT FOR THE PERSON (DeviceContext.BrainThreads), unless
-            // the host said otherwise. Working memory at 4 bits with keys in the MSE form (S3):
-            // measured on the 2B against the fork, it kept every one of 289 tokens in a quarter
-            // of fp16's memory.
-            var threads = request.Threads is > 0 ? request.Threads.Value : DeviceContext.Read().BrainThreads;
+            // THE THREAD COUNT THIS DEVICE MEASURED FASTEST (Step 4: primed before Ready), unless
+            // the host said otherwise - measured once per device and runtime by KernelThreads, with
+            // the device's fast cores less one (DeviceContext.BrainThreads) as the fallback.
+            // Working memory at 4 bits with keys in the MSE form (S3): measured on the 2B against
+            // the fork, it kept every one of 289 tokens in a quarter of fp16's memory - fewer bits
+            // only when the balance asks for them.
+            var threads = request.Threads is > 0
+                ? request.Threads.Value
+                : Managed.Kernels.KernelThreads.Choose(fallback: DeviceContext.Read().BrainThreads);
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={request.ModelId} cap={request.Capability}");
             return Managed.ManagedChatGenerator.Load(request.ModelPath, new Managed.ManagedGeneratorOptions
             {
                 ContextLength = contextSize,
                 Threads = threads,
-                KvMode = KvCompressionMode.TurboQuant4Bit,
+                KvMode = request.KvMode ?? KvCompressionMode.TurboQuant4Bit,
                 KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
             });
         }

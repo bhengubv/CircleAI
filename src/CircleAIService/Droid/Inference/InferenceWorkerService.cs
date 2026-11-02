@@ -154,12 +154,22 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
         CircleAI.Core.ModelEngine? engine = req.TryGetValue(WorkerWire.Engine, out var named)
             && Enum.TryParse<CircleAI.Core.ModelEngine>(named, ignoreCase: true, out var parsed) ? parsed : null;
-        var request = new WorkerLoadRequest(model!, dir!, WorkerWire.Flag(req, WorkerWire.SkipHash), engine);
+
+        // THE BALANCE'S SHAPE (Step 4): fewer working-memory bits and a shorter context under
+        // pressure. A different shape is a different brain, built again between turns.
+        CircleAI.Core.KvCompressionMode? kv = req.TryGetValue(WorkerWire.KvMode, out var kvName)
+            && Enum.TryParse<CircleAI.Core.KvCompressionMode>(kvName, ignoreCase: true, out var kvParsed) ? kvParsed : null;
+        var share = req.TryGetValue(WorkerWire.ContextShare, out var shareText)
+            && double.TryParse(shareText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s)
+            && s is > 0 and < 1 ? s : 1.0;
+
+        var request = new WorkerLoadRequest(model!, dir!, WorkerWire.Flag(req, WorkerWire.SkipHash), engine, kv, share);
         InProcessBrainWorker brain;
         InProcessBrainWorker? previous = null;
         lock (Gate)
         {
-            if (_brain is not null && _loaded?.ModelId == request.ModelId && _loaded.Engine == request.Engine)
+            if (_brain is not null && _loaded?.ModelId == request.ModelId && _loaded.Engine == request.Engine
+                && _loaded.KvMode == request.KvMode && Math.Abs(_loaded.ContextShare - request.ContextShare) < 0.001)
             {
                 brain = _brain;
             }
@@ -189,6 +199,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         var options = factory(request);
         options.ModelId = request.ModelId;
         options.Engine = request.Engine;
+        options.KvMode = request.KvMode;              // the balance's working memory (Step 4)
+        options.ContextShare = request.ContextShare;  // and its share of the context
         options.LoadStepChanged = step; // the status says "Warming" while the first prefill runs (OPEN-GAPS A14)
 
         var registry = new ModelRegistryService();
