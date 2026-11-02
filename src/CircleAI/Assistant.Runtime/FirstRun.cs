@@ -233,12 +233,12 @@ public static class FirstRun
 
         var steps = new List<SetupStep>();
 
-        // A BRAIN'S COMPANIONS - its vision tower and its drafter - when they fit beside it (Step 4).
-        // Planned right after the brain they serve, and only for the brain this device runs or is
-        // about to: a tower is no use beside any other.
+        // A BRAIN'S COMPANIONS - its vision tower and its drafter - when they fit beside it and the
+        // engine can read them (Step 4). Planned right after the brain they serve, and only for the
+        // brain this device runs or is about to: a tower is no use beside any other.
         void AddCompanions(ModelEntry brain)
         {
-            foreach (var companion in CircleAI.Inference.BrainCompanions.ThatFit(brain, registry.AllModels, probe, declined))
+            foreach (var companion in CircleAI.Inference.BrainCompanions.ThatFit(brain, registry.AllModels, probe, declined, brainEngines))
             {
                 if (loader.ModelPresent(companion.Entry.Name)) continue;
                 if (steps.Any(s => string.Equals(s.Model.Name, companion.Entry.Name, StringComparison.OrdinalIgnoreCase))) continue;

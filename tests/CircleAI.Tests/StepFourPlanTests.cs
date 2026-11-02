@@ -49,18 +49,21 @@ public sealed class StepFourPlanTests : IDisposable
             BundleFiles = [new BundleFile(name + "-PTQ1_0.gguf", "00", bytes)],
         };
 
-    private static ModelEntry Tower(string name, string repo, long bytes) =>
+    // A TOWER AND A DRAFTER AN ENGINE OF THIS BUILD CAN READ. Bonsai 2's own are rows of the C# engine,
+    // which has no code for them yet; A_companion_the_engine_cannot_read_yet_waits_for_its_code holds
+    // them back, and these stand for the day the engine reads them.
+    private static ModelEntry Tower(string name, string repo, long bytes, ModelEngine engine = ModelEngine.Mnn) =>
         new(name, "1.0", "Q8_0")
         {
-            Repo = repo, Engine = ModelEngine.Managed, Architecture = "clip", Modality = ModelModality.Vision,
+            Repo = repo, Engine = engine, Architecture = "clip", Modality = ModelModality.Vision,
             TotalBytes = bytes, MinRamGb = bytes / 1e9, MinStorageGb = bytes / 1e9, QualityRank = 5,
             BundleFiles = [new BundleFile(name + "-mmproj-Q8_0.gguf", "00", bytes)],
         };
 
-    private static ModelEntry Drafter(string name, long bytes) =>
+    private static ModelEntry Drafter(string name, long bytes, ModelEngine engine = ModelEngine.Mnn) =>
         new(name, "1.0", "Q8_0")
         {
-            Repo = "prism-ml/" + name, Engine = ModelEngine.Managed, Architecture = "dflash", Modality = ModelModality.Chat,
+            Repo = "prism-ml/" + name, Engine = engine, Architecture = "dflash", Modality = ModelModality.Chat,
             TotalBytes = bytes, MinRamGb = bytes / 1e9, MinStorageGb = bytes / 1e9, QualityRank = 1,
             Capabilities = ["Draft"],
             BundleFiles = [new BundleFile(name + ".gguf", "00", bytes)],
@@ -123,16 +126,33 @@ public sealed class StepFourPlanTests : IDisposable
         var drafter = Drafter("Ternary-Bonsai-2-4B-DFlash2", 1_575_000_000);
         var catalogue = new[] { brain, q8, bf16, drafter };
 
-        var roomy = BrainCompanions.ThatFit(brain, catalogue, Roomy());
+        var roomy = BrainCompanions.ThatFit(brain, catalogue, Roomy(), engines: Managed);
         Assert.Equal(new[] { q8.Name, drafter.Name }, roomy.Select(c => c.Entry.Name));   // the smaller tower
 
         // 3 GB: a 1.5 GB ceiling holds the brain and its tower, not the drafter as well.
-        var tight = BrainCompanions.ThatFit(brain, catalogue, Tight());
+        var tight = BrainCompanions.ThatFit(brain, catalogue, Tight(), engines: Managed);
         Assert.Equal(new[] { q8.Name }, tight.Select(c => c.Entry.Name));
 
         // What the person switched off is not taken.
-        Assert.DoesNotContain(BrainCompanions.ThatFit(brain, catalogue, Roomy(), declined: id => id == q8.Name),
+        Assert.DoesNotContain(BrainCompanions.ThatFit(brain, catalogue, Roomy(), declined: id => id == q8.Name, engines: Managed),
                               c => c.Entry.Name == q8.Name);
+    }
+
+    [Fact]
+    public void A_companion_the_engine_cannot_read_yet_waits_for_its_code()
+    {
+        // BONSAI 2'S OWN ROWS: a "clip" tower and a "dflash" drafter on the C# engine, which reads
+        // neither yet. Planned now they would be 1.9 GB of the person's data that nothing can load.
+        var brain = Brain("Ternary-Bonsai-2-4B", "prism-ml/Ternary-Bonsai-2-4B-gguf", 950_000_000, 11);
+        var tower = Tower("Ternary-Bonsai-2-4B-Vision", "prism-ml/Ternary-Bonsai-2-4B-gguf", 367_000_000, ModelEngine.Managed);
+        var drafter = Drafter("Ternary-Bonsai-2-4B-DFlash2", 1_575_000_000, ModelEngine.Managed);
+
+        Assert.Empty(BrainCompanions.ThatFit(brain, [brain, tower, drafter], Roomy(), engines: Managed));
+
+        using var registry = new Rows([brain, tower, drafter]);
+        using var loader = new BundleModelLoader(EmptyStore(), registry);
+        var plan = FirstRun.Plan(registry, loader, Roomy(), speech: false, engines: Managed);
+        Assert.Equal(new[] { brain.Name }, plan.Select(s => s.Model.Name));
     }
 
     // ── the plan takes them ───────────────────────────────────────────────────

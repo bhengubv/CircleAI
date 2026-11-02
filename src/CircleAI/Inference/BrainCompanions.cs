@@ -16,7 +16,9 @@
 //              for a brain's GGUF;
 //   a drafter  a "Draft" capability, or an Architecture or name naming DFlash or a draft model;
 //   its brain  the same Repo as the brain (upstream publishes a brain's tower beside it), or a
-//              name that begins with the brain's name less its packing ("Ternary-Bonsai-2-4B").
+//              name that begins with the brain's name less its packing ("Ternary-Bonsai-2-4B");
+//   readable   the engine its row names can open it (EngineChoice.CanRun) - so a row catalogued
+//              before its code lands waits, rather than costing the person's data for nothing.
 //
 // A row that meets none of it is an ordinary model and is planned as one.
 
@@ -105,14 +107,24 @@ public static class BrainCompanions
     /// <summary>
     /// The companions this device can hold beside <paramref name="brain"/>: at most one of each
     /// kind, each added only while the brain and everything chosen so far still fit in the most
-    /// one model may ever claim here, and only where there is room on the disk.
+    /// one model may ever claim here, only where there is room on the disk, and only once the
+    /// engine can read it.
     /// </summary>
     /// <param name="brain">The brain they go with.</param>
     /// <param name="catalogue">Every row known.</param>
     /// <param name="probe">The device.</param>
     /// <param name="declined">Rows the person or this device refused; null refuses none.</param>
+    /// <param name="engines">The engines this build ships; null asks the build.</param>
+    /// <remarks>
+    /// NOT BEFORE THE ENGINE CAN READ IT. The Bonsai 2 fleet's towers ("clip") and drafters
+    /// ("dflash") are catalogued before the C# engine has code for them, and a tower nobody can load
+    /// is hundreds of megabytes of the person's data for nothing. <see cref="EngineChoice.CanRun"/>
+    /// is the engine's own answer, so each arrives in the plan the day its code lands, with no
+    /// catalogue edit.
+    /// </remarks>
     public static IReadOnlyList<BrainCompanion> ThatFit(
-        ModelEntry brain, IEnumerable<ModelEntry> catalogue, DeviceProbe probe, Func<string, bool>? declined = null)
+        ModelEntry brain, IEnumerable<ModelEntry> catalogue, DeviceProbe probe, Func<string, bool>? declined = null,
+        IReadOnlyCollection<ModelEngine>? engines = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
 
@@ -123,6 +135,7 @@ public static class BrainCompanions
             foreach (var candidate in Of(brain, catalogue).Where(c => c.Kind == kind))
             {
                 if (declined is not null && declined(candidate.Entry.Name)) continue;
+                if (!EngineChoice.CanRun(candidate.Entry, engines)) continue;
                 if (!ModelFit.FitsStorage(candidate.Entry, probe.StorageFreeGb)) continue;
 
                 // THE WHOLE RESIDENT COST, NOT THE COMPANION'S ALONE: a tower that fits on its own
