@@ -168,10 +168,9 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private const int PicturesKept = 2;
 
     // A primed start on disk: what it is, then the state. Bumped with the engine's arithmetic, so a
-    // start primed by older numbers is never read as this engine's. 2 (S5): Q8_0 activations are
-    // rounded as the reference quantiser rounds them.
+    // start primed by older numbers is never read as this engine's.
     private const ulong PrimedMagic = 0x3144_454D_4952_5043; // "CPRIMED1", little-endian
-    private const int EngineNumerics = 2;
+    private const int EngineNumerics = 1;
     private const int PrimedStartsKept = 4;
 
     private ManagedChatGenerator(string ggufPath, GgufFile file, WorkerPool pool, Qwen35Model model, ByteLevelBpe tokenizer,

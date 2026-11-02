@@ -2,21 +2,27 @@
 //
 // The int8 form an activation vector takes before it meets ternary weights. Bonsai's
 // PTQ1_0 pairs with Q8_0: blocks of 32 values, one scale each. The rounding follows
-// the quantiser the build that made the fixtures actually runs, exactly:
+// the AVX branch of the pinned fork's x86 quantize_row_q8_0 (ggml-cpu/arch/x86/quants.c):
 //
 //   d  = amax / 127, stored as fp16
-//   id = 1 / d                 (d before its fp16 rounding)
-//   q  = roundf(x * id)        (a midpoint goes away from zero)
+//   id = 127 / amax
+//   q  = round-half-to-even(x * id)
 //
-// THAT IS THE REFERENCE QUANTISER, quantize_row_q8_0_ref, AND THIS FILE SAID OTHERWISE until
-// S5. It followed the AVX branch of ggml-cpu/arch/x86/quants.c (id = 127 / amax, midpoints to
-// even), on the belief that the shipped win-x64 llama.dll takes it. It does not: that build is
-// MSVC for x64 without /arch:AVX - its system info reads "BMI2 | LLAMAFILE | OPENMP | REPACK",
-// no AVX - so quantize_row_q8_0 falls through its `#if defined(__AVX2__) || defined(__AVX__)`
-// to the reference. 127 / amax and 1 / (amax / 127) differ in the last bit for 27% of blocks
-// (200,000 random scales), and where x * id sits that close to a midpoint the two put a value on different
-// integers: amax 1.4285147, x 1.1304388 is 101 here and was 100 (Ptq1KernelTests pins it).
-// The fork on the phone (the NEON branch) also takes id = 1 / d; only its midpoints go to even.
+// Two values at a rounding midpoint go to different integers under half-away-from-
+// zero, which is what C's roundf does; MathF.Round's default is half-to-even, which
+// is what _mm256_round_ps(_MM_ROUND_NEAREST) does.
+//
+// THE RULER DOES NOT RUN THIS BRANCH - MEASURED, AND KEPT ON PURPOSE (S5). The shipped win-x64 fork
+// is built without AVX (its CMakeCache: GGML_AVX/AVX2 OFF, GGML_SSE42 ON), so its quantize_row_q8_0
+// is the reference one: id = 1 / d, C's roundf. Asked directly - ggml_get_type_traits_cpu(Q8_0)'s
+// from_float in the shipped ggml-cpu.dll - it puts amax 1.4285147, x 1.1304388 on 101 where this
+// puts it on 100, and 2.5 at amax 127 on 3 where this puts it on 2. (127 / amax and 1 / d differ in
+// the last bit for 27% of blocks.) S5 switched this file to the reference rounding and measured: the
+// text parity no closer (worst top-20 differences 0.276 for the 2B and 0.318 for the 4B, against
+// 0.249 and 0.309 with this rounding) and the vision tower's worst value further from the fork's
+// (0.148 against 0.029, beyond the fork's own 0.11). So the switch was taken back, and which rounding the
+// engine keeps is a decision for the owner with that evidence. The fork on the phone (the NEON
+// branch) takes id = 1 / d with midpoints to even - neither this nor the reference.
 
 using System.Runtime.CompilerServices;
 
@@ -71,15 +77,13 @@ public sealed class Q8Activations
             var amax = 0f;
             for (var j = 0; j < BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(block[j]));
 
-            var d = amax / 127f;
-            scales[b] = (float)(Half)d;
-            var id = d != 0f ? 1f / d : 0f;
+            scales[b] = (float)(Half)(amax / 127f);
+            var id = amax != 0f ? 127f / amax : 0f;
             var q = quants.Slice(b * BlockSize, BlockSize);
             for (var j = 0; j < BlockSize; j++) q[j] = RoundToInt8(block[j] * id);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static sbyte RoundToInt8(float v) =>
-        (sbyte)Math.Clamp((int)MathF.Round(v, MidpointRounding.AwayFromZero), -128, 127);
+    private static sbyte RoundToInt8(float v) => (sbyte)Math.Clamp((int)MathF.Round(v), -128, 127);
 }
