@@ -35,6 +35,13 @@ public enum LinkAudioVerb
 
     /// <summary>Text in, audio out. The service runs the voice.</summary>
     Speak = 1,
+
+    /// <summary>
+    /// Audio in, audio and text out, in another language: the service's ears transcribe it, its
+    /// brain translates it, its voice speaks the translation. One request, three models, all
+    /// already where the models live.
+    /// </summary>
+    Translate = 2,
 }
 
 /// <summary>
@@ -62,29 +69,39 @@ public static class LinkAudioFormat
     public const int BytesPerSecond = SampleRate * Channels * BitsPerSample / 8;
 }
 
-/// <summary>A request to transcribe audio or synthesise it.</summary>
+/// <summary>A request to transcribe audio, synthesise it, or translate it.</summary>
 /// <param name="Verb">Which direction.</param>
-/// <param name="Audio">PCM for <see cref="LinkAudioVerb.Transcribe"/>; empty for Speak.</param>
-/// <param name="Text">The words for <see cref="LinkAudioVerb.Speak"/>; empty for Transcribe.</param>
-/// <param name="Language">BCP-47 tag, or null to let the service choose.</param>
+/// <param name="Audio">PCM for <see cref="LinkAudioVerb.Transcribe"/> and Translate; empty for Speak.</param>
+/// <param name="Text">The words for <see cref="LinkAudioVerb.Speak"/>; empty otherwise.</param>
+/// <param name="Language">BCP-47 tag of what is said, or null to let the service choose.</param>
+/// <param name="Target">BCP-47 tag a <see cref="LinkAudioVerb.Translate"/> comes back in; null otherwise.</param>
 public sealed record LinkAudioRequest(
     LinkAudioVerb Verb,
     byte[] Audio,
     string Text = "",
-    string? Language = null);
+    string? Language = null,
+    string? Target = null);
 
 /// <summary>What came back.</summary>
 /// <param name="Ok">False when the service refused or failed; <paramref name="Error"/> says why.</param>
-/// <param name="Text">The transcript, for Transcribe.</param>
-/// <param name="Audio">PCM, for Speak.</param>
+/// <param name="Text">The transcript, for Transcribe; the translation, for Translate.</param>
+/// <param name="Audio">PCM, for Speak and Translate.</param>
 /// <param name="Error">Why not, when not ok.</param>
-public sealed record LinkAudioReply(bool Ok, string Text, byte[] Audio, string? Error)
+/// <param name="Heard">What was heard before it was translated, for Translate; null otherwise.</param>
+public sealed record LinkAudioReply(bool Ok, string Text, byte[] Audio, string? Error, string? Heard = null)
 {
     /// <summary>A transcript came back.</summary>
     public static LinkAudioReply Transcribed(string text) => new(true, text, Array.Empty<byte>(), null);
 
     /// <summary>Spoken audio came back.</summary>
     public static LinkAudioReply Spoke(byte[] audio) => new(true, string.Empty, audio, null);
+
+    /// <summary>
+    /// A translation came back: what was heard, what it is in the other language, and that
+    /// spoken. Audio may be empty when nothing was heard - a quiet room is a result.
+    /// </summary>
+    public static LinkAudioReply Translated(string heard, string translation, byte[] audio) =>
+        new(true, translation ?? string.Empty, audio ?? Array.Empty<byte>(), null, heard ?? string.Empty);
 
     /// <summary>It did not work, and this is why in words safe to show a person.</summary>
     public static LinkAudioReply Failure(string error) => new(false, string.Empty, Array.Empty<byte>(), error);
