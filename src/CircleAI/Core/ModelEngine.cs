@@ -40,8 +40,8 @@ public enum ModelEngine
 
     /// <summary>
     /// CircleAI's own C# engine (<c>Inference/Managed</c>), which reads GGUF files itself: the
-    /// qwen35 architecture packed as PTQ1_0, which is Bonsai 2. It is part of this library, so
-    /// every build ships it and nothing native has to load.
+    /// qwen35 architecture packed as PTQ1_0 or PQ2_0, which is Bonsai 2. It is part of this
+    /// library, so every build ships it and nothing native has to load.
     /// </summary>
     Managed = 4,
 }

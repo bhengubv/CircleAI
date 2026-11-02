@@ -15,10 +15,12 @@
 //                x += that;  h2 = rms(x) * post_attention_norm;  x += down(silu(gate(h2)) * up(h2))
 //   logits = head(rms(x) * output_norm), the head being the embedding table read forward (tied)
 //
-// Every ternary product's input is turned first (PrismHadamard) and quantised to Q8_0, as the
-// fork does; the products that read one activation share one lookup table. Norms, gates and the
-// recurrence repeat the fork's float operations; the attention and the products sum in their
-// own order, so the logits agree with the fork's to within rounding, not to the bit.
+// Every ternary product's input is turned first (PrismHadamard) and quantised as the fork pairs it
+// with the file's packing - Q8_0 for PTQ1_0, Q8_K for PQ2_0 (Q8_0 where a width is not whole 256s) -
+// and the products that read one activation share one lookup table. A file holds one packing
+// throughout. Norms, gates and the recurrence repeat the fork's float operations; the attention and
+// the PTQ1_0 products sum in their own order, so the logits agree with the fork's to within
+// rounding, not to the bit.
 //
 // One Forward at a time per model: it works in buffers it owns. Each Forward's time is added up
 // by part (TakeTimes), so a phone can say where a token's second goes.
@@ -42,14 +44,14 @@ public sealed class Qwen35Model
     private readonly float[] _outputNorm;
     private readonly TernaryMatrix _embedding; // the lookup table and, tied, the head
 
-    // One turned buffer, one Q8 quantisation and one lookup table per product width.
-    private readonly Dictionary<int, (float[] Turned, Q8Activations Q8, Ptq1Lut Lut)> _inputs = [];
+    // One turned buffer, one quantisation and one lookup table per product width.
+    private readonly Dictionary<int, InputTables> _inputs = [];
 
     // Working buffers, sized once.
     private readonly float[] _x, _h, _qkv, _z, _conv, _o, _beta, _alpha;
     private readonly float[] _qg, _q, _k, _v, _gate, _attn, _cos, _sin;
     private readonly float[] _mixOut, _ffnGate, _ffnUp, _ffnOut;
-    private readonly sbyte[] _trits = new sbyte[Ptq1.BlockWeights];
+    private readonly sbyte[] _weights = new sbyte[Ptq1.BlockWeights]; // one decoded embedding block (both packings hold 128)
 
     // The value heads of a DeltaNet layer, shared out to the pool's threads; each thread has its
     // own delta buffer.
@@ -68,14 +70,15 @@ public sealed class Qwen35Model
         _pool = pool;
 
         if (file.Tensor("output.weight") is not null) throw new NotSupportedException("An untied output head is not read in this pass.");
-        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary);
+        Packing = PackingOf(file);
+        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing);
         _outputNorm = Floats(file, "output_norm.weight", c.Embedding);
 
         _layers = new Layer[c.Layers];
-        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il);
+        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing);
 
         foreach (var width in new[] { c.Embedding, c.SsmInner, c.Heads * c.HeadDim, c.FeedForward }.Distinct())
-            _inputs[width] = (new float[width], new Q8Activations(width), new Ptq1Lut(width));
+            _inputs[width] = new InputTables(width, Packing);
 
         _x = new float[c.Embedding];
         _h = new float[c.Embedding];
@@ -105,6 +108,22 @@ public sealed class Qwen35Model
 
     /// <summary>The model's shape.</summary>
     public Qwen35Config Config { get; }
+
+    /// <summary>How the file packs its ternary weights: PTQ1_0 or PQ2_0, one packing throughout.</summary>
+    public GgmlType Packing { get; }
+
+    /// <summary>
+    /// The ternary packing <paramref name="file"/>'s weights are in, read off its embedding table; null
+    /// when it is not one this engine reads (PTQ1_0 or PQ2_0).
+    /// </summary>
+    public static GgmlType? TernaryPackingOf(GgufFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        return file.Tensor("token_embd.weight")?.Type is { } type && type is GgmlType.PTQ1_0 or GgmlType.PQ2_0 ? type : null;
+    }
+
+    private static GgmlType PackingOf(GgufFile file) => TernaryPackingOf(file)
+        ?? throw new NotSupportedException($"token_embd.weight is {file.Tensor("token_embd.weight")?.Type.ToString() ?? "missing"}; this engine reads PTQ1_0 and PQ2_0.");
 
     /// <summary>
     /// Binds every weight of <paramref name="file"/> (which must stay open while the model is used)
@@ -181,17 +200,30 @@ public sealed class Qwen35Model
 
     // ---- the parts of a token ----
 
-    // The embedding row, dequantised (trit * scale) and turned back: h = s * (H z).
+    // The embedding row, dequantised (weight * scale, as the fork's dequantize_row does) and turned
+    // back: h = s * (H z).
     private void Embed(int token, Span<float> x)
     {
-        var rowBytes = Config.Embedding / Ptq1.BlockWeights * Ptq1.BlockBytes;
+        var pq2 = Packing == GgmlType.PQ2_0;
+        var blockBytes = pq2 ? Pq2.BlockBytes : Ptq1.BlockBytes;
+        var blocks = Config.Embedding / Ptq1.BlockWeights;
+        var rowBytes = blocks * blockBytes;
         var row = _embedding.Bytes.Slice(token * rowBytes, rowBytes);
-        for (var b = 0; b < Config.Embedding / Ptq1.BlockWeights; b++)
+        for (var b = 0; b < blocks; b++)
         {
-            var block = row.Slice(b * Ptq1.BlockBytes, Ptq1.BlockBytes);
-            Ptq1.DecodeScalar(block, _trits);
-            var scale = Ptq1.Scale(block);
-            for (var i = 0; i < Ptq1.BlockWeights; i++) x[b * Ptq1.BlockWeights + i] = _trits[i] * scale;
+            var block = row.Slice(b * blockBytes, blockBytes);
+            float scale;
+            if (pq2)
+            {
+                Pq2.DecodeScalar(block, _weights);
+                scale = Pq2.Scale(block);
+            }
+            else
+            {
+                Ptq1.DecodeScalar(block, _weights);
+                scale = Ptq1.Scale(block);
+            }
+            for (var i = 0; i < Ptq1.BlockWeights; i++) x[b * Ptq1.BlockWeights + i] = _weights[i] * scale;
         }
         if (_hadamard is { InvertsEmbedding: true }) _hadamard.InvertLookup(x);
     }
@@ -394,31 +426,29 @@ public sealed class Qwen35Model
 
     // An activation ready for the ternary products that read it: turned, quantised, tabled - the
     // tables built on the pool's threads.
-    private Ptq1Lut Prepare(ReadOnlySpan<float> x, InputTransform? transform)
+    private InputTables Prepare(ReadOnlySpan<float> x, InputTransform? transform)
     {
-        var (turned, q8, lut) = _inputs[x.Length];
-        if (transform is null) x.CopyTo(turned);
-        else transform.Apply(x, turned);
-        q8.Quantize(turned);
-        if (_pool is null) lut.Build(q8);
-        else lut.Build(q8, _pool);
-        return lut;
+        var tables = _inputs[x.Length];
+        if (transform is null) x.CopyTo(tables.Turned);
+        else transform.Apply(x, tables.Turned);
+        tables.Build(_pool);
+        return tables;
     }
 
     // Prepare, its time counted as the tables'.
-    private Ptq1Lut Tables(ReadOnlySpan<float> x, InputTransform? transform)
+    private InputTables Tables(ReadOnlySpan<float> x, InputTransform? transform)
     {
         var started = Stopwatch.GetTimestamp();
-        var lut = Prepare(x, transform);
+        var tables = Prepare(x, transform);
         _tTables += Stopwatch.GetTimestamp() - started;
-        return lut;
+        return tables;
     }
 
     // A ternary product, its time counted as the products'.
-    private void Product(TernaryMatrix matrix, Ptq1Lut lut, Span<float> output)
+    private void Product(TernaryMatrix matrix, InputTables tables, Span<float> output)
     {
         var started = Stopwatch.GetTimestamp();
-        matrix.MatVec(lut, output, _pool);
+        matrix.MatVec(tables, output, _pool);
         _tProducts += Stopwatch.GetTimestamp() - started;
     }
 
@@ -562,22 +592,78 @@ public sealed class Qwen35Model
 
     // ---- weights ----
 
-    // A PTQ1_0 weight: its bytes stay in the mapped file; its block scales are decoded once.
+    // One activation width's quantised form and lookup table for the file's packing: Q8_0 and a
+    // Ptq1Lut for PTQ1_0; Q8_K and a Pq2Lut for PQ2_0 - or Q8_0 and a Pq2Lut at a width that is not
+    // whole Q8_K blocks, as the fork falls back (ggml_cpu_pq2_needs_q8_0).
+    private sealed class InputTables
+    {
+        private readonly Q8Activations? _q8;
+        private readonly Q8KActivations? _q8k;
+        private readonly Ptq1Lut? _ptq1;
+        private readonly Pq2Lut? _pq2;
+
+        public InputTables(int width, GgmlType packing)
+        {
+            Turned = new float[width];
+            if (packing == GgmlType.PTQ1_0)
+            {
+                _q8 = new Q8Activations(width);
+                _ptq1 = new Ptq1Lut(width);
+                return;
+            }
+            if (width % Q8KActivations.BlockSize == 0) _q8k = new Q8KActivations(width);
+            else _q8 = new Q8Activations(width);
+            _pq2 = new Pq2Lut(width);
+        }
+
+        public float[] Turned { get; }
+
+        public Ptq1Lut Ptq1 => _ptq1 ?? throw new InvalidOperationException("These tables are PQ2_0's.");
+
+        public Pq2Lut Pq2 => _pq2 ?? throw new InvalidOperationException("These tables are PTQ1_0's.");
+
+        // Quantises the turned activation and builds the tables, on the pool's threads when there is one.
+        public void Build(WorkerPool? pool)
+        {
+            if (_q8k is not null)
+            {
+                _q8k.Quantize(Turned);
+                if (pool is null) _pq2!.Build(_q8k);
+                else _pq2!.Build(_q8k, pool);
+                return;
+            }
+            _q8!.Quantize(Turned);
+            if (_ptq1 is not null)
+            {
+                if (pool is null) _ptq1.Build(_q8);
+                else _ptq1.Build(_q8, pool);
+            }
+            else if (pool is null) _pq2!.Build(_q8);
+            else _pq2!.Build(_q8, pool);
+        }
+    }
+
+    // A ternary weight, PTQ1_0 or PQ2_0: its bytes stay in the mapped file; its block scales are
+    // decoded once.
     private sealed class TernaryMatrix
     {
         private readonly GgufFile _file;
         private readonly GgufTensor _tensor;
 
-        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows)
+        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows, GgmlType packing)
         {
             _file = file;
             _tensor = file.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
-            if (_tensor.Type != GgmlType.PTQ1_0) throw new NotSupportedException($"{name} is {_tensor.Type}; only PTQ1_0 is read in this pass.");
+            if (_tensor.Type != packing)
+                throw new NotSupportedException($"{name} is {_tensor.Type} in a {packing} model; one packing throughout is read.");
             if (_tensor.RowLength != columns || _tensor.Rows != rows)
                 throw new InvalidDataException($"{name} is {_tensor.RowLength}x{_tensor.Rows}, not {columns}x{rows}.");
-            Scales = Ptq1.BlockScales(file.Bytes(_tensor));
+            Packing = packing;
+            Scales = packing == GgmlType.PQ2_0 ? Pq2.BlockScales(file.Bytes(_tensor)) : Ptq1.BlockScales(file.Bytes(_tensor));
             Input = hadamard?.InputOf(name);
         }
+
+        public GgmlType Packing { get; }
 
         public float[] Scales { get; }
 
@@ -585,29 +671,36 @@ public sealed class Qwen35Model
 
         public ReadOnlySpan<byte> Bytes => _file.Bytes(_tensor);
 
-        public void MatVec(Ptq1Lut lut, Span<float> output, WorkerPool? pool)
+        public void MatVec(InputTables tables, Span<float> output, WorkerPool? pool)
         {
-            if (pool is null) lut.MatVec(Bytes, Scales, output);
-            else lut.MatVec(Bytes, Scales, output, pool);
+            if (Packing == GgmlType.PQ2_0)
+            {
+                if (pool is null) tables.Pq2.MatVec(Bytes, Scales, output);
+                else tables.Pq2.MatVec(Bytes, Scales, output, pool);
+                return;
+            }
+            if (pool is null) tables.Ptq1.MatVec(Bytes, Scales, output);
+            else tables.Ptq1.MatVec(Bytes, Scales, output, pool);
         }
     }
 
     private sealed class Layer
     {
-        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il)
+        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing)
         {
             string Name(string part) => $"blk.{il}.{part}";
+            TernaryMatrix Ternary(string part, int columns, int rows) => new(file, Name(part), hadamard, columns, rows, packing);
             AttnNorm = Floats(file, Name("attn_norm.weight"), c.Embedding);
             PostNorm = Floats(file, Name("post_attention_norm.weight"), c.Embedding);
-            FfnGate = new TernaryMatrix(file, Name("ffn_gate.weight"), hadamard, c.Embedding, c.FeedForward);
-            FfnUp = new TernaryMatrix(file, Name("ffn_up.weight"), hadamard, c.Embedding, c.FeedForward);
-            FfnDown = new TernaryMatrix(file, Name("ffn_down.weight"), hadamard, c.FeedForward, c.Embedding);
+            FfnGate = Ternary("ffn_gate.weight", c.Embedding, c.FeedForward);
+            FfnUp = Ternary("ffn_up.weight", c.Embedding, c.FeedForward);
+            FfnDown = Ternary("ffn_down.weight", c.FeedForward, c.Embedding);
 
             if (c.IsRecurrent(il))
             {
-                Qkv = new TernaryMatrix(file, Name("attn_qkv.weight"), hadamard, c.Embedding, c.ConvChannels);
-                Z = new TernaryMatrix(file, Name("attn_gate.weight"), hadamard, c.Embedding, c.SsmInner);
-                SsmOut = new TernaryMatrix(file, Name("ssm_out.weight"), hadamard, c.SsmInner, c.Embedding);
+                Qkv = Ternary("attn_qkv.weight", c.Embedding, c.ConvChannels);
+                Z = Ternary("attn_gate.weight", c.Embedding, c.SsmInner);
+                SsmOut = Ternary("ssm_out.weight", c.SsmInner, c.Embedding);
                 Beta = Floats(file, Name("ssm_beta.weight"), c.Embedding * c.SsmHeads);
                 Alpha = Floats(file, Name("ssm_alpha.weight"), c.Embedding * c.SsmHeads);
                 ConvKernel = Floats(file, Name("ssm_conv1d.weight"), c.ConvKernel * c.ConvChannels);
@@ -618,10 +711,10 @@ public sealed class Qwen35Model
             }
             else
             {
-                Q = new TernaryMatrix(file, Name("attn_q.weight"), hadamard, c.Embedding, 2 * c.Heads * c.HeadDim);
-                K = new TernaryMatrix(file, Name("attn_k.weight"), hadamard, c.Embedding, c.KvHeads * c.HeadDim);
-                V = new TernaryMatrix(file, Name("attn_v.weight"), hadamard, c.Embedding, c.KvHeads * c.HeadDim);
-                Output = new TernaryMatrix(file, Name("attn_output.weight"), hadamard, c.Heads * c.HeadDim, c.Embedding);
+                Q = Ternary("attn_q.weight", c.Embedding, 2 * c.Heads * c.HeadDim);
+                K = Ternary("attn_k.weight", c.Embedding, c.KvHeads * c.HeadDim);
+                V = Ternary("attn_v.weight", c.Embedding, c.KvHeads * c.HeadDim);
+                Output = Ternary("attn_output.weight", c.Heads * c.HeadDim, c.Embedding);
                 QNorm = Floats(file, Name("attn_q_norm.weight"), c.HeadDim);
                 KNorm = Floats(file, Name("attn_k_norm.weight"), c.HeadDim);
                 if (!ReferenceEquals(Q.Input, K.Input) || !ReferenceEquals(Q.Input, V.Input))

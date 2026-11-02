@@ -170,12 +170,23 @@ public sealed class ManagedChatGenerator : IChatGenerator
 
     /// <summary>
     /// Whether this engine reads a model of <paramref name="architecture"/> packed as
-    /// <paramref name="quantization"/>, as a catalogue row names them: qwen35 in PTQ1_0 (Bonsai 2).
-    /// The file itself is checked again when it is opened.
+    /// <paramref name="quantization"/>, as a catalogue row names them: qwen35 in PTQ1_0 or PQ2_0
+    /// (Bonsai 2). The file itself is checked again when it is opened.
     /// </summary>
+    /// <remarks>
+    /// THE ONE GATE FOR A ROW ON THIS ENGINE. EngineChoice, the device assessor and the brain factory
+    /// all ask it, so a row this engine cannot open yet - a packing it has no kernels for, an MTP
+    /// file, a drafter, a vision tower - is never selected, fetched or built.
+    /// </remarks>
     public static bool Reads(string? architecture, string? quantization) =>
         string.Equals(architecture, "qwen35", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(quantization, "PTQ1_0", StringComparison.OrdinalIgnoreCase);
+        && ReadPackings.Any(p => string.Equals(quantization, p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The packings <see cref="Reads"/> accepts for qwen35, as catalogue rows name them.</summary>
+    public static IReadOnlyList<string> ReadPackings { get; } = ["PTQ1_0", "PQ2_0"];
+
+    /// <summary>What this engine reads, said the way a refusal says it.</summary>
+    public static string WhatItReads => "qwen35 in " + string.Join(" or ", ReadPackings);
 
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)

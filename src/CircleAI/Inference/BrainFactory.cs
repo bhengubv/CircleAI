@@ -135,9 +135,9 @@ public sealed class BrainFactory : IBrainFactory
 
     /// <summary>The engine a model file needs, read from the file when no row says.</summary>
     /// <remarks>
-    /// A GGUF the C# engine reads - qwen35 in PTQ1_0, Bonsai 2 - is the C# engine's; any other
-    /// GGUF is llama.cpp's; anything else is an MNN bundle. A GGUF that cannot be opened is left
-    /// to llama.cpp, which will say why at load.
+    /// A GGUF the C# engine reads - qwen35 in PTQ1_0 or PQ2_0, Bonsai 2 - is the C# engine's; any
+    /// other GGUF is llama.cpp's; anything else is an MNN bundle. The packing is the first ternary
+    /// tensor's. A GGUF that cannot be opened is left to llama.cpp, which will say why at load.
     /// </remarks>
     public static ModelEngine EngineOf(string modelPath)
     {
@@ -146,14 +146,14 @@ public sealed class BrainFactory : IBrainFactory
         {
             using var file = Managed.Gguf.GgufFile.Open(modelPath);
             var architecture = file.TryGetValue("general.architecture", out var arch) ? arch.AsString() : null;
-            var ternary = false;
+            string? packing = null;
             foreach (var tensor in file.Tensors)
             {
-                if (tensor.Type != Managed.Gguf.GgmlType.PTQ1_0) continue;
-                ternary = true;
+                if (tensor.Type is not (Managed.Gguf.GgmlType.PTQ1_0 or Managed.Gguf.GgmlType.PQ2_0)) continue;
+                packing = tensor.Type.ToString();
                 break;
             }
-            return Managed.ManagedChatGenerator.Reads(architecture, ternary ? "PTQ1_0" : null)
+            return Managed.ManagedChatGenerator.Reads(architecture, packing)
                 ? ModelEngine.Managed
                 : ModelEngine.LlamaCpp;
         }

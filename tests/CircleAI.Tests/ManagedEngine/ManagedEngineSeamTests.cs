@@ -1,8 +1,8 @@
 // ManagedEngineSeamTests.cs
 //
 // The C# engine as the rest of the app reaches it (S2: one build site wired). It ships in every
-// build, so for it the only question the catalogue gates ask is the pack: qwen35 in PTQ1_0 opens,
-// anything else is refused with the reason. AIService's build site makes a ManagedChatGenerator
+// build, so for it the only question the catalogue gates ask is the pack: qwen35 in PTQ1_0 or PQ2_0
+// opens, anything else is refused with the reason. AIService's build site makes a ManagedChatGenerator
 // when the row - or the host - names the engine, and a question asked through AIService comes
 // back through it with the persona as its system turn.
 //
@@ -52,13 +52,16 @@ public sealed class ManagedEngineSeamTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void It_opens_qwen35_in_PTQ1_0_and_says_why_it_will_not_open_anything_else()
+    public void It_opens_qwen35_in_PTQ1_0_and_PQ2_0_and_says_why_it_will_not_open_anything_else()
     {
         Assert.Equal(ModelEngine.Managed, EngineChoice.Run(Bonsai()));
+        Assert.Equal(ModelEngine.Managed, EngineChoice.Run(Bonsai(quantization: "PQ2_0")));
 
-        var pq2 = Bonsai(quantization: "PQ2_0");
-        Assert.Null(EngineChoice.Run(pq2));
-        Assert.Contains("does not read yet", EngineChoice.Explain(pq2));
+        // Q2_0 is the third packing on the model card; the plan skips it because the label names two layouts.
+        var q2 = Bonsai(quantization: "Q2_0");
+        Assert.Null(EngineChoice.Run(q2));
+        Assert.Contains("does not read yet", EngineChoice.Explain(q2));
+        Assert.Contains(ManagedChatGenerator.WhatItReads, EngineChoice.Explain(q2));
 
         var other = Bonsai(architecture: "llama");
         Assert.Null(EngineChoice.Run(other));
@@ -73,13 +76,15 @@ public sealed class ManagedEngineSeamTests(ITestOutputHelper output)
         using var catalogue = new SqliteModelCatalog("Data Source=:memory:");
         catalogue.Upsert(Bonsai("bonsai-ptq1"));
         catalogue.Upsert(Bonsai("bonsai-pq2", quantization: "PQ2_0"));
+        catalogue.Upsert(Bonsai("bonsai-q2", quantization: "Q2_0"));
 
         new DeviceModelAssessor(catalogue, DeviceModelAssessor.ShippedEngines(), mmapAllowed: false, maxModelBytes: 1e12)
             .Assess(Roomy());
 
         var compatible = catalogue.Compatible(ModelModality.Chat).Select(e => e.Name).ToList();
         Assert.Contains("bonsai-ptq1", compatible);
-        Assert.DoesNotContain("bonsai-pq2", compatible);
+        Assert.Contains("bonsai-pq2", compatible);
+        Assert.DoesNotContain("bonsai-q2", compatible);
     }
 
     [Fact]

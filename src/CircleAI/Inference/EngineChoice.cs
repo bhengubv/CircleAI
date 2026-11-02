@@ -156,7 +156,7 @@ public static class EngineChoice
 
         if (entry.Engine == ModelEngine.Managed && !Managed.ManagedChatGenerator.Reads(entry.Architecture, entry.Quantization))
             return $"{entry.Name} is {entry.Architecture ?? "an unnamed architecture"} packed as {entry.Quantization}, "
-                 + "which the C# engine does not read yet (it reads qwen35 in PTQ1_0)";
+                 + $"which the C# engine does not read yet (it reads {Managed.ManagedChatGenerator.WhatItReads})";
 
         return $"{entry.Name} opens here with {entry.Engine}";
     }

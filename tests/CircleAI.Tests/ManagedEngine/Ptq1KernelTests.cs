@@ -41,7 +41,7 @@ public sealed class Ptq1KernelTests
 
     // The fork's reference packer, ported line for line so the layout claim is
     // tested against the rule that wrote the model files, not against our decoder.
-    private static byte[] PackReference(ReadOnlySpan<sbyte> trits, float scale)
+    internal static byte[] PackReference(ReadOnlySpan<sbyte> trits, float scale)
     {
         var block = new byte[Ptq1.BlockBytes];
         var o = 0;

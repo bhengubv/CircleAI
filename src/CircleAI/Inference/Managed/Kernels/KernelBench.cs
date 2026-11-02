@@ -1,15 +1,16 @@
 // KernelBench.cs
 //
-// How fast the PTQ1_0 kernels run on THIS device, on every instruction path it can
-// take, inside whatever runtime this process is. On Android that runtime is Mono, which
+// How fast the PTQ1_0 and PQ2_0 kernels run on THIS device, on every instruction path it
+// can take, inside whatever runtime this process is. On Android that runtime is Mono, which
 // accelerates only part of System.Runtime.Intrinsics and silently runs the rest as
 // plain code - so a path that IsSupported claims is not proof of a fast one. S0.2 runs
 // this on the P30 in the shipped Release build and picks the kernel path from what it
-// measures.
+// measures; S5 adds PQ2_0 beside it, so the two packings are measured side by side - the
+// plan's "where its simpler unpacking measures faster".
 //
 // Synthetic weights at the 2B's real shapes; every path on one thread, then the lookup-table
 // path on one thread up to every core. The estimate of tokens per second divides by the
-// bytes a 2B token reads (its whole PTQ1_0 file: every weight, the tied output head
+// bytes a 2B token reads in that packing (its whole file: every weight, the tied output head
 // included, is read once per token).
 
 using System.Diagnostics;
@@ -20,17 +21,21 @@ using CircleAI.Inference.Managed.Runtime;
 
 namespace CircleAI.Inference.Managed.Kernels;
 
-/// <summary>Measures the PTQ1_0 kernels on this device.</summary>
+/// <summary>Measures the PTQ1_0 and PQ2_0 kernels on this device.</summary>
 public static class KernelBench
 {
     /// <summary>Bytes of PTQ1_0 weights one Bonsai 2 2B token reads (the 2B file's size).</summary>
     public const long Bonsai2BBytesPerToken = 429_183_456;
 
-    /// <summary>One measured path, on <paramref name="Threads"/> threads.</summary>
-    public sealed record Result(KernelPath Path, int Rows, int Cols, double MillisecondsPerPass, double GigabytesPerSecond, int Threads = 1)
+    /// <summary>Bytes of PQ2_0 weights one Bonsai 2 2B token reads (the 2B PQ2_0 file's size).</summary>
+    public const long Bonsai2BPq2BytesPerToken = 517_312_992;
+
+    /// <summary>One measured path, on <paramref name="Threads"/> threads, for a 2B that reads <paramref name="BytesPerToken"/> a token.</summary>
+    public sealed record Result(KernelPath Path, int Rows, int Cols, double MillisecondsPerPass, double GigabytesPerSecond, int Threads = 1,
+        long BytesPerToken = Bonsai2BBytesPerToken)
     {
         /// <summary>Tokens per second a 2B would reach at this speed, its products alone.</summary>
-        public double TokensPerSecond => GigabytesPerSecond * 1e9 / Bonsai2BBytesPerToken;
+        public double TokensPerSecond => GigabytesPerSecond * 1e9 / BytesPerToken;
     }
 
     /// <summary>What the runtime reports it can accelerate, as one line.</summary>
@@ -113,7 +118,110 @@ public static class KernelBench
         yield return $"Lut tables for {cols} inputs built in {buildMs:F2} ms on one thread";
         foreach (var r in threaded)
             yield return $"PTQ1_0 {r.Rows}x{r.Cols} Lut on {r.Threads} thread{(r.Threads == 1 ? " " : "s")} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecond,5:F2} tok/s (2B)";
+
+        foreach (var r in Pq2(rows, cols, passes))
+            yield return $"PQ2_0 {r.Rows}x{r.Cols} {r.Path,-9} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecond,5:F2} tok/s on one thread (2B PQ2_0)";
+        var (pq2BuildMs, pq2Threaded) = Pq2LutThreads(rows, cols);
+        yield return $"PQ2_0 Lut tables for {cols} inputs built in {pq2BuildMs:F2} ms on one thread";
+        foreach (var r in pq2Threaded)
+            yield return $"PQ2_0 {r.Rows}x{r.Cols} Lut on {r.Threads} thread{(r.Threads == 1 ? " " : "s")} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecond,5:F2} tok/s (2B PQ2_0)";
         yield return $"bench done in {total.Elapsed.TotalSeconds:F1} s ({Environment.ProcessorCount} cores seen)";
+    }
+
+    /// <summary>
+    /// Times a <paramref name="rows"/> x <paramref name="cols"/> PQ2_0 matrix-vector product with
+    /// Q8_K activations on each runnable path (the 2B's FFN up-projection by default).
+    /// </summary>
+    public static IReadOnlyList<Result> Pq2(int rows = 6144, int cols = 2048, int passes = 5)
+    {
+        var (weights, scales, q) = SyntheticPq2(rows, cols);
+        var rowBytes = cols / Kernels.Pq2.BlockWeights * Kernels.Pq2.BlockBytes;
+        var results = new List<Result>();
+        var output = new float[rows];
+        var lut = new Pq2Lut(cols);
+        foreach (var path in Enum.GetValues<KernelPath>())
+        {
+            if (!Kernels.Pq2.CanRun(path)) continue;
+            PassPq2(weights, scales, rowBytes, q, lut, output, path); // warm-up: JIT and caches
+            var sw = Stopwatch.StartNew();
+            for (var p = 0; p < passes; p++) PassPq2(weights, scales, rowBytes, q, lut, output, path);
+            sw.Stop();
+            var ms = sw.Elapsed.TotalMilliseconds / passes;
+            results.Add(new Result(path, rows, cols, ms, weights.Length / (ms / 1000.0) / 1e9, BytesPerToken: Bonsai2BPq2BytesPerToken));
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// The PQ2_0 <see cref="KernelPath.Lut"/> product on 1 to <paramref name="maxThreads"/> threads
+    /// (every core unless given), each pass building the tables and then sharing the rows out, plus
+    /// how long the build alone takes.
+    /// </summary>
+    public static (double BuildMilliseconds, IReadOnlyList<Result> Results) Pq2LutThreads(
+        int rows = 6144, int cols = 2048, int passes = 10, int maxThreads = 0)
+    {
+        var (weights, scales, q) = SyntheticPq2(rows, cols);
+        var lut = new Pq2Lut(cols);
+        var output = new float[rows];
+
+        lut.Build(q); // warm-up
+        var sw = Stopwatch.StartNew();
+        for (var p = 0; p < passes; p++) lut.Build(q);
+        var buildMs = sw.Elapsed.TotalMilliseconds / passes;
+
+        var results = new List<Result>();
+        var most = maxThreads > 0 ? maxThreads : Environment.ProcessorCount;
+        for (var threads = 1; threads <= most; threads++)
+        {
+            using var pool = new WorkerPool(threads);
+            lut.MatVec(weights, scales, output, pool); // warm-up: the threads' first product
+            sw.Restart();
+            for (var p = 0; p < passes; p++)
+            {
+                lut.Build(q, pool);
+                lut.MatVec(weights, scales, output, pool);
+            }
+            var ms = sw.Elapsed.TotalMilliseconds / passes;
+            results.Add(new Result(KernelPath.Lut, rows, cols, ms, weights.Length / (ms / 1000.0) / 1e9, threads, Bonsai2BPq2BytesPerToken));
+        }
+        return (buildMs, results);
+    }
+
+    // Random PQ2_0 weights with a sane scale in every block, their decoded block scales, and one
+    // Q8_K input vector.
+    private static (byte[] Weights, float[] Scales, Q8KActivations X) SyntheticPq2(int rows, int cols)
+    {
+        var rng = new Random(1);
+        var rowBytes = cols / Kernels.Pq2.BlockWeights * Kernels.Pq2.BlockBytes;
+        var weights = new byte[rows * rowBytes];
+        rng.NextBytes(weights);
+        for (var b = 0; b < weights.Length; b += Kernels.Pq2.BlockBytes)
+            BitConverter.TryWriteBytes(weights.AsSpan(b, 2), (Half)0.02f);
+
+        var x = new float[cols];
+        for (var i = 0; i < cols; i++) x[i] = (float)(rng.NextDouble() * 2 - 1);
+        var q = new Q8KActivations(cols);
+        q.Quantize(x);
+        return (weights, Kernels.Pq2.BlockScales(weights), q);
+    }
+
+    private static void PassPq2(byte[] weights, float[] scales, int rowBytes, Q8KActivations q, Pq2Lut lut, float[] output, KernelPath path)
+    {
+        if (path == KernelPath.Lut)
+        {
+            lut.Build(q);
+            lut.MatVec(weights, scales, output);
+            return;
+        }
+
+        var blocksPerRow = rowBytes / Kernels.Pq2.BlockBytes;
+        for (var r = 0; r < output.Length; r++)
+        {
+            var row = weights.AsSpan(r * rowBytes, rowBytes);
+            output[r] = path == KernelPath.Table
+                ? Kernels.Pq2.DotTable(row, scales.AsSpan(r * blocksPerRow, blocksPerRow), q)
+                : Kernels.Pq2.Dot(row, q, path);
+        }
     }
 
     // Random PTQ1_0 weights with a sane scale in every block, their decoded block scales,
