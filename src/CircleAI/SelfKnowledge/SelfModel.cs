@@ -130,8 +130,33 @@ public sealed class SelfModel
         {
             Kind = AtomKind.Fact,
             Subject = SelfSubjects.ModelSpeed(modelId),
-            Text = Invariant($"{modelId} answered at {tokensPerSecond:F1} tokens a second on this device"),
+            Text = Invariant($"{modelId}{SpeedSaid}{tokensPerSecond:F2}{SpeedUnit} on this device"),
         });
+    }
+
+    // THE ONE NUMBER READ BACK OUT OF THE WORDS, ON PURPOSE. LoadAsync's rule is that numbers
+    // are counted, not parsed, so a sentence never becomes an API by accident. A speed is the
+    // exception because the choice of brain now depends on it across launches: BrainSpeed passes
+    // over a brain this device measured too slow to talk with, and that brain is exactly the one
+    // that never runs again to be measured - a launch that forgot the speed would choose it,
+    // fetch it and try it again. The writer above and the reader below share these two words, and
+    // a round trip through a real store pins them together.
+    private const string SpeedSaid = " answered at ";
+    private const string SpeedUnit = " tokens a second";
+
+    /// <summary>The speed in a speed atom's words, or null when they hold none.</summary>
+    internal static double? SpeedIn(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        var from = text.LastIndexOf(SpeedSaid, StringComparison.Ordinal);
+        if (from < 0) return null;
+        from += SpeedSaid.Length;
+        var to = text.IndexOf(SpeedUnit, from, StringComparison.Ordinal);
+        if (to <= from) return null;
+        return double.TryParse(text.AsSpan(from, to - from), System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture, out var speed) && speed > 0
+            ? speed
+            : null;
     }
 
     /// <summary>Records that a model loaded and worked, or did not.</summary>
@@ -206,7 +231,8 @@ public sealed class SelfModel
     /// PARSED FROM THE SUBJECT, NOT FROM THE PROSE. The text is written for a person
     /// to read back; the structure is the subject key and the kind. Reconstructing
     /// numbers by parsing sentences would make the wording load-bearing, which is how
-    /// a log line becomes an API by accident.
+    /// a log line becomes an API by accident. One exception, on purpose: a speed
+    /// (<see cref="SpeedIn"/>).
     /// </para>
     /// </remarks>
     public async Task LoadAsync(CancellationToken ct = default)
@@ -215,17 +241,26 @@ public sealed class SelfModel
         {
             var all = await _memory.AllAsync(limit: 2000, ct).ConfigureAwait(false);
 
+            // OLDEST FIRST, so where two readings of one subject are both current - two writes
+            // racing to supersede the same atom - the newer one is the one left standing.
             var counted = 0;
-            foreach (var atom in all.Where(a => a.IsCurrent && SelfSubjects.IsAboutModel(a.Subject)))
+            foreach (var atom in all.Where(a => a.IsCurrent && SelfSubjects.IsAboutModel(a.Subject))
+                                    .OrderBy(a => a.RecordedAtUtc))
             {
                 var id = SelfSubjects.ModelOf(atom.Subject);
                 if (string.IsNullOrWhiteSpace(id)) continue;
 
                 // The OUTCOME subject is the one whose history is the fact: how many
-                // times it worked and how many it did not. Costs and speeds are
-                // superseded, so only the current atom matters and the numbers come
-                // back with it when the host records them again.
-                if (atom.Subject!.Contains(":outcome:", StringComparison.Ordinal))
+                // times it worked and how many it did not. Costs are superseded, so
+                // only the current atom matters and the number comes back when the
+                // host records it again. A speed cannot wait for that - see SpeedIn.
+                if (atom.Subject!.Contains(":speed:", StringComparison.Ordinal))
+                {
+                    if (SpeedIn(atom.Text) is not { } speed) continue;
+                    Update(id!, was => was with { TokensPerSecond = speed, LastSeenUtc = atom.RecordedAtUtc });
+                    counted++;
+                }
+                else if (atom.Subject!.Contains(":outcome:", StringComparison.Ordinal))
                 {
                     var worked = atom.Text.Contains("loaded and answered", StringComparison.OrdinalIgnoreCase);
                     Update(id!, was => was with

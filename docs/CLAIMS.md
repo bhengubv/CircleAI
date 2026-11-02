@@ -197,6 +197,26 @@ against the pinned llama.cpp fork the repo already ships.
 | It answers through the inference process's own build site on the phone | unproven | built 2026-11-01 and not installed: the phone was not connected |
 | It is as fast as the native fork on the same phone | unproven | the fork has never been timed on the P30 |
 
+## Choosing the brain
+
+Step 1 of the Bonsai 2 plan: read the device, choose the best brain quick enough to talk with, build
+it through one factory, and say why.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A brain this device measured too slow to talk with is passed over | tested | The_selector_passes_over_a_brain_too_slow_to_talk_with_on_this_device |
+| A brain never run here is estimated from a measured one on the same engine, by its weight | tested | An_unmeasured_brain_is_estimated_from_a_measured_one_on_the_same_engine_by_its_weight |
+| Another engine's speed says nothing, and an unknown speed is never too slow | tested | Another_engine_says_nothing_about_this_one_and_unknown_is_never_too_slow |
+| The pick is the best quick brain, and the fastest when none is quick | tested | The_pick_is_the_best_quick_brain_and_the_fastest_when_none_is_quick |
+| The plan names the brain and the one it passed over, and why | tested | The_plan_names_the_brain_and_the_one_it_passed_over_for_being_too_slow |
+| A measured speed survives a relaunch | tested | A_speed_measured_before_a_relaunch_still_rules_the_choice_after_it |
+| A brain on the C# engine gets the fast cores less one, read from the kernel | tested | A_brain_gets_the_fast_cores_less_one_and_never_none |
+| Every site that builds a brain asks one factory | tested | Every_site_that_builds_a_brain_asks_the_one_factory |
+| A file with no catalogue row opens on the engine its contents need | tested | A_file_with_no_row_is_opened_by_the_engine_its_contents_need |
+| A Bonsai row on the C# engine counts as on the phone and resolves to its GGUF | tested | A_Bonsai_row_on_the_CSharp_engine_is_present_and_resolves_to_its_gguf |
+| The P30 chooses by itself and says why: Qwen3.5-0.8B on MNN, not the Bonsai 4B, estimated at 0.8 tokens a second from the 2B's measured 1.66 on the C# engine | measured | P30 Lite MAR-LX1M, 2026-11-02 (the supervisor's plan line, before and after its inference process was ended) |
+| The P30 keeps those speeds across a reinstall and chooses the same way without measuring again | measured | P30 Lite MAR-LX1M, 2026-11-02 (2 records read back at start; the same plan line at start and after the inference process was ended) |
+
 ## Balance and readiness
 
 What the brain does with the phone's heat and battery, and what it says while it gets ready.
