@@ -7,9 +7,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
+using CircleAI.Memory;
+using CircleAI.SelfKnowledge;
 using Xunit;
 
 namespace CircleAI.Tests;
@@ -283,6 +286,48 @@ public sealed class BrainPlanTests : IDisposable
         finally
         {
             if (Directory.Exists(store)) Directory.Delete(store, recursive: true);
+        }
+    }
+
+    // ── what a relaunch keeps ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_speed_measured_before_a_relaunch_still_rules_the_choice_after_it()
+    {
+        // FOUND ON THE P30, 2026-11-02: the plan passed over the 4B once the 2B had been measured
+        // at 1.66 - and a relaunch forgot it, because only load outcomes were read back. The
+        // selector wanted the 4B again, and the upgrade path would have fetched it.
+        var dir = Path.Combine(Path.GetTempPath(), "circleai-self-" + Guid.NewGuid().ToString("N")[..8]);
+        var was = SelfModel.Current;
+        try
+        {
+            using (var memory = new MemoryService(dir))
+            {
+                new SelfModel(memory).LearnSpeed(Bonsai2B.Name, 1.66);
+                var subject = SelfSubjects.ModelSpeed(Bonsai2B.Name);
+                for (var i = 0; i < 200 && !(await memory.AllAsync(limit: 50)).Any(a => a.Subject == subject); i++)
+                    await Task.Delay(50);
+            }
+
+            using (var memory = new MemoryService(dir))
+            {
+                var relaunched = new SelfModel(memory);
+                await relaunched.LoadAsync();
+                Assert.Equal(1.66, relaunched.About(Bonsai2B.Name).TokensPerSecond!.Value, 2);
+
+                SelfModel.Current = relaunched;
+                using var registry = new Rows([SmallMnn, Bonsai2B, Bonsai4B]);
+                var selector = new DeviceAwareModelSelector(registry, engines: [ModelEngine.Mnn, ModelEngine.Managed]);
+                Assert.True(BrainSpeed.TooSlow(Bonsai4B, registry.AllModels));
+                Assert.Equal(SmallMnn.Name, selector.BestFit(P30(), ChatCapability.Default).ModelId);
+            }
+
+            Assert.Null(SelfModel.SpeedIn("Ternary-Bonsai-2-2B loaded and answered here"));
+        }
+        finally
+        {
+            SelfModel.Current = was;
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
 

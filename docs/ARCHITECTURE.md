@@ -55,8 +55,11 @@ The low-level "give me tokens for these messages" contract, implemented
 by `QwenTextGenerator` over `MnnInterop` - and by `ManagedChatGenerator`,
 CircleAI's own C# engine (`Inference/Managed`, `ModelEngine.Managed`), which
 runs Bonsai 2 (qwen35 packed as PTQ1_0) with no native code at all.
-`AIService.BuildByEngine` picks the generator by the catalogue row's engine, or
-by `AIOptions.Engine` when the host names one. The C# engine holds its attention
+One factory builds every generator: `BrainFactory` (`IBrainFactory`), asked by
+`AIService`, `AddCircleAI`, `CircleAISession` and the inference bridge alike. It
+takes the engine the host names (`AIOptions.Engine`), else the catalogue row's,
+else the one the file needs - an MNN folder opens on MNN, a GGUF the C# engine
+can read on the C# engine, any other GGUF on llama.cpp. The C# engine holds its attention
 keys and values as TurboQuant codes - 4 bits by default (`KvCompressionMode`) -
 and keeps the state after a system turn as a primed start, so a conversation
 that opens with the same persona does not read it again.
@@ -235,6 +238,25 @@ is intentional — `BackendSelector` and `ModelLifecycleManager` need CPU
 model, core split, GPU driver, NPU vendor; consumers of
 `IInferenceBridge.GetDeviceCapabilitiesAsync` get the flat
 `DeviceCapabilities` projection.
+
+### What a brain choice reads: `DeviceContext`
+
+`DeviceContext.Read()` grows out of `DeviceProbe.Snapshot` rather than probing
+twice. It adds the fast cores - a core whose top frequency
+(`/sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq`) is at least 80% of the
+fastest counts as fast, and where the kernel's tree cannot be read every core
+does - the vector instructions the runtime exposes (`System.Runtime.Intrinsics`:
+AdvSimd, the ARM dot product, AVX2, AVX-VNNI, AVX-512), and the battery,
+charging, heat and form factor a platform head supplies (`PowerProbe`,
+`FormFactorProbe`; the Android service installs both). A brain on the C# engine
+gets the fast cores less one.
+
+The choice itself stays the selector's, made speed-aware: `BrainSpeed` keeps out
+a brain this device measured - or estimates from a measured sibling on the same
+engine, scaled by weight - below 4 tokens a second, and a brain with no measured
+sibling is never called too slow. Speeds are learned from every answer and every
+engine check (`SelfModel.LearnSpeed`). `BrainPlan.Explain` puts the choice in one
+line, which the inference supervisor logs as `plan:`.
 
 ---
 
