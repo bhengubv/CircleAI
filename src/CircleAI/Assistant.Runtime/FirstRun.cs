@@ -232,6 +232,20 @@ public static class FirstRun
         var wanted = Wanted(speech, language);
 
         var steps = new List<SetupStep>();
+
+        // A BRAIN'S COMPANIONS - its vision tower and its drafter - when they fit beside it (Step 4).
+        // Planned right after the brain they serve, and only for the brain this device runs or is
+        // about to: a tower is no use beside any other.
+        void AddCompanions(ModelEntry brain)
+        {
+            foreach (var companion in CircleAI.Inference.BrainCompanions.ThatFit(brain, registry.AllModels, probe, declined))
+            {
+                if (loader.ModelPresent(companion.Entry.Name)) continue;
+                if (steps.Any(s => string.Equals(s.Model.Name, companion.Entry.Name, StringComparison.OrdinalIgnoreCase))) continue;
+                steps.Add(new SetupStep(CompanionTitle(companion.Kind), companion.Entry.Modality, companion.Entry));
+            }
+        }
+
         foreach (var (title, modality, named, speaks) in wanted)
         {
             ModelEntry? pick;
@@ -311,11 +325,14 @@ public static class FirstRun
                 // LLM": on the P30 a complete Qwen3-0.6B counted as the brain, so this
                 // slot was done and Qwen3.5 was never fetched - the second half of why
                 // that phone ran a lesser model for a week.
+                // AND NOT A BRAIN'S COMPANION (Step 4): a vision tower is not "the eyes" and a
+                // drafter is not "the brain" - each is fetched for its own brain, below, or not at all.
                 var eligible = registry.AllModels
                     .Where(m => m.Modality == modality && !m.Retired)
                     .Where(m => m.Modality != ModelModality.Chat || brainEngines.Contains(m.Engine))
                     .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
+                    .Where(m => !CircleAI.Inference.BrainCompanions.IsCompanion(m))
                     .ToList();
 
                 var presentHoldable = eligible
@@ -358,10 +375,30 @@ public static class FirstRun
                     // fetched, the fallback would have loaded the 2B again, and two
                     // strikes later the phone would have had no brain and nothing
                     // fetching one.
-                    if ((pick is not null && loader.ModelPresent(pick.Name))
-                        || presentHoldable.Any(m => CircleAI.Inference.ModelFit.FitsRam(m, probe.UsableRamGb))
-                        || (proven is not null && presentHoldable.Any(m => proven(m.Name))))
+                    var runs = pick is not null && loader.ModelPresent(pick.Name)
+                        ? pick
+                        : presentHoldable
+                            .Where(m => CircleAI.Inference.ModelFit.FitsRam(m, probe.UsableRamGb)
+                                        || (proven is not null && proven(m.Name)))
+                            .OrderByDescending(m => m.QualityRank)
+                            .FirstOrDefault();
+
+                    if (runs is not null)
+                    {
+                        // THE BRAIN IS HERE; ITS EYES AND ITS DRAFTER MAY NOT BE (Step 4).
+                        AddCompanions(runs);
                         continue;
+                    }
+
+                    // ONE BRAIN, AND ITS COMPANIONS RIGHT BEHIND IT. Which brain comes first in the
+                    // download queue is the fetcher's call (FirstBrain): the brain is lifted ahead of
+                    // the long tail of voices, so the person can talk within minutes.
+                    if (pick is not null)
+                    {
+                        steps.Add(new SetupStep(title, modality, pick));
+                        AddCompanions(pick);
+                    }
+                    continue;
                 }
                 else
                 {
@@ -428,9 +465,12 @@ public static class FirstRun
         // belt and braces rather than the only guard.
         var planned = new HashSet<string>(steps.Select(s => s.Model.Name), StringComparer.OrdinalIgnoreCase);
 
+        // AND NO COMPANION OF ANOTHER BRAIN: a tower or a drafter is fetched for the brain this
+        // device runs, above, and is dead weight beside any other.
         var rest = registry.AllModels
             .Where(m => !m.Retired)
             .Where(m => m.Modality != ModelModality.Chat)
+            .Where(m => !CircleAI.Inference.BrainCompanions.IsCompanion(m))
             .Where(m => !planned.Contains(m.Name))
             .Where(m => declined is null || !declined(m.Name))
             .Where(m => !loader.ModelPresent(m.Name))
@@ -441,6 +481,34 @@ public static class FirstRun
         foreach (var m in rest) steps.Add(new SetupStep(TitleFor(m), m.Modality, m));
 
         return steps;
+    }
+
+    /// <summary>The words for a brain's companion on a setup screen.</summary>
+    public static string CompanionTitle(CircleAI.Inference.CompanionKind kind) => kind switch
+    {
+        CircleAI.Inference.CompanionKind.VisionTower => "the brain's eyes",
+        _                                            => "faster answers",
+    };
+
+    /// <summary>
+    /// What to call any catalogued model where a person reads it - a progress row for a download
+    /// nobody planned with a title, say. The plan's own words where it has them.
+    /// </summary>
+    public static string TitleOf(ModelEntry model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        if (CircleAI.Inference.BrainCompanions.IsTower(model)) return CompanionTitle(CircleAI.Inference.CompanionKind.VisionTower);
+        if (CircleAI.Inference.BrainCompanions.IsDrafter(model)) return CompanionTitle(CircleAI.Inference.CompanionKind.Drafter);
+        return model.Modality == ModelModality.Chat ? "the brain" : TitleFor(model);
+    }
+
+    /// <summary>The first brain a plan fetches - the one a fetcher lifts to the head of its queue.</summary>
+    public static string? FirstBrain(IEnumerable<SetupStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+        return steps.FirstOrDefault(s => s.Modality == ModelModality.Chat
+                                         && !CircleAI.Inference.BrainCompanions.IsCompanion(s.Model))
+                    .Model?.Name;
     }
 
     /// <summary>What to call a model on a setup screen, when it is not an ability slot.</summary>
@@ -607,8 +675,13 @@ public static class FirstRun
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
 
+        // ONE ROW A TITLE, THE FIRST STEP THAT CARRIES IT. The long tail gives several models the
+        // same words ("another voice", "better ears"), and a dictionary built straight off the plan
+        // threw on the second one - so the census of a phone with two such downloads still owed
+        // came back as an exception instead of rows.
         var missing = Plan(registry, loader, probe, speech, declined, proven: proven)
-            .ToDictionary(s => s.Title, s => s.Model, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Model, StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<CapabilityRow>();
         foreach (var (title, modality, named, _) in Wanted(speech, language))

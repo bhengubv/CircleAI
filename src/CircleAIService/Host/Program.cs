@@ -261,6 +261,11 @@ public static class Program
                                        : CircleAI.Assistant.Lifecycle.ReadinessSentences.For(
                                              CircleAI.Assistant.Lifecycle.ComponentState.Of("brain", s.Phase, "", s.Since) with { Step = s.Step }),
                 s.ModelId, s.Since, null, s.RetryAfter));
+            // EVERY MODEL ON ITS WAY IN, IN WORDS A PERSON READS, AND THE BRAIN'S PRIMING ON THE SAME
+            // BOARD (Step 4): the readiness this host reports is what the board follows.
+            SetupBoard.TitleFor = id => registry.GetLatestModel(id) is { } titled ? CircleAI.Assistant.FirstRun.TitleOf(titled) : null;
+            using var boardFollow = CircleAI.Assistant.Lifecycle.SetupBoardFollow.Follow(readiness);
+
             // AND THE FIRST STATUS SAYS "CHOOSING", WHICH IS WHAT IS HAPPENING. This
             // reported Installed or NoModel from a choice already made; the choice is
             // now made after the bind, and reporting NoModel in that window would tell
@@ -412,7 +417,14 @@ public static class Program
                         _ = brain.EnsureReadyAsync(ct)
                                  .ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
 
-                    var plan = CircleAI.Assistant.FirstRun.Plan(registry, loader, probe, speech: false)
+                    // WITH THIS MACHINE'S REFUSALS AND VERDICTS (Step 4: every background fetcher
+                    // passes the declined list) - a model that stopped this machine, or that it
+                    // cannot run, is not fetched again. There is no person's switch on this host.
+                    var declined = ModelOffer.NotWorthOffering(catalogue);
+                    var steps = CircleAI.Assistant.FirstRun.Plan(registry, loader, probe, speech: false, declined: declined);
+                    foreach (var step in steps)
+                        SetupBoard.Queue(step.Model.Name, step.Title, step.Model.TotalBytes);
+                    var plan = steps
                         .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes))
                         .ToList();
                     if (reportOnly)
@@ -430,7 +442,7 @@ public static class Program
                         return;
                     }
 
-                    await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct).ConfigureAwait(false);
+                    await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct, declined: declined).ConfigureAwait(false);
 
                     // THE BRAIN IS NOT ONE OF SEVENTY-FIVE. Naming it here lifts it to
                     // the head of the queue; everything else keeps smallest-first, which
