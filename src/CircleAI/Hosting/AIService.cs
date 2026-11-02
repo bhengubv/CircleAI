@@ -475,12 +475,15 @@ public sealed class AIService : IAIService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+        var callOptions = options ?? _options.DefaultGenerationOptions;
+        var plain = callOptions?.Plain == true;
 
         // ANSWERED HERE, WITHOUT THE MODEL. See AIOptions.OverviewAnswer: what
         // this app can do is a fact the host owns, and the model is guessing at
         // it. Before EnsureStartedAsync on purpose - a known answer must not
         // wait thirteen to twenty-three seconds for a cold model to load.
-        if (FixedAnswer(messages) is { } canned) return canned;
+        // NOT FOR A PLAIN CALL: "what can you do" is a sentence to translate there.
+        if (!plain && FixedAnswer(messages) is { } canned) return canned;
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
         // Determine the user query (last user message) for routing + RAG lookup.
@@ -493,10 +496,10 @@ public sealed class AIService : IAIService
         // configured. Byte-identical to the single-slot path when Router is null.
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
-        var callOptions = options ?? _options.DefaultGenerationOptions;
-        var prepared = await PrepareMessagesAsync(messages, userQuery, ct,
+        var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
                 retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
             .ConfigureAwait(false);
+        var prepared = turn.Messages;
         var effectiveOptions = callOptions;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
@@ -511,7 +514,7 @@ public sealed class AIService : IAIService
         // know that this service keeps a cache in order to benefit from it. A
         // caller who passes their own GenerationOptions keeps every other choice
         // they made; only this one is turned on.
-        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
+        effectiveOptions = turn.With((effectiveOptions ?? new GenerationOptions()).WithPrefixCache());
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
@@ -523,7 +526,8 @@ public sealed class AIService : IAIService
         sw.Stop();
 
         // Store exchange in episodic memory (fire-and-forget with error isolation).
-        _ = TryStoreEpisodeAsync(userQuery, response, ct);
+        // A plain call is a service performed on text, not something the person said.
+        if (!plain) _ = TryStoreEpisodeAsync(userQuery, response, ct);
 
         await FireObserverAsync(o => o.OnChatCompletedAsync(
             new AIChatEvent(correlationId, prepared, response, sw.Elapsed, DateTimeOffset.UtcNow),
@@ -539,10 +543,12 @@ public sealed class AIService : IAIService
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+        var callOptions = options ?? _options.DefaultGenerationOptions;
+        var plain = callOptions?.Plain == true;
 
         // ANSWERED HERE, WITHOUT THE MODEL - see ChatAsync. One chunk and done,
         // which is what a streaming caller sees for any short answer anyway.
-        if (FixedAnswer(messages) is { } canned)
+        if (!plain && FixedAnswer(messages) is { } canned)
         {
             yield return canned;
             yield break;
@@ -557,10 +563,10 @@ public sealed class AIService : IAIService
         // Neuron slot selection (generalist unless a router routes to a specialist).
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
-        var callOptions = options ?? _options.DefaultGenerationOptions;
-        var prepared = await PrepareMessagesAsync(messages, userQuery, ct,
+        var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
                 retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
             .ConfigureAwait(false);
+        var prepared = turn.Messages;
         var effectiveOptions = callOptions;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
@@ -575,7 +581,7 @@ public sealed class AIService : IAIService
         // know that this service keeps a cache in order to benefit from it. A
         // caller who passes their own GenerationOptions keeps every other choice
         // they made; only this one is turned on.
-        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
+        effectiveOptions = turn.With((effectiveOptions ?? new GenerationOptions()).WithPrefixCache());
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
@@ -603,8 +609,8 @@ public sealed class AIService : IAIService
 
         sw.Stop();
 
-        // Store the full streamed response episodically.
-        _ = TryStoreEpisodeAsync(userQuery, sb.ToString(), ct);
+        // Store the full streamed response episodically - never a plain call's (see ChatAsync).
+        if (!plain) _ = TryStoreEpisodeAsync(userQuery, sb.ToString(), ct);
 
         await FireObserverAsync(o => o.OnStreamCompletedAsync(
             new AIStreamEvent(correlationId, prepared, sw.Elapsed, tokenCount, DateTimeOffset.UtcNow),
@@ -634,10 +640,12 @@ public sealed class AIService : IAIService
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+        var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+        var plain = effectiveOptions?.Plain == true;
 
         // ANSWERED HERE, WITHOUT THE MODEL - see ChatAsync. Tagged Content, not
         // Reasoning: there was no thinking to show.
-        if (FixedAnswer(messages) is { } canned)
+        if (!plain && FixedAnswer(messages) is { } canned)
         {
             yield return new ChatFragment(ChatFragmentKind.Content, canned);
             yield break;
@@ -650,8 +658,8 @@ public sealed class AIService : IAIService
         var hasImage = messages.Any(m => m.ImageBytes is not null);
 
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
-        var prepared = await PrepareMessagesAsync(messages, userQuery, ct).ConfigureAwait(false);
-        var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+        var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct).ConfigureAwait(false);
+        var prepared = turn.Messages;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
         //
@@ -665,7 +673,7 @@ public sealed class AIService : IAIService
         // know that this service keeps a cache in order to benefit from it. A
         // caller who passes their own GenerationOptions keeps every other choice
         // they made; only this one is turned on.
-        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
+        effectiveOptions = turn.With((effectiveOptions ?? new GenerationOptions()).WithPrefixCache());
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
@@ -697,7 +705,7 @@ public sealed class AIService : IAIService
         }
 
         sw.Stop();
-        _ = TryStoreEpisodeAsync(userQuery, answer.ToString(), ct);
+        if (!plain) _ = TryStoreEpisodeAsync(userQuery, answer.ToString(), ct);
 
         await FireObserverAsync(o => o.OnStreamCompletedAsync(
             new AIStreamEvent(correlationId, prepared, sw.Elapsed, tokenCount, DateTimeOffset.UtcNow),
@@ -788,16 +796,20 @@ public sealed class AIService : IAIService
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
         string lastResponse = string.Empty;
+        var retriedMalformed = false;
         for (int iteration = 0; iteration < maxIter; iteration++)
         {
             // forceTools: this IS the tool loop. Whatever the question looks
             // like, a caller who invoked the agentic path has already decided.
-            var prepared = await PrepareMessagesAsync(history, prompt, linked.Token, forceTools: true)
+            // A generator that takes the tools in its own template is handed them
+            // there (and holds its call to their form); any other is told in a note.
+            var turn = await PrepareTurnAsync(history, prompt, plain: false, generator, linked.Token, forceTools: true)
                 .ConfigureAwait(false);
+            var prepared = turn.Messages;
 
             var sw = Stopwatch.StartNew();
             var response = await generator
-                .GenerateAsync(prepared, effectiveOptions, linked.Token)
+                .GenerateAsync(prepared, turn.With(effectiveOptions), linked.Token)
                 .ConfigureAwait(false);
             sw.Stop();
 
@@ -814,7 +826,36 @@ public sealed class AIService : IAIService
             // things a model emits two blocks; running one and re-prompting
             // threw the other away, so "remind me at six and text Sipho"
             // quietly became just the reminder.
-            var invocations = ToolCallReader.ReadAll(response);
+            // READ AGAINST WHAT IS REGISTERED: the XML form writes every value as
+            // text, and a tool that declares a number gets a number.
+            var available = await AvailableToolsAsync(linked.Token).ConfigureAwait(false);
+            var invocations = ToolCallReader.ReadAll(response, available);
+
+            // A CALL THAT COULD NOT BE READ IS RETRIED ONCE, HELD TO ITS FORM (S6). The reply
+            // looked like a tool call and nothing in it parsed: ending here would hand the person
+            // a fragment of markup as their answer. The retry spells out the template's own form,
+            // and on the C# engine ToolCallGrammar holds every token of it once "<tool_call>" is
+            // written. Wolverine hears both halves - that it happened, and whether the retry read.
+            if (retriedMalformed)
+            {
+                retriedMalformed = false;
+                CircleAI.Core.Logging.HealthEvents.Raise(MalformedToolCall() with
+                {
+                    Remedy = CircleAI.Hosting.SelfHealing.Remedies.ToolCallRetry,
+                    Worked = invocations.Count > 0,
+                });
+            }
+            else if (invocations.Count == 0 && CircleAI.Assistant.ToolCall.Looks(response))
+            {
+                if (iteration + 1 < maxIter)
+                {
+                    retriedMalformed = true;
+                    history.Add(new ChatMessage("tool", MalformedToolCallReply));
+                    continue;
+                }
+                CircleAI.Core.Logging.HealthEvents.Raise(MalformedToolCall());   // no turn left to retry in
+            }
+
             if (invocations.Count == 0) break; // No tool call — we're done.
 
             if (_options.ToolBridge is null)
@@ -826,8 +867,6 @@ public sealed class AIService : IAIService
                         $"{{\"tool\": \"{call.ToolName}\", \"error\": \"No tool bridge configured.\"}}"));
                 continue;
             }
-
-            var available = await AvailableToolsAsync(linked.Token).ConfigureAwait(false);
 
             foreach (var invocation in invocations)
             {
@@ -879,6 +918,20 @@ public sealed class AIService : IAIService
 
         return lastResponse;
     }
+
+    /// <summary>What the model is told when its tool call could not be read: the template's own form, spelled out.</summary>
+    /// <remarks>
+    /// The Qwen3.5 template's XML form (ToolCallGrammar's), not JSON: it is what the model was
+    /// trained to write, and what the C# engine holds a call to once it is opened.
+    /// </remarks>
+    internal const string MalformedToolCallReply =
+        "{\"error\": \"The tool call could not be read. Write it again in exactly this form: "
+        + "<tool_call>\\n<function=NAME>\\n<parameter=NAME>\\nVALUE\\n</parameter>\\n</function>\\n</tool_call>\"}";
+
+    /// <summary>A tool call that could not be read, as Wolverine reads it (S6). Nothing of the reply travels.</summary>
+    private CircleAI.Core.Logging.HealthEvent MalformedToolCall() =>
+        CircleAI.Core.Logging.HealthEvents.Of("Tools", "tool call", "MalformedToolCall", "AIService.AgenticChatAsync",
+            "a reply looked like a tool call and none of it could be read", subject: _resolvedModelId);
 
     // ------------------------------------------------------------------
     // v2.0 — Feedback
@@ -1471,10 +1524,11 @@ public sealed class AIService : IAIService
 
         // Built the same way a real turn's messages are, so the system message —
         // and therefore the prefix-cache key derived from it — is the same one
-        // the first question will ask for.
-        var warmMessages = await PrepareMessagesAsync(seed, string.Empty, ct).ConfigureAwait(false);
+        // the first question will ask for. FOR THIS GENERATOR, so a brain that takes
+        // its tools in its template warms the system turn real turns will send.
+        var warm = await PrepareTurnAsync(seed, string.Empty, plain: false, generator, ct).ConfigureAwait(false);
 
-        var warmOptions = new GenerationOptions
+        var warmOptions = warm.With(new GenerationOptions
         {
             MaxTokens = 1,
             Temperature = 0f,
@@ -1483,10 +1537,10 @@ public sealed class AIService : IAIService
             // no one is waiting for it, instead of in front of the first
             // question, where they are.
             UsePrefixCache = true,
-        };
+        });
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
-        _ = await generator.GenerateAsync(warmMessages, warmOptions, linked.Token).ConfigureAwait(false);
+        _ = await generator.GenerateAsync(warm.Messages, warmOptions, linked.Token).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------
@@ -1518,7 +1572,39 @@ public sealed class AIService : IAIService
         bool forceTools = false,
         string? retrievalQuery = null,
         TurnTimingRecorder? timing = null)
+        => (await PrepareTurnAsync(messages, userQuery, plain: false, generator: null, ct, forceTools, retrievalQuery, timing)
+            .ConfigureAwait(false)).Messages;
+
+    /// <summary>A turn's messages, and the tools to hand a generator that takes them in its own template.</summary>
+    private readonly record struct PreparedTurn(List<ChatMessage> Messages, IReadOnlyList<ToolDefinition> Tools)
     {
+        /// <summary>The call's options, offering this turn's tools when there are any to hand over.</summary>
+        public GenerationOptions With(GenerationOptions options) => Tools.Count > 0 ? options.WithTools(Tools) : options;
+    }
+
+    /// <summary>
+    /// <see cref="PrepareMessagesAsync"/> for a turn about to go to <paramref name="generator"/>:
+    /// the tools go to a generator that takes them in its own template (<see cref="IToolCallingGenerator"/>)
+    /// as the tools themselves, and to any other as a note, as before.
+    /// </summary>
+    /// <remarks>
+    /// A PLAIN CALL REACHES THE MODEL AS IT CAME (<see cref="GenerationOptions.Plain"/>): no persona,
+    /// no notes, no tools. The translation engine writes its own whole prompt, and notes put in
+    /// front of it were translated along with the sentence, or got the sentence answered.
+    /// </remarks>
+    private async Task<PreparedTurn> PrepareTurnAsync(
+        IReadOnlyList<ChatMessage> messages,
+        string userQuery,
+        bool plain,
+        IChatGenerator? generator,
+        CancellationToken ct,
+        bool forceTools = false,
+        string? retrievalQuery = null,
+        TurnTimingRecorder? timing = null)
+    {
+        if (plain) return new PreparedTurn(messages.ToList(), System.Array.Empty<ToolDefinition>());
+
+        var toolsByTemplate = generator is IToolCallingGenerator;
         var enrichStarted = TurnTimingRecorder.Now();
 
         // Enrichment is computed ONCE and used differently depending on whether
@@ -1605,10 +1691,17 @@ public sealed class AIService : IAIService
 
         if (_latchedTools.Count > 0) _toolsLatched = true;
 
-        var toolBlock = _latchedTools.Count == 0
+        IReadOnlyList<ToolDefinition> latched = _latchedTools.Count == 0
+            ? System.Array.Empty<ToolDefinition>()
+            : all.Where(t => t is not null && _latchedTools.Contains(t.Name)).ToList();
+
+        // THE MODEL'S OWN TOOLS BLOCK, NOT OUR NOTE, FOR A GENERATOR THAT TAKES ONE. Qwen3.5 was
+        // trained on its template's tools block and writes its call in that template's XML form;
+        // the note below asks for JSON. The tools travel on the call instead, the template puts
+        // them where the model learned to find them, and the note stays out of the prompt.
+        var toolBlock = toolsByTemplate || latched.Count == 0
             ? string.Empty
-            : ToolPromptRenderer.Render(
-                all.Where(t => t is not null && _latchedTools.Contains(t.Name)).ToList());
+            : ToolPromptRenderer.Render(latched);
 
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
@@ -1640,6 +1733,7 @@ public sealed class AIService : IAIService
         Console.WriteLine(
             $"CIRCLEAI-PROMPT caller={_options.SystemPrompt?.Length ?? 0} " +
             $"enrichment={enrichment?.Length ?? 0} tools={toolBlock.Length} " +
+            (toolsByTemplate ? $"templateTools={latched.Count} " : string.Empty) +
             $"query={userQuery?.Length ?? 0} hasSystem={hasSystem}");
 
         var prepared = new List<ChatMessage>(messages.Count + 1);
@@ -1671,7 +1765,7 @@ public sealed class AIService : IAIService
                 prepared.FirstOrDefault(m =>
                     string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content));
 
-        return prepared;
+        return new PreparedTurn(prepared, toolsByTemplate ? latched : System.Array.Empty<ToolDefinition>());
     }
 
     /// <summary>The notes and the question as one user message.</summary>
@@ -2255,7 +2349,7 @@ public sealed class AIService : IAIService
     /// and, crucially, no longer invokes a tool with an EMPTY argument list when
     /// the arguments arrived as a JSON string rather than an object.
     /// <para>
-    /// The agentic loop calls <see cref="ToolCallReader.ReadAll"/> directly,
+    /// The agentic loop calls <see cref="ToolCallReader.ReadAll(string?, IReadOnlyList{ToolDefinition}?)"/> directly,
     /// because a reply can carry more than one call and only the first was ever
     /// run. This remains for callers that want just the first.
     /// </para>

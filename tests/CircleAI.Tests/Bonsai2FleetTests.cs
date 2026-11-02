@@ -9,8 +9,8 @@
 //
 // A ROW THE ENGINE CANNOT OPEN YET IS DEAD DATA UNTIL ITS CODE LANDS: no selector picks it, no setup
 // plan names it, no fetch starts or resumes it, no screen offers it, and no request is routed to a
-// brain for a capability the engine cannot hand back (tool calls in the XML form the app does not
-// read yet; sight, which needs a tower beside the brain). When the code lands, the engine's own gate
+// brain for a capability the engine cannot hand back (sight, which needs a tower beside the brain;
+// tool calls were the other until S8 taught ToolCallReader their XML form). When the code lands, the engine's own gate
 // (ManagedChatGenerator.Reads, .Delivers) opens them with no catalogue edit - as it did for the
 // PQ2_0-MTP files when the engine learned to draft with their head: they are brains now. The DFlash 2
 // drafters still wait for their code; the vision towers for a plan that fetches each beside its
@@ -223,10 +223,13 @@ public sealed class Bonsai2FleetTests : IDisposable
     }
 
     [Fact]
-    public void A_request_needing_tool_calls_or_sight_is_not_sent_to_a_Bonsai_brain_and_one_needing_thought_is()
+    public void A_request_needing_sight_is_not_sent_to_a_Bonsai_brain_and_one_needing_tool_calls_or_thought_is()
     {
-        // The Bonsai brains declare tool calls (the card), but the C# engine writes them in the XML
-        // form the app does not read yet, so the selector counts only what the engine delivers.
+        // The Bonsai brains declare tool calls (the card) and the selector counts only what the C#
+        // engine delivers. Tool calls it delivers since S8 - the call held to the template's XML
+        // form, and ToolCallReader reading that form - so a tool request goes to the best Bonsai
+        // brain, ahead of a smaller MNN brain that also declares tools. Sight it does not promise:
+        // a brain sees only with its tower beside it, and nothing fetches a tower yet.
         var mnn = new ModelEntry("Qwen3.5-0.8B-MNN-like", "1.0", "MNN-Q4")
         {
             Engine = ModelEngine.Mnn, Modality = ModelModality.Chat, Architecture = "qwen3.5", QualityRank = 8,
@@ -237,13 +240,15 @@ public sealed class Bonsai2FleetTests : IDisposable
         using var catalogue = new Catalogue(rows);
         using var selector = new DeviceAwareModelSelector(catalogue, Shipped);
 
-        Assert.Equal(mnn.Name, selector.BestFit(Roomy(), ChatCapability.Tools).ModelId);
+        var caller = rows.Single(m => m.Name == selector.BestFit(Roomy(), ChatCapability.Tools).ModelId);
+        Assert.Equal(ModelEngine.Managed, caller.Engine);
+        Assert.True(IsBrain(caller), caller.Name);
         Assert.Throws<InvalidOperationException>(() => new DeviceAwareModelSelector(new Catalogue(Rows()), Shipped).BestFit(Roomy(), ChatCapability.Vision));
 
         var thinker = rows.Single(m => m.Name == selector.BestFit(Roomy(), ChatCapability.Reasoning).ModelId);
         Assert.Equal(ModelEngine.Managed, thinker.Engine);
         Assert.True(IsBrain(thinker), thinker.Name);
-        Assert.Equal(ChatCapability.Default | ChatCapability.Reasoning | ChatCapability.LongContext,
+        Assert.Equal(ChatCapability.Default | ChatCapability.Tools | ChatCapability.Reasoning | ChatCapability.LongContext,
             EngineChoice.Delivers(thinker, ChatCapability.Default | ChatCapability.Tools | ChatCapability.Reasoning | ChatCapability.LongContext | ChatCapability.Vision));
     }
 }

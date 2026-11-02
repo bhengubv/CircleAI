@@ -37,6 +37,10 @@ namespace CircleAI.Assistant.Lifecycle;
 /// <param name="TimeLimitReached">A platform time budget fired (Service.onTimeout, an ANR).</param>
 /// <param name="ManagedException">The managed exception's type name, when one was thrown.</param>
 /// <param name="KilledForTest">We ended it on purpose to test recovery (not a watchdog).</param>
+/// <param name="CrashSignal">
+/// The signal our own crash log names for that process, when it names one (S6): on API 29 there
+/// is no exit record, and this is what tells an illegal instruction (4) from a segfault (11).
+/// </param>
 public sealed record ExitFacts(
     int ApiLevel,
     WorkPhase Phase,
@@ -57,7 +61,8 @@ public sealed record ExitFacts(
     bool? ForegroundRefused = null,
     bool? TimeLimitReached = null,
     string? ManagedException = null,
-    bool? KilledForTest = null);
+    bool? KilledForTest = null,
+    int? CrashSignal = null);
 
 /// <summary>Turns <see cref="ExitFacts"/> into a <see cref="Failure"/>.</summary>
 public static class FailureClassifier
@@ -164,7 +169,11 @@ public static class FailureClassifier
         if (facts.BootChanged == true)
             return F(FailureKind.AndroidStopped, Certainty.Inferred, "boot-changed", "the phone restarted while it ran");
         if (facts.CrashBufferShowsSignal == true)
-            return F(FailureKind.NativeWorkerCrashed, Certainty.Certain, "crash-log-signal", "the inference engine crashed");
+            return F(FailureKind.NativeWorkerCrashed, Certainty.Certain,
+                     facts.CrashSignal is { } named
+                         ? "crash-log-signal signal=" + named.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                         : "crash-log-signal",
+                     "the inference engine crashed");
         if (facts.FilesVerified == false)
             return F(FailureKind.ModelFilesDamaged, Certainty.Certain, "files=bad", "the model's files failed their check");
         if (facts.WorkerDiedAlone && lowMemory)

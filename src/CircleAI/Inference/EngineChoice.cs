@@ -111,10 +111,10 @@ public static class EngineChoice
     /// </summary>
     /// <remarks>
     /// THE ROW SAYS WHAT THE MODEL CAN DO; THIS SAYS WHAT THE ENGINE CAN DO WITH IT. The Bonsai 2
-    /// cards give the brains tool calls, thinking and a 262K context, and their rows say so - but
-    /// the C# engine's tool calls are the template's XML form, which the app's tool reader does not
-    /// read yet, and a brain sees only with its tower beside it, which nothing fetches yet, so a
-    /// request needing either must not be routed to it. <see cref="Managed.ManagedChatGenerator.Delivers"/> is the engine's own list; when it
+    /// cards give the brains tool calls, thinking and a 262K context, and their rows say so. The C#
+    /// engine delivers the tool calls since S8 (the template's XML form, read by ToolCallReader); a
+    /// brain sees only with its tower beside it, which nothing fetches yet, so a request needing
+    /// sight must not be routed to it. <see cref="Managed.ManagedChatGenerator.Delivers"/> is the engine's own list; when it
     /// grows, the rows are already right.
     /// </remarks>
     public static ChatCapability Delivers(ModelEntry entry, ChatCapability declared)

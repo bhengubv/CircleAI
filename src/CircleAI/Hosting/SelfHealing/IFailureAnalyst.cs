@@ -41,7 +41,22 @@ public sealed record FailureContext(
     string Message,
     string? StackTrace = null,
     string? Source = null,
-    string? Details = null);
+    string? Details = null)
+{
+    /// <summary>
+    /// The HealthEvent this failure came from, when it came through the log hub (S6): its
+    /// fingerprint, area, error type, site and subject are what the rules and the remedies read,
+    /// so nothing has to be parsed back out of the message.
+    /// </summary>
+    public CircleAI.Core.Logging.HealthEvent? Event { get; init; }
+
+    /// <summary>
+    /// The remedies the analyst may choose from (S6), set by the loop from the safe fixes it
+    /// holds. Null leaves the analyst free, as it always was; a list makes any other answer a
+    /// "needs a human" - the brain chooses from the list and never invents an action.
+    /// </summary>
+    public IReadOnlyList<string>? Remedies { get; init; }
+}
 
 /// <summary>Circle AI's read on a failure. A recommendation, never an action.</summary>
 /// <param name="Kind">Quick-fix, patch, or defer.</param>

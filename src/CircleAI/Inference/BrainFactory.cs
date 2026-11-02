@@ -75,7 +75,14 @@ public sealed class BrainFactory : IBrainFactory
         var entry = request.Entry;
         var engine = request.Engine ?? entry?.Engine ?? EngineOf(request.ModelPath);
         if (entry is not null && engine != entry.Engine) entry = entry with { Engine = engine };
-        var contextSize = Math.Max(1, request.ContextSize);
+
+        // WHAT WOLVERINE HAS TURNED DOWN ON THIS DEVICE (S6), read where every brain is built: fewer
+        // threads, a shorter context, fewer working-memory bits, a thinking budget, scalar kernels.
+        // Nothing turned down is the brain exactly as it was built before.
+        var tuning = BrainTuning.Current();
+        if (!tuning.IsNone)
+            CircleAI.Core.Logging.CircleLog.Info("Heal", $"building {request.ModelId ?? "a brain"} with Wolverine's knobs: {tuning.Describe()}");
+        var contextSize = tuning.Context(Math.Max(1, request.ContextSize));
 
         if (engine == ModelEngine.Managed)
         {
@@ -88,17 +95,19 @@ public sealed class BrainFactory : IBrainFactory
             // the host said otherwise. Working memory at 4 bits with keys in the MSE form (S3):
             // measured on the 2B against the fork, it kept every one of 289 tokens in a quarter
             // of fp16's memory. THE ROW'S GENERATION PROFILE samples the answers - the model
-            // card's numbers, data rather than code - and says whether it thinks.
-            var threads = request.Threads is > 0 ? request.Threads.Value : DeviceContext.Read().BrainThreads;
+            // card's numbers, data rather than code - and says whether it thinks by default.
+            var threads = tuning.Threads(request.Threads is > 0 ? request.Threads.Value : DeviceContext.Read().BrainThreads) ?? 1;
+            Managed.Kernels.KernelChoice.ScalarOnly = tuning.ScalarKernels;
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={request.ModelId} cap={request.Capability}");
             return Managed.ManagedChatGenerator.Load(request.ModelPath, new Managed.ManagedGeneratorOptions
             {
                 ContextLength = contextSize,
                 Threads = threads,
-                KvMode = KvCompressionMode.TurboQuant4Bit,
+                KvMode = tuning.WorkingMemory ?? KvCompressionMode.TurboQuant4Bit,
                 KeyForm = CircleAI.Core.Compression.TurboQuantForm.Mse,
                 Generation = entry?.Generation,
                 Thinking = entry?.Generation?.EnableThinking ?? false,
+                ThinkingBudget = tuning.ThinkingBudget ?? 0,
             });
         }
 
@@ -112,8 +121,12 @@ public sealed class BrainFactory : IBrainFactory
 
             // NO PERSONA AT LOAD: llama.cpp templates the turn, so the persona rides in it.
             Console.WriteLine($"CIRCLEAI-SLOT built=Llama model={request.ModelId} cap={request.Capability}");
-            return new LlamaGenerator(request.ModelPath, contextSize: contextSize, threads: request.Threads ?? 0);
+            return new LlamaGenerator(request.ModelPath, contextSize: contextSize, threads: tuning.Threads(request.Threads) ?? 0);
         }
+
+        // THE ENGINE-WIDE KNOBS REACH MNN TOO: fewer threads and a shorter context are the same
+        // remedy whatever runs the model.
+        var mnnThreads = tuning.Threads(request.Threads);
 
         var vision = request.Capability.HasFlag(ChatCapability.Vision);
         Console.WriteLine($"CIRCLEAI-SLOT built={(vision ? "KimiVl" : "QwenText")} model={request.ModelId} cap={request.Capability}");
@@ -123,14 +136,14 @@ public sealed class BrainFactory : IBrainFactory
             return new KimiVlGenerator(
                 request.ModelPath,
                 contextSize: (uint)contextSize,
-                threads: request.Threads,
+                threads: mnnThreads,
                 templateEngine: request.TemplateEngine);
         }
 
         return new QwenTextGenerator(
             request.ModelPath,
             contextSize: (uint)contextSize,
-            threads: request.Threads,
+            threads: mnnThreads,
             templateEngine: request.TemplateEngine,
             systemPrompt: request.SystemPrompt,
             samplerJson: request.SamplerJson);

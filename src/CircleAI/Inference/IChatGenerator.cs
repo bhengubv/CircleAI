@@ -337,6 +337,56 @@ namespace CircleAI.Inference
         /// </summary>
         public TurnTimingRecorder? Timing { get; init; }
 
+        /// <summary>
+        /// The tools this call may use, for a generator that hands them to the model through its
+        /// own chat template (<see cref="IToolCallingGenerator"/>). Null or empty offers none.
+        /// </summary>
+        /// <remarks>
+        /// THE TEMPLATE'S OWN WORDS, NOT OURS. Qwen3.5 was trained on its template's tools block
+        /// and writes a call in that template's XML form; describing the tools in a note of our
+        /// own, in JSON, asked it for a form it was never taught. A generator that cannot take
+        /// them this way ignores this, and the host describes the tools in the prompt as before.
+        /// </remarks>
+        public IReadOnlyList<CircleAI.Tools.ToolDefinition>? Tools { get; init; }
+
+        /// <summary>
+        /// How hard the model thinks before it answers this call: <see cref="ReasoningEffort.Off"/>
+        /// answers at once; any other level thinks first. Null keeps the generator's own default.
+        /// </summary>
+        /// <remarks>
+        /// PER CALL, BECAUSE THE QUESTION DECIDES. "What time is it" and "plan my week" are not the
+        /// same amount of work, and a brain that thinks before both makes the first wait for
+        /// nothing - on the P30 one factual question spent its whole budget thinking and never
+        /// answered. <see cref="EffortRouter"/> chooses it for each question. A template that takes
+        /// <c>reasoning_effort</c> is given the level's name; one that does not (Qwen3.5) takes
+        /// thinking on or off, and <see cref="ThinkingBudget"/> holds the length.
+        /// </remarks>
+        public ReasoningEffort? Effort { get; init; }
+
+        /// <summary>
+        /// The most tokens the model may think for before its thought is closed and it answers;
+        /// 0 sets no limit beyond <see cref="MaxTokens"/>. They come on top of
+        /// <see cref="MaxTokens"/>, which stays the answer's own allowance.
+        /// </summary>
+        /// <remarks>
+        /// THE THOUGHT IS CLOSED, NOT CUT. When the budget is spent the generator writes the
+        /// model's own end-of-thinking token itself, so the model goes on to answer from what it
+        /// has thought so far - rather than running out of tokens mid-thought and saying nothing.
+        /// </remarks>
+        public int ThinkingBudget { get; init; }
+
+        /// <summary>
+        /// The messages reach the model exactly as given: the host adds no persona, no notes and
+        /// no tools, answers nothing from its own shortcuts, and remembers nothing of it.
+        /// </summary>
+        /// <remarks>
+        /// FOR A SERVICE THE BRAIN PERFORMS ON TEXT - a translation - and not a turn of the
+        /// person's conversation. The translation engine writes its own complete prompt, and a
+        /// prompt with notes in front of it got the notes translated, or the sentence answered:
+        /// "where is the toilet" is a question to a turn and a sentence to translate here.
+        /// </remarks>
+        public bool Plain { get; init; }
+
         /// <summary>The same options, with the prefix cache switched on.</summary>
         /// <remarks>
         /// A COPY, BECAUSE THE PROPERTIES ARE INIT-ONLY and this is a class rather
@@ -353,7 +403,14 @@ namespace CircleAI.Inference
         /// caller's MaxTokens or stop sequences on the floor, which is a far worse
         /// bug than a slow prefill.
         /// </remarks>
-        public GenerationOptions WithPrefixCache() => new()
+        public GenerationOptions WithPrefixCache() => Copy(usePrefixCache: true, Tools);
+
+        /// <summary>The same options, offering <paramref name="tools"/> to the model.</summary>
+        public GenerationOptions WithTools(IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools) => Copy(UsePrefixCache, tools);
+
+        // EVERY PROPERTY, ONCE. Each With* is a copy with one thing changed, and a property a copy
+        // forgets is a caller's choice silently dropped - so there is one list of them, here.
+        private GenerationOptions Copy(bool usePrefixCache, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools) => new()
         {
             MaxTokens            = MaxTokens,
             Temperature          = Temperature,
@@ -366,7 +423,11 @@ namespace CircleAI.Inference
             ContinueConversation = ContinueConversation,
             RetrievalQuery       = RetrievalQuery,
             Timing               = Timing,
-            UsePrefixCache       = true,
+            Effort               = Effort,
+            ThinkingBudget       = ThinkingBudget,
+            Plain                = Plain,
+            UsePrefixCache       = usePrefixCache,
+            Tools                = tools,
         };
     }
 }

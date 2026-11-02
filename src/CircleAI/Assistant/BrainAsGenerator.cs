@@ -20,10 +20,15 @@
 // a native session - are meaningless for something that does not own the model.
 // Overriding them to lie would be worse than inheriting a default that does the
 // honest thing.
+//
+// MOVED OUT OF THE ANDROID-ONLY FOLDER, NOT COPIED. The translation door every head
+// shares (IBrain.TranslateAsync, BrainTranslation) needs the same shim, and a second
+// copy for the portable half would be two owners of one adapter; DeviceConversation
+// still finds it by the same name from its namespace below this one.
 
 using CircleAI.Inference;
 
-namespace CircleAI.Assistant.Device;
+namespace CircleAI.Assistant;
 
 /// <summary>Presents an <see cref="IBrain"/> as an <see cref="IChatGenerator"/>.</summary>
 internal sealed class BrainAsGenerator(IBrain brain) : IChatGenerator

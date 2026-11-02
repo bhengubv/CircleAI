@@ -90,15 +90,17 @@ public sealed class TranslateCapability : ICapability
 
         try
         {
-            // ASK FOR THE WORDS AND NOTHING ELSE. A model told to "translate
-            // this" cheerfully returns "Sure! In Zulu you would say ..." and the
-            // phone then SPEAKS that preamble in a Zulu voice, which is both
-            // wrong and slower than the answer.
-            var answer = await _brain.AskAsync(
-                $"Translate into {request.Language.Name}. Reply with the translation only, "
-                + $"no explanation and no quotation marks.\n\n{request.Text}",
-                token: null,
-                ct).ConfigureAwait(false);
+            // ASK FOR THE WORDS AND NOTHING ELSE - and ask the ENGINE, which owns that clause.
+            // A model told to "translate this" cheerfully returns "Sure! In Zulu you would
+            // say ..." and the phone then SPEAKS that preamble in a Zulu voice. This class
+            // used to write its own prompt to stop that, beside the engine that already did:
+            // two owners of one prompt. The brain's translate door runs the engine - on the
+            // linked app, the service's own brain, as a plain ask.
+            //
+            // THE SOURCE IS NOT KNOWN, so it is not named: "how do you say sawubona in
+            // English" puts isiZulu where the asker's own language would be.
+            var answer = await _brain.TranslateAsync(
+                request.Text, fromTag: "auto", toTag: request.Language.Tag, ct).ConfigureAwait(false);
 
             answer = answer?.Trim() ?? string.Empty;
 

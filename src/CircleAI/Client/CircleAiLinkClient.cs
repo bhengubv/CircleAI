@@ -278,6 +278,17 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> HealthAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Health), ct);
 
+    /// <summary>How the service is healing itself, as <see cref="LinkHealingRows"/>, with up to <paramref name="limit"/> records.</summary>
+    public Task<LinkRowsReply> HealingAsync(int limit = 20, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Healing, Limit: Math.Max(1, limit)), ct);
+
+    /// <summary>
+    /// Changes how the service heals itself - our own apps only. Arguments by
+    /// <see cref="LinkHealingRows"/> name: autonomy, reports, handled, selfcheck, endpoint.
+    /// </summary>
+    public Task<LinkRowsReply> HealingSetAsync(IReadOnlyDictionary<string, string> args, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.HealingSet, Args: args ?? throw new ArgumentNullException(nameof(args))), ct);
+
     /// <summary>First party only: start a quality run; returns the previous run's verdicts.</summary>
     public Task<LinkRowsReply> QualityRunAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.QualityRun), ct);
@@ -474,6 +485,26 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> EmbedAsync(string text, CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Embed, Text: text), ct);
 
+    /// <summary>
+    /// <paramref name="text"/> in <paramref name="toTag"/>'s language, by the translation engine on
+    /// the service's brain. The chat floor is enough. One row - see <see cref="LinkTranslateRows"/>.
+    /// </summary>
+    /// <param name="text">What was said.</param>
+    /// <param name="fromTag">BCP-47 of its language, or null when not known.</param>
+    /// <param name="toTag">BCP-47 of the language it should come back in.</param>
+    /// <param name="ct">Cancels it.</param>
+    /// <remarks>
+    /// BLOCKS FOR THE ANSWER, OFF THE CALLING THREAD, like the blocking ask: a translation is
+    /// short, and the service bounds how long it holds its own thread for one. An older service
+    /// answers "unknown verb", which tells the caller to translate some other way.
+    /// </remarks>
+    public Task<LinkRowsReply> TranslateAsync(string text, string? fromTag, string toTag, CancellationToken ct = default)
+    {
+        var args = new Dictionary<string, string>(StringComparer.Ordinal) { [LinkTranslateRows.ArgTo] = toTag };
+        if (!string.IsNullOrWhiteSpace(fromTag)) args[LinkTranslateRows.ArgFrom] = fromTag!;
+        return VerbAsync(new LinkVerbRequest(LinkVerb.Translate, Text: text, Args: args), ct);
+    }
+
     /// <summary>Whether the service can hold a conversation yet, and what it waits on.</summary>
     /// <remarks>
     /// THE FIVE SETUP VERBS ARE HOW A SERVICE WITH NO SCREENS GETS CONFIGURED. Every
@@ -651,6 +682,21 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
                                            CancellationToken ct = default)
         => AudioAsync(new LinkAudioRequest(LinkAudioVerb.Speak, Array.Empty<byte>(),
                                            text ?? string.Empty, language), ct);
+
+    /// <summary>
+    /// What this app recorded, in another language: the service's ears transcribe it, its brain
+    /// translates it, its voice says it. <see cref="LinkAudioReply.Heard"/> is what was heard,
+    /// <see cref="LinkAudioReply.Text"/> the translation, <see cref="LinkAudioReply.Audio"/> that
+    /// spoken - empty when nothing was heard, or when no voice could say it.
+    /// </summary>
+    /// <param name="pcm16">Audio in <see cref="LinkAudioFormat"/>.</param>
+    /// <param name="fromTag">BCP-47 of what is said, or null to let the service choose.</param>
+    /// <param name="toTag">BCP-47 of the language it should come back in.</param>
+    /// <param name="ct">Cancellation.</param>
+    public Task<LinkAudioReply> TranslateSpeechAsync(byte[] pcm16, string? fromTag, string toTag,
+                                                     CancellationToken ct = default)
+        => AudioAsync(new LinkAudioRequest(LinkAudioVerb.Translate, pcm16 ?? Array.Empty<byte>(),
+                                           Language: fromTag, Target: toTag), ct);
 
     private async Task<LinkAudioReply> AudioAsync(LinkAudioRequest req, CancellationToken ct)
     {

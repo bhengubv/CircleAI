@@ -21,8 +21,9 @@ public sealed class HeuristicNeuronRouter : INeuronRouter
     private readonly NeuronGate _gate;
     private readonly int _longContextChars;
 
-    // Lowercase substrings that signal a turn wants an explicit reasoning model.
-    private static readonly string[] ReasoningCues =
+    // Lowercase substrings that signal a turn wants an explicit reasoning model. Read by
+    // EffortRouter too: what "wants reasoning" means is one list, whichever router asks.
+    internal static readonly string[] ReasoningCues =
     {
         "prove", "solve", "calculate", "derive", "algorithm", "complexity",
         "debug", "stack trace", "refactor", "regex", "step by step",

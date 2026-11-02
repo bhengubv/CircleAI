@@ -48,10 +48,17 @@ public static class ToolCall
 
     /// <summary>Does this look like a tool call rather than an answer?</summary>
     /// <remarks>
-    /// TWO SHAPES, BECAUSE MODELS EMIT BOTH. Qwen wraps it in a
+    /// THREE SHAPES, BECAUSE MODELS EMIT ALL THREE. Qwen wraps it in a
     /// <c>&lt;tool_call&gt;</c> tag; others emit bare JSON with a name and an
     /// argument object. Requiring BOTH keys for the JSON form is what stops an
     /// answer that happens to contain the word "name" being swallowed.
+    /// <para>
+    /// AND THE XML FORM'S INNER BLOCK ON ITS OWN. Qwen3.5 writes
+    /// <c>&lt;function=NAME&gt;</c> inside the tag, and a model that drops the tag
+    /// still wrote a call - ToolCallReader reads that bare block, so this must
+    /// stop it being spoken. The equals sign is part of the shape: prose that
+    /// mentions a "&lt;function&gt;" element does not open one.
+    /// </para>
     /// </remarks>
     public static bool Looks(string? streamed)
     {
@@ -60,6 +67,7 @@ public static class ToolCall
         var head = streamed.Length <= Head ? streamed : streamed[..Head];
 
         if (head.Contains("<tool_call", StringComparison.OrdinalIgnoreCase)) return true;
+        if (head.Contains("<function=", StringComparison.Ordinal)) return true;
 
         return head.Contains("\"name\"", StringComparison.Ordinal)
             && head.Contains("\"arguments\"", StringComparison.Ordinal);

@@ -213,6 +213,40 @@ public enum LinkVerb
     /// the app searches its own transcripts with what comes back.
     /// </summary>
     Embed,
+
+    /// <summary>
+    /// <see cref="LinkVerbRequest.Text"/> in another language, by the translation engine on the
+    /// service's own brain: one <see cref="LinkTranslateRows"/> row. Arguments
+    /// <see cref="LinkTranslateRows.ArgFrom"/> (optional) and <see cref="LinkTranslateRows.ArgTo"/>.
+    /// </summary>
+    /// <remarks>
+    /// THE APP HAD NO WAY TO TRANSLATE. Its brain is the service's, and the link carried chat
+    /// turns and nothing that said "these are words to translate" - so the Translate screen,
+    /// on the phone, answered "Translating is not available in this app yet". This runs
+    /// LlmTranslationEngine on the service's brain as a plain ask: queued like any question,
+    /// with no persona and no notes in front of the engine's prompt.
+    /// </remarks>
+    Translate,
+
+    // -- WOLVERINE, SEEN FROM AN APP (S6) ----------------------------------------
+    //
+    // The healing loop runs in the service, which has no screens, so what it fixed, what is
+    // turned down and what waits for a person reached nobody: the sample's Wolverine screen
+    // said "self-healing runs in CircleAI" and could show nothing more, for want of a verb.
+
+    /// <summary>
+    /// How the service is healing itself, as <see cref="LinkHealingRows"/>: one summary row, a row
+    /// per switch, a row per knob in force, then the newest healing records - text-free of
+    /// anything a person said.
+    /// </summary>
+    Healing,
+
+    /// <summary>
+    /// Change how the service heals itself, by named arguments (<see cref="LinkHealingRows"/>):
+    /// the autonomy dial, the WolverineAPI reports on or off, one record marked handled, a
+    /// self-check run, or - our own apps only - where reports are sent. Answers with the summary row.
+    /// </summary>
+    HealingSet,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -315,6 +349,16 @@ public static class LinkVerbs
         LinkVerb.Footprint      => LinkScope.Chat,
         // The chat floor: it computes on text the caller sends and reads nothing of the person's.
         LinkVerb.Embed          => LinkScope.Chat,
+        // The chat floor, and for the same reason: it asks the brain about the caller's own
+        // text and reads nothing of the person's - which is what "may ask the assistant" means.
+        LinkVerb.Translate      => LinkScope.Chat,
+
+        // READING HOW THE SERVICE HEALS ITSELF is the chat floor, like Health: it is about the
+        // service, and its rows carry nothing a person said. CHANGING IT administers the brain -
+        // the dial decides whether it may step its own brain down - so it is ModelAdmin, and
+        // first party only besides (FirstPartyOnly).
+        LinkVerb.Healing    => LinkScope.Chat,
+        LinkVerb.HealingSet => LinkScope.ModelAdmin,
         _                     => LinkScope.Chat,
     };
 
@@ -326,7 +370,25 @@ public static class LinkVerbs
     /// a test instrument, not a feature, and a third party has no business occupying
     /// the brain with it.
     /// </remarks>
-    public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun;
+    public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun or LinkVerb.HealingSet;
+}
+
+/// <summary>The translate verb's arguments and its one row: <c>[translation, from, to]</c>.</summary>
+public static class LinkTranslateRows
+{
+    /// <summary>Argument: BCP-47 of the text's language; absent or "auto" when not known.</summary>
+    public const string ArgFrom = "from";
+
+    /// <summary>Argument: BCP-47 of the language the text should come back in.</summary>
+    public const string ArgTo = "to";
+
+    /// <summary>The row for a translation.</summary>
+    public static IReadOnlyList<string> Row(string translation, string? from, string to) =>
+        new[] { translation ?? string.Empty, from ?? string.Empty, to ?? string.Empty };
+
+    /// <summary>The translation a reply carries; empty when it carries none.</summary>
+    public static string Translation(IReadOnlyList<IReadOnlyList<string>> rows) =>
+        rows is { Count: > 0 } && rows[0] is { Count: > 0 } row ? row[0] ?? string.Empty : string.Empty;
 }
 
 /// <summary>A vector across the wire: one row of <c>[width, base64 of little-endian float32]</c>.</summary>

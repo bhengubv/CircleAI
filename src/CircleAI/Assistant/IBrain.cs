@@ -100,6 +100,23 @@ public interface IBrain
     Task<string> AskWithToolsAsync(string prompt, string? question, CancellationToken ct = default)
         => AskWithToolsAsync(prompt, ct);
 
+    /// <summary>
+    /// Say <paramref name="text"/> in another language: the translation only, no preamble.
+    /// </summary>
+    /// <param name="text">What was said.</param>
+    /// <param name="fromTag">BCP-47 of its language; empty or "auto" when not known.</param>
+    /// <param name="toTag">BCP-47 of the language it should come back in.</param>
+    /// <param name="ct">Cancels the translation.</param>
+    /// <remarks>
+    /// THE ENGINE'S PROMPT, ON THIS BRAIN - never one a capability writes for itself. A DEFAULT
+    /// that runs LlmTranslationEngine over this brain (<see cref="BrainTranslation"/>), so every
+    /// head and every test fake translates without change; the linked brain overrides it with
+    /// the service's translate verb, which runs the same engine on the service's brain as a
+    /// plain ask - no persona, no notes - where this default can only ask a turn.
+    /// </remarks>
+    Task<string> TranslateAsync(string text, string? fromTag, string toTag, CancellationToken ct = default)
+        => BrainTranslation.TranslateAsync(this, text, fromTag, toTag, ct);
+
     /// <remarks>
     /// ASKED, NOT ASSUMED, BECAUSE A SECOND COPY OF THIS NUMBER IS THE BUG THIS
     /// REPO KEEPS FINDING. The value belongs to the inference side - MNN logs the

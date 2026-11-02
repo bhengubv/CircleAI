@@ -38,6 +38,7 @@ public sealed class InProcessBrainWorker : IBrainWorker
     private Task<InProcessBrain>? _loading;
     private BrainWorkerStatus _status;
     private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
+    private string _knobs = string.Empty;   // what Wolverine had turned down when this brain was built (S6)
 
     /// <summary>A worker that builds its brain with <paramref name="start"/> the first time it is needed.</summary>
     public InProcessBrainWorker(Func<CancellationToken, Task<InProcessBrain>> start, TimeProvider? clock = null, Action<string>? log = null)
@@ -91,7 +92,13 @@ public sealed class InProcessBrainWorker : IBrainWorker
         var clock = Stopwatch.StartNew();
         try
         {
-            var brain = await _start(CancellationToken.None).ConfigureAwait(false);
+            // A MARKER BEFORE THE STEP THAT CAN DIE WITHOUT AN EXCEPTION (S6), naming the knobs
+            // the brain is built with - the main process reads it if this process dies in here.
+            var knobs = CircleAI.Inference.BrainTuning.Current().Describe();
+            lock (_gate) _knobs = knobs;
+            InProcessBrain brain;
+            using (CircleAI.Assistant.RiskySteps.Begin("load | " + knobs))
+                brain = await _start(CancellationToken.None).ConfigureAwait(false);
             lock (_gate) { _brain = brain; _loading = null; }
             Set(BrainPhase.Ready, LoadStep.None, brain.ModelId, null, null);
             _log($"brain ready: {brain.ModelId} in {clock.ElapsedMilliseconds} ms");
@@ -145,10 +152,26 @@ public sealed class InProcessBrainWorker : IBrainWorker
             if (left > TimeSpan.Zero) deadline.CancelAfter(left);
 
             var recorder = new TurnTimingRecorder();
-            var options = new GenerationOptions { MaxTokens = job.MaxTokens, RetrievalQuery = job.RetrievalQuery, Timing = recorder };
+            // THE QUESTION'S OWN EFFORT, chosen where the question came in (EffortRouter), and a
+            // plain job's messages as given - both decided in the service, both carried here.
+            var options = new GenerationOptions
+            {
+                MaxTokens = job.MaxTokens,
+                RetrievalQuery = job.RetrievalQuery,
+                Timing = recorder,
+                Effort = job.Effort,
+                ThinkingBudget = job.ThinkingBudget,
+                Plain = job.Plain,
+            };
             var clock = Stopwatch.StartNew();
             long ttft = -1;
             var pieces = 0;
+
+            // AND BEFORE EVERY ANSWER (S6): an illegal instruction or a SIGSEGV in the kernels
+            // ends this process mid-answer with no catch block run.
+            string knobs;
+            lock (_gate) knobs = _knobs;
+            using var risky = CircleAI.Assistant.RiskySteps.Begin($"generate {brain.ModelId} | {knobs}");
 
             var stream = brain.Service.StreamAsync(job.Messages, options, deadline.Token).GetAsyncEnumerator(deadline.Token);
             try

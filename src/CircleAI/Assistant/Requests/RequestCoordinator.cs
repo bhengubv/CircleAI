@@ -16,6 +16,12 @@
 // brain IN THE QUEUE - "still loading" is a state, never a failure - then streams its
 // answer into the record. A crash, an Android stop or a memory kill puts a side-effect-
 // free ask back in line; anything else that cannot be answered says why.
+//
+// HOW HARD THE BRAIN THINKS IS DECIDED HERE, PER QUESTION (EffortRouter), because this is
+// the one door every question comes through - and it is where the person's answer to that
+// choice is seen: a question withdrawn while it is answered, or asked again once it was.
+// A PLAIN ask (a translation) is a service on text, not a turn: no shortcut, no history,
+// no answer guard, and the message reaches the model as written.
 
 using System;
 using System.Collections.Generic;
@@ -51,6 +57,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     private readonly Func<string, bool> _isFirstParty;
     private readonly TimeProvider _clock;
     private readonly Action<string> _log;
+    private readonly EffortRouter? _effort;
 
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _open = new(StringComparer.Ordinal);
@@ -58,14 +65,32 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     private readonly SemaphoreSlim _signal = new(0, int.MaxValue);
     private readonly CancellationTokenSource _stop = new();
 
+    // THE ANSWER EACH CALLER LAST HAD FROM THE BRAIN, with the effort it was given - what a
+    // question asked again is compared with. Only the latest, and only for a few minutes.
+    private readonly Dictionary<string, (string Asked, DateTimeOffset At, EffortChoice Choice)> _lastAnswered = new(StringComparer.Ordinal);
+
     private string? _runningId;
     private CancellationTokenSource? _runningCts;
     private bool _runningCancelledByCaller;
+    private EffortChoice? _runningChoice;
     private Task? _loop;
     private DateTimeOffset _nextPurge;
     private bool _started;
 
     /// <summary>A coordinator over a store and a brain worker. Call <see cref="Start"/> once.</summary>
+    /// <param name="store">Where accepted asks are kept.</param>
+    /// <param name="worker">The brain.</param>
+    /// <param name="limits">The service's limits.</param>
+    /// <param name="readiness">Where readiness and settings are reported.</param>
+    /// <param name="conversations">A conversation store; null builds history from the asks.</param>
+    /// <param name="shortcuts">Answers that need no model.</param>
+    /// <param name="isFirstParty">Whether a caller is one of our own apps.</param>
+    /// <param name="clock">The time.</param>
+    /// <param name="log">Where a text-free line goes.</param>
+    /// <param name="effort">
+    /// Chooses each question's reasoning effort and learns from cancels and re-asks; null leaves
+    /// every question to the brain's own default, as before.
+    /// </param>
     public RequestCoordinator(
         IAskStore store,
         IBrainWorker worker,
@@ -75,7 +100,8 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         IEnumerable<IAskShortcut>? shortcuts = null,
         Func<string, bool>? isFirstParty = null,
         TimeProvider? clock = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        EffortRouter? effort = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _worker = worker ?? throw new ArgumentNullException(nameof(worker));
@@ -86,8 +112,24 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         _isFirstParty = isFirstParty ?? (_ => false);
         _clock = clock ?? TimeProvider.System;
         _log = log ?? (_ => { });
+        _effort = effort;
         _worker.StatusChanged += OnWorkerStatus;
     }
+
+    /// <summary>How long after an answer the same question asked again counts as "that was not enough".</summary>
+    /// <remarks>
+    /// A FEW MINUTES: long enough to read or hear an answer and try again, short enough that the
+    /// same question tomorrow is a new question and teaches nothing.
+    /// </remarks>
+    public static readonly TimeSpan AskedAgainWithin = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Whether a caller's cancels and re-asks teach the effort router: everybody but the
+    /// instruments - the quality run, the soak, adb - whose repetitions are scripted.
+    /// </summary>
+    private static bool Teaches(string callerKey) =>
+        !callerKey.StartsWith("internal:", StringComparison.Ordinal)
+        || string.Equals(callerKey, "internal:assistant", StringComparison.Ordinal);
 
     /// <inheritdoc />
     public event EventHandler<AskRecord>? Changed;
@@ -148,10 +190,36 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             _open[stored.Id] = new Entry { Id = stored.Id, Caller = stored.CallerKey, Lane = stored.Lane, CreatedAt = stored.CreatedAt };
         }
 
-        _log($"ask {stored.Id} accepted lane={stored.Lane} spoken={(stored.Spoken ? 1 : 0)} chars={stored.Message.Length}");
+        _log($"ask {stored.Id} accepted lane={stored.Lane} spoken={(stored.Spoken ? 1 : 0)}{(stored.Plain ? " plain" : string.Empty)} chars={stored.Message.Length}");
+        if (!stored.Plain) LearnIfAskedAgain(stored);
         Raise(stored);
         _signal.Release();
         lock (_gate) return AskAdmission.Of(stored, duplicate: false, PositionLocked(stored.Id));
+    }
+
+    /// <summary>
+    /// The same question again, soon after the brain answered it: the answer was not enough, and
+    /// the effort it was given learns so. Once per answer.
+    /// </summary>
+    private void LearnIfAskedAgain(AskRecord asked)
+    {
+        if (_effort is null || !Teaches(asked.CallerKey)) return;
+
+        EffortChoice? lesson = null;
+        lock (_gate)
+        {
+            if (_lastAnswered.TryGetValue(asked.CallerKey, out var last)
+                && asked.CreatedAt - last.At <= AskedAgainWithin
+                && EffortRouter.Again(last.Asked, asked.Asked))
+            {
+                lesson = last.Choice;
+                _lastAnswered.Remove(asked.CallerKey);
+            }
+        }
+        if (lesson is null) return;
+
+        _effort.Learn(lesson, EffortSignal.AskedAgain);
+        _log($"ask {asked.Id} asks the last answer again: {lesson.Weight} questions learn more effort");
     }
 
     /// <inheritdoc />
@@ -167,17 +235,35 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         var ask = Status(callerKey, askId);
         if (ask is null || ask.IsFinal) return false;
 
+        EffortChoice? wasThinking = null;
+        CancellationTokenSource? running = null;
         lock (_gate)
         {
             if (_runningId == askId)
             {
                 _runningCancelledByCaller = true;
-                try { _runningCts?.Cancel(); } catch (ObjectDisposedException) { }
+                wasThinking = _runningChoice;
+                running = _runningCts;
             }
         }
 
+        // FINAL FIRST, THEN STOPPED. Stopping the generation can run the loop on this very thread
+        // - a cancellation's continuations may run inline - and the loop takes the next open ask.
+        // While this one was not yet final it was the next open ask: it was picked again and run
+        // a second time, holding the brain until its deadline while everything else waited.
+        // Made final first, it is out of the queue before anything can pick it.
         var done = Finish(askId, AskState.Cancelled, FailureKind.Cancelled, AskSentences.Cancelled, keepText: true);
+        try { running?.Cancel(); } catch (ObjectDisposedException) { }
         _log($"ask {askId} cancelled by its caller");
+
+        // WITHDRAWN WHILE IT WAS BEING ANSWERED: it took longer than the person would wait, and
+        // the effort it was given learns so. A question withdrawn while it waited its turn says
+        // nothing about how hard to think.
+        if (wasThinking is not null && _effort is not null && Teaches(callerKey) && done is { State: AskState.Cancelled })
+        {
+            _effort.Learn(wasThinking, EffortSignal.Cancelled);
+            _log($"ask {askId} was withdrawn while answered: {wasThinking.Weight} questions learn less effort");
+        }
         return done is { State: AskState.Cancelled };
     }
 
@@ -409,7 +495,8 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
         // 1. ANSWERS THAT NEED NO MODEL. A greeting, the date, a sound that was not
         //    speech: answered at once, from the queue, whatever the brain is doing.
-        foreach (var shortcut in _shortcuts)
+        //    NOT FOR A PLAIN ASK: "hello" there is a word to translate, not a greeting.
+        foreach (var shortcut in ask.Plain ? Array.Empty<IAskShortcut>() : _shortcuts)
         {
             string? said;
             try { said = await shortcut.TryAnswerAsync(ask, stop).ConfigureAwait(false); }
@@ -467,17 +554,32 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         }) ?? ask;
         if (ask.IsFinal) { Forget(ask.Id); return; }   // cancelled while it waited
 
-        var job = new BrainJob(
-            AskId: ask.Id,
-            Messages: Conversation(ask),
-            RetrievalQuery: ask.Asked,
-            MaxTokens: _limits.MaxTokensFor(ask.Spoken),
-            Spoken: ask.Spoken,
-            Deadline: started + _limits.GenerationDeadline);
+        // HOW HARD TO THINK ABOUT IT, chosen for this question on this device (EffortRouter). A
+        // plain ask never thinks: it is text to transform, and the engine's prompt says how.
+        var choice = ask.Plain ? null : ChooseEffort(ask);
+        var job = ask.Plain
+            ? new BrainJob(
+                AskId: ask.Id,
+                Messages: [new ChatMessage("user", ask.Message)],
+                RetrievalQuery: null,
+                MaxTokens: _limits.MaxTokensFor(spoken: false),
+                Spoken: false,
+                Deadline: started + _limits.GenerationDeadline,
+                Effort: ReasoningEffort.Off,
+                Plain: true)
+            : new BrainJob(
+                AskId: ask.Id,
+                Messages: Conversation(ask),
+                RetrievalQuery: ask.Asked,
+                MaxTokens: _limits.MaxTokensFor(ask.Spoken),
+                Spoken: ask.Spoken,
+                Deadline: started + _limits.GenerationDeadline,
+                Effort: choice?.Effort,
+                ThinkingBudget: choice?.ThinkingBudget ?? 0);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(_limits.GenerationDeadline);
-        lock (_gate) { _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; }
+        lock (_gate) { _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; _runningChoice = choice; }
 
         var text = new StringBuilder();
         TurnTiming? workerTiming = null;
@@ -504,13 +606,29 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             }
 
             var finished = _clock.GetUtcNow();
-            var answer = Guarded(ask, PlainReply.Clean(text.ToString()), cutShort: workerTiming?.Finish == "length");
+            var answer = Final(ask, text.ToString(), cutShort: workerTiming?.Finish == "length");
             if (string.IsNullOrWhiteSpace(answer))
             {
                 Finish(ask.Id, AskState.Failed, FailureKind.ManagedError, AskSentences.CouldNotAnswer, keepText: false);
                 _log($"ask {ask.Id} produced no answer");
+
+                // A REPLY THAT RAN ITS WHOLE LENGTH AND SAID NOTHING (S6). With thinking on, that
+                // is a reply that thought its length away; Wolverine's rule for it is a tighter
+                // thinking budget. Nothing of the question or the reply travels with it.
+                if (workerTiming?.Finish == "length")
+                    CircleAI.Core.Logging.HealthEvents.Raise(CircleAI.Core.Logging.HealthEvents.Of(
+                        "Engine", "answer", "NoAnswer", "Reply.Length",
+                        "the reply ran to its length limit and said nothing",
+                        subject: workerTiming.ModelId ?? ask.ModelId));
                 return;
             }
+
+            // WHAT A QUESTION ASKED AGAIN WILL BE COMPARED WITH: this caller's latest answer from
+            // the brain, and the effort it was given - noted BEFORE the answer is out, so a
+            // caller that asks again the moment it reads it is compared with it.
+            if (choice is not null && Teaches(ask.CallerKey))
+                lock (_gate)
+                    if (!_runningCancelledByCaller) _lastAnswered[ask.CallerKey] = (ask.Asked, finished, choice);
             Complete(ask, answer, Merge(workerTiming, ask, started, loadWaitMs, ttftMs, finished), finished);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -525,7 +643,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
             // THE DEADLINE. What was said so far is still an answer; nothing at all is not.
             var finished = _clock.GetUtcNow();
-            var partial = Guarded(ask, PlainReply.Clean(text.ToString()), cutShort: true);
+            var partial = Final(ask, text.ToString(), cutShort: true);
             if (!string.IsNullOrWhiteSpace(partial))
                 Complete(ask, partial, Merge(workerTiming, ask, started, loadWaitMs, ttftMs, finished) with { Finish = "deadline" }, finished);
             else
@@ -537,9 +655,35 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         }
         finally
         {
-            lock (_gate) { _runningId = null; _runningCts = null; _runningCancelledByCaller = false; }
+            lock (_gate) { _runningId = null; _runningCts = null; _runningCancelledByCaller = false; _runningChoice = null; }
         }
     }
+
+    /// <summary>This question's reasoning effort, chosen and logged (the reason, never the text); null with no router.</summary>
+    private EffortChoice? ChooseEffort(AskRecord ask)
+    {
+        if (_effort is null) return null;
+        try
+        {
+            var choice = _effort.Choose(ask.Asked, _worker.Status.ModelId);
+            _log($"ask {ask.Id} effort: {choice.Why}");
+            return choice;
+        }
+        catch (Exception ex)
+        {
+            // A ROUTER THAT FAILS LEAVES THE BRAIN'S OWN DEFAULT, never the question unanswered.
+            _log($"ask {ask.Id} effort not chosen: {ex.GetType().Name}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The answer as the caller gets it: cleaned for every reader, and - for a turn - through
+    /// <see cref="AnswerGuard"/>. A plain ask's text is the service's product and is not guarded:
+    /// a translation that comes out as "No." is a translation, not a guess at a sound.
+    /// </summary>
+    private string Final(AskRecord ask, string text, bool cutShort) =>
+        ask.Plain ? PlainReply.Clean(text) : Guarded(ask, PlainReply.Clean(text), cutShort);
 
     /// <summary>The model's answer after <see cref="AnswerGuard"/>, logged (never the text) when it changed it.</summary>
     /// <remarks>

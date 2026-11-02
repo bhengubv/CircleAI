@@ -80,6 +80,31 @@ public static class SelfSubjects
     /// </remarks>
     public static string Healed(string name) => $"{Prefix}healed:{Normalise(name)}";
 
+    /// <summary>
+    /// How the person answered a question's reasoning effort: one subject per kind of question and
+    /// per signal, e.g. "self:effort:hard:cancelled".
+    /// </summary>
+    /// <remarks>
+    /// APPENDED, LIKE A TRIP: the router learns from the most recent few, so each one is kept, and
+    /// the kind and the signal are in the subject - read back from there, never from the prose.
+    /// </remarks>
+    public static string Effort(CircleAI.Inference.TurnWeight weight, CircleAI.Inference.EffortSignal signal) =>
+        $"{Prefix}effort:{Normalise(weight.ToString())}:{(signal == CircleAI.Inference.EffortSignal.Cancelled ? "cancelled" : "asked-again")}";
+
+    /// <summary>The kind of question and the signal out of an effort subject, or null.</summary>
+    public static (CircleAI.Inference.TurnWeight Weight, CircleAI.Inference.EffortSignal Signal)? EffortOf(string? subject)
+    {
+        if (subject is null || !subject.StartsWith(Prefix + "effort:", StringComparison.Ordinal)) return null;
+        var parts = subject[(Prefix.Length + "effort:".Length)..].Split(':');
+        if (parts.Length != 2 || !Enum.TryParse<CircleAI.Inference.TurnWeight>(parts[0], ignoreCase: true, out var weight)) return null;
+        return parts[1] switch
+        {
+            "cancelled"   => (weight, CircleAI.Inference.EffortSignal.Cancelled),
+            "asked-again" => (weight, CircleAI.Inference.EffortSignal.AskedAgain),
+            _             => null,
+        };
+    }
+
     /// <summary>Every subject that is a switch the software turned off, for a sweep.</summary>
     public static bool IsAboutHealing(string? subject) =>
         subject is not null && subject.StartsWith(Prefix + "healed:", StringComparison.Ordinal);
@@ -87,6 +112,23 @@ public static class SelfSubjects
     /// <summary>The switch name out of a healing subject, or null.</summary>
     public static string? HealedOf(string? subject) =>
         IsAboutHealing(subject) ? subject![(Prefix.Length + "healed:".Length)..] : null;
+
+    /// <summary>What was done here about one failure, and whether it worked. One per fingerprint.</summary>
+    /// <remarks>
+    /// APPENDED, LIKE A TRIP (S6): the record of a remedy is the history - which one worked on
+    /// this device, which did not - and the next time the same failure comes the one that worked
+    /// here is tried first. Keyed on the fingerprint (CircleAI:ErrorType:Site), which is the same
+    /// key WolverineAPI de-duplicates on, so the phone and the server mean one thing by it.
+    /// </remarks>
+    public static string Remedy(string fingerprint) => $"{Prefix}remedy:{Normalise(fingerprint)}";
+
+    /// <summary>Every subject that records a remedy, for a sweep.</summary>
+    public static bool IsAboutRemedy(string? subject) =>
+        subject is not null && subject.StartsWith(Prefix + "remedy:", StringComparison.Ordinal);
+
+    /// <summary>The fingerprint out of a remedy subject, or null.</summary>
+    public static string? RemedyOf(string? subject) =>
+        IsAboutRemedy(subject) ? subject![(Prefix.Length + "remedy:".Length)..] : null;
 
     /// <summary>Every subject that is about one model, for a sweep.</summary>
     public static bool IsAboutModel(string? subject) =>

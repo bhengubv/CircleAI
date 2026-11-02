@@ -224,6 +224,25 @@ it through one factory, and say why.
 | The P30 chooses by itself and says why: Qwen3.5-0.8B on MNN, not the Bonsai 4B, estimated at 0.8 tokens a second from the 2B's measured 1.66 on the C# engine | measured | P30 Lite MAR-LX1M, 2026-11-02 (the supervisor's plan line, before and after its inference process was ended) |
 | The P30 keeps those speeds across a reinstall and chooses the same way without measuring again | measured | P30 Lite MAR-LX1M, 2026-11-02 (2 records read back at start; the same plan line at start and after the inference process was ended) |
 
+## Tools, effort and translation
+
+Step 2's abilities on the fleet: a tool call held to its form, thought sized to the question, and
+translation on the brain the plan picked.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| The offered tools reach the model through its own template, as the fork renders them | tested | The_offered_tools_reach_the_model_through_its_own_template_as_the_fork_renders_them |
+| The 2B's tool call is held to the offered signatures and reads back typed | tested | A_tool_call_round_trips_through_the_generator |
+| The agentic loop runs the tool the 2B calls and answers from its result | tested | The_agentic_loop_runs_the_tool_the_2B_calls_and_answers_from_its_result |
+| Only the offered tools can be named | tested | Only_the_offered_tools_can_be_named |
+| A quick question is answered at once, and a hard one thinks within a budget in the device's own time | tested | A_phone_answers_quick_asks_at_once_and_thinks_medium_about_hard_ones_within_its_speed |
+| The thinking budget closes the thought, so the answer still comes | tested | A_call_thinks_when_it_asks_and_its_budget_closes_the_thought_so_the_answer_still_comes |
+| How hard to think is learned per device, and a relaunch remembers it | tested | A_later_start_remembers_what_this_device_learned |
+| Translation runs on the service's brain as a plain ask through the queue | tested | The_engine_runs_on_the_services_brain_as_a_plain_ask_through_the_queue |
+| Spoken translation: the ears transcribe, the brain translates, the voice speaks | tested | The_ears_transcribe_the_brain_translates_and_the_voice_speaks_in_that_order |
+| A spoken translation crosses the link as version 2, and transcribing and speaking stay version 1 | tested | A_spoken_translation_crosses_as_version_two_and_comes_back_with_what_was_heard |
+| Tools, effort and translation through the brain work on the phone | unproven | never run on the P30 |
+
 ## Balance and readiness
 
 What the brain does with the phone's heat and battery, and what it says while it gets ready.

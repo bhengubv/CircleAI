@@ -229,13 +229,17 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
         req.TryGetValue(WorkerWire.Retrieval, out var retrieval);
         var deadlineMs = WorkerWire.Long(req, WorkerWire.DeadlineMs);
+        var (effort, thinkingBudget, plain) = WorkerWire.GetJobSettings(req);
         var brainJob = new BrainJob(
             AskId: job.Id,
             Messages: WorkerWire.GetMessages(req),
             RetrievalQuery: retrieval,
             MaxTokens: Math.Max(1, WorkerWire.Int(req, WorkerWire.MaxTokens, 512)),
             Spoken: WorkerWire.Flag(req, WorkerWire.Spoken),
-            Deadline: deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2));
+            Deadline: deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2),
+            Effort: effort,
+            ThinkingBudget: thinkingBudget,
+            Plain: plain);
 
         _ = Task.Run(async () =>
         {

@@ -169,9 +169,24 @@ public sealed class InferenceSupervisor : IBrainWorker
                     Fail(failure, model);
                     throw new BrainWorkerException(failure, died);
                 }
+                catch (BrainWorkerException refused)
+                {
+                    // THE WORKER LIVED AND SAID WHY IT COULD NOT ANSWER (S6) - an error in its own
+                    // code, a prompt too long for its context. Its process's HealthEvents never reach
+                    // this one, so the failure is raised here, where Wolverine runs.
+                    RaiseHealth(refused.Failure, model, null);
+                    throw;
+                }
 
                 lastProgress = DateTimeOffset.UtcNow;
-                if (chunk.Final) LearnSpeed(model, chunk.Timing);
+                if (chunk.Final)
+                {
+                    LearnSpeed(model, chunk.Timing);
+
+                    // AN ANSWER IS WOLVERINE'S PROOF (S6): a knob it turned down worked, and one
+                    // back at full after its window has worked at full.
+                    CircleAI.Hosting.SelfHealing.DeviceWolverine.Current?.BrainAnswered(model);
+                }
                 yield return chunk;
             }
         }
@@ -452,8 +467,64 @@ public sealed class InferenceSupervisor : IBrainWorker
         }
     }
 
+    /// <summary>Where the inference process writes the marker before each risky step (RiskySteps).</summary>
+    private string WorkerRiskDirectory => CircleAI.Assistant.RiskySteps.For(_stateDir, "inference");
+
+    /// <summary>
+    /// The brain's failure as a HealthEvent (S6) - the inference process dying throws nothing in
+    /// this process, so until now healing never heard of one. The marker it wrote before its
+    /// risky step, when one survived, says what it was doing and with which knobs in force.
+    /// </summary>
+    /// <remarks>
+    /// NOT for what is nobody's fault to heal: a cancellation, a test's own kill, a busy worker,
+    /// no model yet (setup's business, raised by every question that waits on it).
+    /// </remarks>
+    private void RaiseHealth(Failure failure, string? model, string? marker)
+    {
+        try
+        {
+            if (failure.Kind is FailureKind.Cancelled or FailureKind.FaultInjected or FailureKind.Rejected or FailureKind.NotInstalled)
+                return;
+            var errorType = CircleAI.Hosting.SelfHealing.EngineFaults.ErrorType(failure.Kind, failure.Evidence);
+            var context = DeviceContext.Read().Describe() + (marker is null ? string.Empty : " | died during: " + marker);
+            CircleAI.Core.Logging.HealthEvents.Raise(CircleAI.Core.Logging.HealthEvents.Of(
+                CircleAI.Hosting.SelfHealing.HealingRules.EngineArea, $"{failure.Phase} {model ?? failure.ModelId}".Trim(),
+                errorType, CircleAI.Hosting.SelfHealing.EngineFaults.Site(failure.Phase),
+                failure.Evidence + "; " + failure.Detail, context, subject: model ?? failure.ModelId));
+        }
+        catch (Exception ex)
+        {
+            _log("could not raise the brain's failure as a health event: " + ex.GetType().Name);
+        }
+    }
+
+    /// <summary>The model a worker marker names ("generate &lt;model&gt; | knobs"); null for a load marker, which names none.</summary>
+    private static string? ModelOfMarker(string marker)
+    {
+        const string generate = "generate ";
+        if (!marker.StartsWith(generate, StringComparison.Ordinal)) return null;
+        var end = marker.IndexOf(" |", StringComparison.Ordinal);
+        var model = (end < 0 ? marker[generate.Length..] : marker[generate.Length..end]).Trim();
+        return model.Length == 0 ? null : model;
+    }
+
+    /// <summary>The inference process's surviving marker, read and cleared; null when it ended every step it began.</summary>
+    private string? TakeWorkerMarker()
+    {
+        try
+        {
+            var dir = WorkerRiskDirectory;
+            var marker = CircleAI.Assistant.RiskySteps.Leftover(dir);
+            if (marker is not null) CircleAI.Assistant.RiskySteps.Clear(dir);
+            return marker;
+        }
+        catch { return null; }
+    }
+
     private void Fail(Failure failure, string? model)
     {
+        RaiseHealth(failure, model, TakeWorkerMarker());
+
         // THE VERDICT FOLLOWS THE KIND. Only a native crash while the model was
         // working is a strike; everything else is the moment or the phone, and
         // refusing the model for it would refuse the only brain this phone can run. A
@@ -495,6 +566,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             _ = Task.Run(async () =>
             {
                 var failure = await ClassifyDeathAsync(death).ConfigureAwait(false);
+                RaiseHealth(failure, death.ModelId, TakeWorkerMarker());
                 _readiness.Failed(failure);
                 Set(new BrainWorkerStatus(BrainPhase.Installed, LoadStep.None, death.ModelId, failure, null, null, DateTimeOffset.UtcNow));
                 Report(BrainPhase.Installed, LoadStep.None, death.ModelId, failure.Kind, ReadinessSentences.For(failure.Kind));
@@ -597,13 +669,30 @@ public sealed class InferenceSupervisor : IBrainWorker
             }
         }
 
+        // WOLVERINE STEPPED DOWN FROM IT (S6): this brain ran out of memory or crashed here, and
+        // for SelfHeal's window the next brain this phone holds answers instead - "not now", not
+        // "defective", and the floor still holds: nothing retired is ever the replacement.
+        var tuning = BrainTuning.Current();
+        if (tuning.Avoids(wanted))
+        {
+            var instead = loader.BestInstalledChatModel(probe,
+                refused: id => CrashVerdict.IsRefused(catalogue, id) || tuning.Avoids(id));
+            if (!string.IsNullOrWhiteSpace(instead))
+            {
+                _log($"{wanted} is stepped down from for now (Wolverine: {tuning.Describe()}); using {instead}");
+                wanted = instead;
+            }
+            else _log($"{wanted} is stepped down from, and nothing else this phone holds can answer; keeping it");
+        }
+
         // KEEP THE WORKING MODEL UNTIL ITS REPLACEMENT IS VALIDATED. A better model that
         // has never loaded on this phone is a candidate; the proven one keeps answering.
         if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false })
         {
             var proven = loader.InstalledIds()
                 .Select(id => catalogue.Assessment(id))
-                .Where(a => a is { Proven: true, Refused: false } && !a.Entry.Retired && a.Entry.Modality == ModelModality.Chat)
+                .Where(a => a is { Proven: true, Refused: false } && !a.Entry.Retired && a.Entry.Modality == ModelModality.Chat
+                            && !tuning.Avoids(a.Entry.Name))
                 .OrderByDescending(a => a!.Entry.QualityRank)
                 .FirstOrDefault();
             if (proven is not null && proven.Entry.Name != wanted && !Rejected(wanted!))
@@ -912,6 +1001,24 @@ public sealed class InferenceSupervisor : IBrainWorker
             CircleAI.Inference.CrashVerdict.Reconsider(_catalogue(), line => _log(line));
             ReconsiderAmbiguousRefusalsOnce();
 
+            // AND THE INFERENCE PROCESS'S OWN MARKER (S6): a step it began - a load, an answer -
+            // and never finished, because the process ended with no handler run. A marker still
+            // open at the next start is the fault, and it names the knobs that were in force.
+            var workerMarker = TakeWorkerMarker();
+
+            if (crumb is null && workerMarker is not null)
+            {
+                var markerModel = ModelOfMarker(workerMarker);
+                var phase = workerMarker.StartsWith("load", StringComparison.Ordinal) ? WorkPhase.Load : WorkPhase.Decode;
+                var died = FailureClassifier.Classify(ExitEvidence.ForPreviousWorker(_context, phase, markerModel) with
+                {
+                    BootChanged = bootChanged,
+                    PackageUpdated = updated,
+                });
+                RaiseHealth(died, markerModel, workerMarker);
+                _log($"the last run's inference process ended inside a step it began ({workerMarker}): {died.Kind} ({died.Evidence})");
+            }
+
             if (crumb is not null)
             {
                 var model = CrashVerdict.ModelFrom(crumb);
@@ -930,6 +1037,7 @@ public sealed class InferenceSupervisor : IBrainWorker
 
                 _readiness.Failed(failure);
                 _log($"the last run ended inside a load of {model}: {failure.Kind} ({failure.Evidence})");
+                RaiseHealth(failure, model, workerMarker);
                 CircleAI.Assistant.DeviceDiagnostics.EndRisky(_stateDir);
             }
             ExitEvidence.WriteRunStamp(_context, _stateDir);
@@ -990,6 +1098,7 @@ internal static class ExitEvidence
     {
         var (reason, status, description) = ExitRecord(context, death.Pid, ":inference");
         double? free = beat is { MemTotalKb: > 0 } ? beat.MemAvailableKb / (double)beat.MemTotalKb : null;
+        var signal = ReadCrashBuffer && death.Pid is { } crashed ? CrashLogSignal(crashed) : null;
         return new ExitFacts(
             ApiLevel: (int)Build.VERSION.SdkInt,
             Phase: death.Phase,
@@ -1001,7 +1110,8 @@ internal static class ExitEvidence
             WorkerDiedAlone: true,
             MemAvailableFractionAtDeath: free,
             LastTrimLevel: Math.Max(lastTrim, beat?.LastTrimLevel ?? 0),
-            CrashBufferShowsSignal: ReadCrashBuffer && death.Pid is { } pid ? CrashLogNamesSignal(pid) : null);
+            CrashBufferShowsSignal: ReadCrashBuffer && death.Pid is { } pid ? CrashLogNamesSignal(pid) : null,
+            CrashSignal: signal);
     }
 
     public static ExitFacts ForPreviousProcess(Context context, string? model)
@@ -1009,6 +1119,41 @@ internal static class ExitEvidence
         var (reason, status, description) = ExitRecord(context, null, null);
         return new ExitFacts((int)Build.VERSION.SdkInt, WorkPhase.Load, model, DateTimeOffset.UtcNow,
                              reason, status, description);
+    }
+
+    /// <summary>How the last run's inference process ended, for a marker it left (S6).</summary>
+    public static ExitFacts ForPreviousWorker(Context context, WorkPhase phase, string? model)
+    {
+        var (reason, status, description) = ExitRecord(context, null, ":inference");
+        return new ExitFacts((int)Build.VERSION.SdkInt, phase, model, DateTimeOffset.UtcNow,
+                             reason, status, description);
+    }
+
+    /// <summary>
+    /// The signal our own crash log names for <paramref name="pid"/> - "Fatal signal 4 (SIGILL)
+    /// ... pid 1234" - or null (S6). API 29 keeps no exit record, and this is what tells an
+    /// illegal instruction, which scalar kernels cure, from a segfault.
+    /// </summary>
+    private static int? CrashLogSignal(int pid)
+    {
+        try
+        {
+            using var proc = Java.Lang.Runtime.GetRuntime()!.Exec(new[] { "logcat", "-d", "-b", "crash", "-t", "200" });
+            using var reader = new StreamReader(proc!.InputStream!);
+            int? found = null;
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                var at = line.IndexOf("Fatal signal ", StringComparison.Ordinal);
+                if (at < 0 || (!line.Contains($"pid {pid} ", StringComparison.Ordinal) && !line.Contains($"pid {pid}(", StringComparison.Ordinal)))
+                    continue;
+                var digits = new string(line.AsSpan(at + "Fatal signal ".Length).ToArray().TakeWhile(char.IsDigit).ToArray());
+                if (int.TryParse(digits, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n))
+                    found = n;
+            }
+            return found;
+        }
+        catch { return null; }
     }
 
     private static (int? Reason, int? Status, string? Description) ExitRecord(Context context, int? pid, string? processSuffix)

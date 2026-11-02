@@ -15,11 +15,16 @@
 //
 // Thinking is off unless the generator is made with it on, as QwenTextGenerator keeps it off:
 // on the P30 one factual question once spent its whole budget thinking and never answered.
+// A CALL MAY ASK OTHERWISE (GenerationOptions.Effort, chosen per question by EffortRouter): a
+// hard question thinks, a quick one does not, and a thinking budget closes the thought - the
+// generator writes the model's own </think> itself - so the answer always comes.
 //
 // A TOOL CALL IS HELD TO ITS FORM. Once the model writes "<tool_call>" in its answer, each next
 // token is drawn only from those that keep the call in the XML form the model's own template
 // teaches (ToolCallGrammar) - the model card names malformed and looping calls as a known limit,
-// and the logits are ours to mask.
+// and the logits are ours to mask. The tools themselves reach the model through the same
+// template (GenerationOptions.Tools, its tools block), and then a call can only name one of
+// them, with its own parameters, every required one given and a fixed set's values only.
 //
 // THE STATE IS KEPT BETWEEN CALLS AND REUSED ONLY WHERE THE TOKENS MATCH. A prompt runs from
 // the first token the state does not already hold: after all of it, when the state holds the
@@ -43,6 +48,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using CircleAI.Core.Logging;
 using CircleAI.Inference.Managed.Gguf;
@@ -88,6 +94,13 @@ public sealed record ManagedGeneratorOptions
     public int MaxNewTokens { get; init; } = 512;
 
     /// <summary>
+    /// The most tokens a reply may spend thinking before the reasoning is closed and the answer
+    /// begins; 0 is no budget. Wolverine tightens it when a reply thought its whole length away
+    /// and said nothing (S6).
+    /// </summary>
+    public int ThinkingBudget { get; init; }
+
+    /// <summary>
     /// How the attention layers hold their keys and values: Off is fp16, as the fork holds them; a
     /// TurboQuant mode holds codes at that many bits a coordinate (S3).
     /// </summary>
@@ -120,7 +133,7 @@ public sealed record ManagedGeneratorOptions
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
-public sealed class ManagedChatGenerator : IChatGenerator
+public sealed class ManagedChatGenerator : IToolCallingGenerator
 {
     private const string Area = "Engine";
     private const ulong SessionMagic = 0x314E_4547_4D49_4143; // "CAIMGEN1", little-endian
@@ -265,12 +278,13 @@ public sealed class ManagedChatGenerator : IChatGenerator
     public static IReadOnlyList<string> ReadPackings { get; } = ["PTQ1_0", "PQ2_0", "PQ2_0-MTP"];
 
     /// <summary>
-    /// What this engine delivers of a model's capabilities today: answers, a thinking mode and a long
-    /// context. Not tool calls - it holds them to the template's XML form, which the app's tool reader
-    /// does not read yet - and not images: a brain sees only when its tower sits beside it (S8), and
-    /// nothing fetches a tower yet, so a row cannot promise sight.
+    /// What this engine delivers of a model's capabilities today: answers, a thinking mode, a long
+    /// context and tool calls - held to the template's XML form, which ToolCallReader reads (S8). Not
+    /// images: a brain sees only when its tower sits beside it (S8), and nothing fetches a tower yet,
+    /// so a row cannot promise sight.
     /// </summary>
-    public static ChatCapability Delivers => ChatCapability.Default | ChatCapability.Reasoning | ChatCapability.LongContext;
+    public static ChatCapability Delivers =>
+        ChatCapability.Default | ChatCapability.Tools | ChatCapability.Reasoning | ChatCapability.LongContext;
 
     /// <summary>What this engine reads, said the way a refusal says it.</summary>
     public static string WhatItReads => "qwen35 in " + string.Join(" or ", ReadPackings);
@@ -563,12 +577,22 @@ public sealed class ManagedChatGenerator : IChatGenerator
     {
         var started = Stopwatch.GetTimestamp();
         var timing = options.Timing;
-        var built = BuildPrompt(messages);
+        var thinking = ThinkingFor(options);
+        var tools = options.Tools is { Count: > 0 } offered ? offered : null;
+        var built = BuildPrompt(messages, tools, thinking, options.Effort);
         var prompt = built.Ids;
         if (prompt.Count >= _state.Capacity)
             throw new InvalidOperationException($"The prompt is {prompt.Count} tokens; this generator holds {_state.Capacity}.");
         var requested = options.MaxTokens > 0 ? options.MaxTokens : _options.MaxNewTokens;
-        var maxTokens = Math.Min(PowerBudgetPolicy.Resolve(options.Budget, requested).MaxTokens, _state.Capacity - prompt.Count);
+
+        // THE THOUGHT HAS ITS OWN ALLOWANCE, ON TOP OF THE ANSWER'S. A budget counted inside
+        // MaxTokens let a long thought eat the answer's share and end the turn mid-thought.
+        // ONE BUDGET, TWO OWNERS: the call's is the effort router's, per question; the generator's
+        // is Wolverine's knob (S6), which caps the call's once it has tightened it - a reply that
+        // thought its whole length away - and is the budget when a call names none.
+        var thinkingBudget = thinking && _thinkEnd >= 0 ? Tighter(options.ThinkingBudget, _options.ThinkingBudget) : 0;
+        var maxTokens = Math.Min(PowerBudgetPolicy.Resolve(options.Budget, requested).MaxTokens + thinkingBudget, _state.Capacity - prompt.Count);
+        var grammar = GrammarFor(tools);
         var lastTurn = _turnStart < 0 ? -1 : prompt.LastIndexOf(_turnStart);
         var primed = PrimedLength(messages, prompt);
         if (timing is not null) timing.PromptTokens = prompt.Count;
@@ -605,9 +629,11 @@ public sealed class ManagedChatGenerator : IChatGenerator
             var prefilled = Stopwatch.GetTimestamp();
             var prefillTimes = _model.TakeTimes();
 
-            var sampler = new TokenSampler(Settings(options), options.Seed);
+            var sampler = new TokenSampler(Settings(options, thinking), options.Seed);
             var generated = new List<int>();
             var reasoning = OpensInThought(prompt, lastTurn);
+            var thoughtTokens = 0;
+            var closedByBudget = false;
             var content = new StringBuilder();
             var thought = new StringBuilder();
             var stops = options.StopSequences?.Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.Ordinal).ToArray() ?? [];
@@ -668,17 +694,30 @@ public sealed class ManagedChatGenerator : IChatGenerator
             (int Token, bool End) Step(float[] logits)
             {
                 ct.ThrowIfCancellationRequested();
-                if (call is { } held)
+                int token;
+                if (reasoning && thinkingBudget > 0 && thoughtTokens >= thinkingBudget)
                 {
-                    var masked = _toolCalls.Mask(logits, held, _callPiece, _endOfGeneration);
-                    if (masked == ToolCallGrammar.Masked.Overruled) overruled++;
-                    if (masked == ToolCallGrammar.Masked.Nothing)
-                    {
-                        CircleLog.Warn(Area, "no token can carry the tool call on; it is no longer held to its form");
-                        call = null;
-                    }
+                    // THE BUDGET IS SPENT: the thought is closed for the model, with its own token,
+                    // and it answers from what it has thought so far.
+                    token = _thinkEnd;
+                    closedByBudget = true;
                 }
-                var token = sampler.Sample(logits, generated);
+                else
+                {
+                    // THIS POSITION'S LOGITS, the parameter: under speculative decoding they are the
+                    // verify pass's for this position, not the generator's own buffer.
+                    if (call is { } held)
+                    {
+                        var masked = grammar.Mask(logits, held, _callPiece, _endOfGeneration);
+                        if (masked == ToolCallGrammar.Masked.Overruled) overruled++;
+                        if (masked == ToolCallGrammar.Masked.Nothing)
+                        {
+                            CircleLog.Warn(Area, "no token can carry the tool call on; it is no longer held to its form");
+                            call = null;
+                        }
+                    }
+                    token = sampler.Sample(logits, generated);
+                }
                 if (firstAt == 0) firstAt = Stopwatch.GetTimestamp();
                 if (_endOfGeneration.Contains(token))
                 {
@@ -686,7 +725,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
                     return (token, true);
                 }
                 generated.Add(token);
-                if (call is { } open) call = _toolCalls.TryAdvance(open, _callPiece(token), out var next) ? next : null;
+                if (call is { } open) call = grammar.TryAdvance(open, _callPiece(token), out var next) ? next : null;
 
                 if (token == _thinkStart || token == _thinkEnd)
                 {
@@ -695,8 +734,9 @@ public sealed class ManagedChatGenerator : IChatGenerator
                 }
                 else
                 {
+                    if (reasoning) thoughtTokens++;
                     Text(Decode(decoder, _tokenizer.Piece(token, special: false)));
-                    if (call is null && !reasoning && EndsWith(content, ToolCallGrammar.Opening)) call = _toolCalls.Start;
+                    if (call is null && !reasoning && EndsWith(content, ToolCallGrammar.Opening)) call = grammar.Start;
                     if (!reasoning && Release(final: false))
                     {
                         finish = FinishReason.Stop;
@@ -748,6 +788,7 @@ public sealed class ManagedChatGenerator : IChatGenerator
             if (drafted > 0)
                 CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
+            if (thinking) CircleLog.Info(Area, Invariant($"thought for {thoughtTokens} tokens{(closedByBudget ? $", closed by its {thinkingBudget}-token budget" : string.Empty)} ({options.Effort?.TemplateName() ?? "the generator's default"})"));
 
             return new Outcome(content.ToString(), options.IncludeReasoning && thought.Length > 0 ? thought.ToString().Trim() : null,
                 prompt.Count, generated.Count, finish, Stopwatch.GetElapsedTime(started, done));
@@ -942,7 +983,19 @@ public sealed class ManagedChatGenerator : IChatGenerator
     /// The conversation as the model's own template writes it: one system turn, first, holding
     /// every system message's text; the other messages in order.
     /// </summary>
-    internal string RenderPrompt(IReadOnlyList<ChatMessage> messages)
+    internal string RenderPrompt(IReadOnlyList<ChatMessage> messages) => RenderPrompt(messages, null, _options.Thinking, null);
+
+    /// <summary>
+    /// The conversation as the model's own template writes it, offering <paramref name="tools"/>
+    /// through the template's own tools block, thinking or not as <paramref name="thinking"/> says.
+    /// </summary>
+    /// <remarks>
+    /// A TEMPLATE THAT TAKES <c>reasoning_effort</c> is given the effort's name whenever the model
+    /// thinks; one that does not (Qwen3.5's) never reads it, and the thinking budget is what
+    /// holds the length there.
+    /// </remarks>
+    internal string RenderPrompt(IReadOnlyList<ChatMessage> messages, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools,
+        bool thinking, ReasoningEffort? effort)
     {
         var system = string.Join("\n\n", messages
             .Where(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(m.Content))
@@ -963,13 +1016,15 @@ public sealed class ManagedChatGenerator : IChatGenerator
             if (isSystem) continue;
             turns.Add(Turn(m.Role.ToLowerInvariant(), m.Content ?? ""));
         }
-        return _template.Render(new Dictionary<string, object?>
+        var variables = new Dictionary<string, object?>
         {
             ["messages"] = turns,
-            ["tools"] = null,
+            ["tools"] = tools is { Count: > 0 } ? TemplateTools(tools) : null,
             ["add_generation_prompt"] = true,
-            ["enable_thinking"] = _options.Thinking,
-        });
+            ["enable_thinking"] = thinking,
+        };
+        if (thinking && effort is { } level && level != ReasoningEffort.Off) variables["reasoning_effort"] = level.TemplateName();
+        return _template.Render(variables);
 
         static OrderedDictionary<string, object?> Turn(string role, string content) =>
             new(StringComparer.Ordinal) { ["role"] = role, ["content"] = content };
@@ -1003,9 +1058,18 @@ public sealed class ManagedChatGenerator : IChatGenerator
     /// never a word's - and made from the picture's hash and the token's place, so the state's
     /// reuse, which compares ids, compares pictures too.
     /// </summary>
-    internal PromptIds BuildPrompt(IReadOnlyList<ChatMessage> messages)
+    internal PromptIds BuildPrompt(IReadOnlyList<ChatMessage> messages) => BuildPrompt(messages, null, _options.Thinking, null);
+
+    /// <summary>
+    /// The conversation as ids for the model, with <paramref name="tools"/> offered, thinking as
+    /// <paramref name="thinking"/> says and <paramref name="effort"/> named to a template that reads
+    /// it - rendered as <see cref="RenderPrompt(IReadOnlyList{ChatMessage}, IReadOnlyList{CircleAI.Tools.ToolDefinition}?, bool, ReasoningEffort?)"/>
+    /// renders it, its pictures expanded as above.
+    /// </summary>
+    internal PromptIds BuildPrompt(IReadOnlyList<ChatMessage> messages, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools,
+        bool thinking, ReasoningEffort? effort)
     {
-        var ids = _tokenizer.Encode(RenderPrompt(messages), parseSpecial: true);
+        var ids = _tokenizer.Encode(RenderPrompt(messages, tools, thinking, effort), parseSpecial: true);
         var pictures = messages.Where(m => m.ImageBytes is { Length: > 0 }).Select(m => Plan(m.ImageBytes!)).ToArray();
         if (pictures.Length == 0) return new PromptIds(ids, [], null);
 
@@ -1117,18 +1181,67 @@ public sealed class ManagedChatGenerator : IChatGenerator
         return _tower;
     }
 
-    // The model card's numbers for this mode - the catalogue row's profile when it has one - at the
-    // caller's temperature. A caller can tighten top-k and top-p but not loosen them past the card:
-    // GenerationOptions' own defaults (40 and 0.9) are generic, the card's are what this model is
-    // tuned for. Temperature 0 is plain greedy.
-    private SamplingSettings Settings(GenerationOptions options)
+    // The tools as the template's tools variable holds them: the function schemas every
+    // template is trained on, from the one owner of that mapping (ToolSchema).
+    private static JsonElement TemplateTools(IReadOnlyList<CircleAI.Tools.ToolDefinition> tools)
+    {
+        using var document = JsonDocument.Parse(CircleAI.Tools.ToolSchema.Json(tools));
+        return document.RootElement.Clone();
+    }
+
+    // Whether this call thinks: as its effort says, or the generator's own default when it says none.
+    private bool ThinkingFor(GenerationOptions options) =>
+        options.Effort is { } effort ? effort != ReasoningEffort.Off && _thinkStart >= 0 : _options.Thinking;
+
+    // The tighter of two token budgets where both are set, else whichever is; 0 is none.
+    private static int Tighter(int a, int b) =>
+        a > 0 && b > 0 ? Math.Min(a, b) : Math.Max(Math.Max(a, 0), Math.Max(b, 0));
+
+    // The form a call is held to on this call: the offered tools' own signatures, or any
+    // identifier when no tools came with it. A tool whose name - or a required parameter's -
+    // the form cannot write is left out, said once: the model could never call it anyway.
+    private ToolCallGrammar GrammarFor(IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools)
+    {
+        if (tools is null) return _toolCalls;
+        var functions = new List<ToolCallGrammar.Function>(tools.Count);
+        foreach (var tool in tools)
+        {
+            if (tool is null) continue;
+            IReadOnlyList<string> required = tool.RequiredParameters ?? Array.Empty<string>();
+            var parameters = new List<ToolCallGrammar.Parameter>(tool.Parameters?.Count ?? 0);
+            var callable = ToolCallGrammar.CanCarry(tool.Name);
+            foreach (var (name, parameter) in tool.Parameters ?? new Dictionary<string, CircleAI.Tools.ToolParameter>())
+            {
+                var isRequired = required.Contains(name, StringComparer.Ordinal);
+                if (!ToolCallGrammar.CanCarry(name))
+                {
+                    if (isRequired) callable = false;
+                    continue;
+                }
+                parameters.Add(new ToolCallGrammar.Parameter(name, isRequired, parameter?.Enum));
+            }
+            if (!callable)
+            {
+                CircleLog.Warn(Area, $"the tool \"{tool.Name}\" cannot be called in the template's form; its call is not held to it");
+                continue;
+            }
+            functions.Add(new ToolCallGrammar.Function(tool.Name, parameters));
+        }
+        return functions.Count == 0 ? _toolCalls : new ToolCallGrammar(functions);
+    }
+
+    // The model card's numbers for this mode - the catalogue row's profile when it has one (S5) - at
+    // the caller's temperature. A caller can tighten top-k and top-p but not loosen them past the
+    // card: GenerationOptions' own defaults (40 and 0.9) are generic, the card's are what this model
+    // is tuned for. Temperature 0 is plain greedy.
+    private SamplingSettings Settings(GenerationOptions options, bool thinking)
     {
         if (options.Temperature <= 0)
         {
-            if (_options.Thinking) CircleLog.Warn(Area, "greedy decoding with thinking on can loop (the model card advises against it)");
+            if (thinking) CircleLog.Warn(Area, "greedy decoding with thinking on can loop (the model card advises against it)");
             return SamplingSettings.Greedy;
         }
-        var card = Card(_options.Generation, _options.Thinking);
+        var card = Card(_options.Generation, thinking);
         return card with
         {
             Temperature = options.Temperature,
