@@ -56,6 +56,11 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
     {
         if (pcm16 is null || pcm16.Length == 0) return string.Empty;
 
+        // SWITCHED OFF MEANS OFF (Step 4): building the listener fetches the ears when they are
+        // missing, and the person said not to.
+        if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains(ListeningAbility) == true)
+            throw new InvalidOperationException("Listening is switched off. Turn it on to use it again.");
+
         var listener = await ListenerAsync(ct).ConfigureAwait(false);
         if (listener is null) throw new InvalidOperationException(_listenerStatus);
 
@@ -118,6 +123,10 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(text)) return [];
 
+        // SWITCHED OFF MEANS OFF (Step 4): rendering fetches a missing voice, and the person said not to.
+        if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains(TalkingAbility) == true)
+            throw new InvalidOperationException("Talking is switched off. Turn it on to hear it again.");
+
         var tag = language ?? _spoken?.Current ?? "en";
 
         // HOUSEKEEPING BEFORE PULLING MODELS: a voice that is not on the phone yet is
@@ -169,6 +178,63 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             // A fresh file per call, so nothing else is reading it.
             try { File.Delete(wav); } catch { /* a temp file that outlives us is not a failure */ }
         }
+    }
+
+    /// <summary>
+    /// Builds the recogniser and warms it on half a second of silence, before anybody speaks
+    /// (Step 4: the ears primed before they are ready). Only when the ears are already on the
+    /// phone - the fetcher brings them, in its own order - and not when the person switched
+    /// listening off. Never throws.
+    /// </summary>
+    /// <returns>The ears' model id when primed; null, with why, when not.</returns>
+    /// <remarks>
+    /// THIS USED TO WAIT FOR THE FIRST SENTENCE ("loaded lazily and kept"): building a recogniser
+    /// is seconds on a P30, and the person who paid for it was the one speaking. The owner's
+    /// framework primes every model before it says ready, the ears included, so the first audio
+    /// call finds them warm.
+    /// </remarks>
+    public async Task<(string? ModelId, string Why)> PrimeAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains(ListeningAbility) == true)
+                return (null, "listening is switched off");
+
+            var earsId = EarsOnThePhone();
+            if (earsId is null) return (null, "the ears are not on the phone yet");
+
+            var listener = await ListenerAsync(ct).ConfigureAwait(false);
+            if (listener is null) return (null, _listenerStatus);
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var silence = new byte[LinkAudioFormat.BytesPerSecond / 2];
+            _ = await listener.Transcriber.TranscribeAsync(silence, ct, "en").ConfigureAwait(false);
+            Android.Util.Log.Info(Tag, $"ears primed: {earsId} warmed in {clock.ElapsedMilliseconds} ms");
+            return (earsId, "primed");
+        }
+        catch (OperationCanceledException) { return (null, "cancelled"); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn(Tag, "the ears could not be primed: " + ex.Message);
+            return (null, ex.Message);
+        }
+    }
+
+    /// <summary>The ability whose switch governs the ears.</summary>
+    private const string ListeningAbility = "Listening";
+
+    /// <summary>The ability whose switch governs the voice.</summary>
+    private const string TalkingAbility = "Talking";
+
+    // The ears the selector would build the recogniser from, when they are whole on the phone.
+    private static string? EarsOnThePhone()
+    {
+        using var registry = new CircleAI.Core.Models.ModelRegistryService();
+        var plan = new CircleAI.Inference.SpeechModelSelector(registry)
+            .PlanFor(CircleAI.Core.DeviceProbe.Snapshot(), CircleAI.Core.ModelModality.Asr);
+        if (!plan.IsAvailable || plan.Model is null) return null;
+        using var loader = new CircleAI.Inference.BundleModelLoader(ModelStore.Path, registry);
+        return loader.ModelPresent(plan.Model.ModelId) ? plan.Model.ModelId : null;
     }
 
     /// <summary>The ASR listener, built once and kept.</summary>

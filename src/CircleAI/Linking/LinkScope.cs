@@ -56,4 +56,11 @@ public enum LinkScope
 
     /// <summary>Queue work nobody is watching in the background lane.</summary>
     Background = 64,
+
+    /// <summary>
+    /// Read and change the service's settings and the person's preferences, switch one ability on
+    /// or off, and ask what it can do right now (Step 4). Its own scope, not the chat floor: these
+    /// change what the service downloads and runs for every app on the device.
+    /// </summary>
+    Settings = 128,
 }

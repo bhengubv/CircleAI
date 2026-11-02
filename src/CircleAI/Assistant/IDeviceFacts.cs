@@ -155,6 +155,14 @@ public interface IDeviceFacts
     Task<string> TurnOnAsync(
         string title, IProgress<string>? progress = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Switch one ability off: what it needs is never fetched again behind the person's back, and
+    /// nothing downloaded is deleted (Step 4). Default: this head has nothing to switch off.
+    /// </summary>
+    /// <returns>What happened, for the row to show.</returns>
+    Task<string> TurnOffAsync(string title, CancellationToken ct = default)
+        => Task.FromResult($"'{title}' cannot be switched off here.");
+
     /// <summary>What Circle AI is using on disk, broken down for a storage screen.</summary>
     /// <remarks>
     /// A DEFAULT so only the head that can measure a real footprint (the phone,

@@ -213,6 +213,35 @@ public enum LinkVerb
     /// the app searches its own transcripts with what comes back.
     /// </summary>
     Embed,
+
+    // -- SETTINGS, PREFERENCES AND WHAT IT CAN DO NOW (Step 4) ------------------
+    //
+    // THEIR OWN SCOPE, LinkScope.Settings, and a test fails if any verb falls through to the
+    // chat floor by default: a setting changes what the service downloads and runs for every
+    // app on the device, which is more than asking it a question.
+
+    /// <summary>Every preference: rows of <see cref="LinkSettingsRows.Setting"/>.</summary>
+    SettingsGet,
+
+    /// <summary>
+    /// Set one preference: <see cref="LinkVerbRequest.Query"/> is the key, <see cref="LinkVerbRequest.Text"/>
+    /// the value. Answers with the preference's new row, or a failure saying why the value means nothing.
+    /// </summary>
+    SettingsSet,
+
+    /// <summary>
+    /// Switch one ability on or off: <see cref="LinkVerbRequest.Query"/> is its title (as the
+    /// Abilities verb names it), <see cref="LinkVerbRequest.Text"/> "on" or "off". Returns at once
+    /// with the ability's <see cref="LinkSettingsRows.CanDo"/> row; a download it starts is followed
+    /// with <see cref="SetupProgress"/>.
+    /// </summary>
+    AbilitySet,
+
+    /// <summary>
+    /// What it can do right now, live: one <see cref="LinkSettingsRows.CanDo"/> row per ability, then
+    /// a summary row with an empty title whose detail is the sentence to say.
+    /// </summary>
+    CanDoNow,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -259,7 +288,16 @@ public sealed record LinkRowsReply(bool Ok, IReadOnlyList<IReadOnlyList<string>>
 public static class LinkVerbs
 {
     /// <summary>The scope a caller must hold for <paramref name="verb"/>.</summary>
-    public static LinkScope RequiredScope(LinkVerb verb) => verb switch
+    /// <remarks>
+    /// THE CHAT FLOOR IS STILL THE ANSWER FOR A VERB THIS BUILD DOES NOT DECLARE - a client newer
+    /// than the service - but every verb this build knows is declared below, and
+    /// <c>LinkScopeGuardTests</c> fails the build of one that is not: a new verb that fell through
+    /// to Chat would hand a setting to any app that may ask a question (Step 4).
+    /// </remarks>
+    public static LinkScope RequiredScope(LinkVerb verb) => DeclaredScope(verb) ?? LinkScope.Chat;
+
+    /// <summary>The scope declared for <paramref name="verb"/>, or null when it has none.</summary>
+    public static LinkScope? DeclaredScope(LinkVerb verb) => verb switch
     {
         LinkVerb.Recall       => LinkScope.Memory,
         LinkVerb.Remember     => LinkScope.Memory,
@@ -315,7 +353,18 @@ public static class LinkVerbs
         LinkVerb.Footprint      => LinkScope.Chat,
         // The chat floor: it computes on text the caller sends and reads nothing of the person's.
         LinkVerb.Embed          => LinkScope.Chat,
-        _                     => LinkScope.Chat,
+
+        // ONE SENTENCE THIS DEVICE WROTE ABOUT ITS OWN MODELS, cheap to poll: the chat floor, as it
+        // always was - now said rather than reached by falling through.
+        LinkVerb.Verdict        => LinkScope.Chat,
+
+        // STEP 4: settings, preferences, an ability on or off, and what it can do right now.
+        LinkVerb.SettingsGet    => LinkScope.Settings,
+        LinkVerb.SettingsSet    => LinkScope.Settings,
+        LinkVerb.AbilitySet     => LinkScope.Settings,
+        LinkVerb.CanDoNow       => LinkScope.Settings,
+
+        _                       => null,
     };
 
     /// <summary>

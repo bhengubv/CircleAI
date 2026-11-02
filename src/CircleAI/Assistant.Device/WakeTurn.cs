@@ -547,6 +547,9 @@ public static class WakeTurn
     /// <summary>The greeting, already rendered, so a wake never waits for a voice to load.</summary>
     private static byte[]? _greeting;
 
+    /// <summary>Whether the voice has been opened and the greeting rendered (Step 4: the voice primed).</summary>
+    public static bool GreetingWarmed => _greeting is { Length: > 0 };
+
     /// <summary>
     /// Renders the greeting before anybody says the wake word.
     /// </summary>
