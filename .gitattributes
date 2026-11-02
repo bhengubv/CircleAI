@@ -61,3 +61,11 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# The voice sidecars are pinned by their SHA-256 in the registry and embedded as
+# they sit on disk, so a checkout must write exactly the committed bytes: with
+# text=auto, core.autocrlf=true rewrote them as CRLF and 44 failed their own
+# pins (OPEN-GAPS C4).
+###############################################################################
+src/CircleAI/Core/Models/VoiceConfigs/*.json -text

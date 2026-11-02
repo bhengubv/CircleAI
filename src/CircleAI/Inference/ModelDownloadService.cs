@@ -306,12 +306,14 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             // the embedded copy here puts it through the SAME verify-then-skip
             // path below, so its SHA is still checked against the registry and a
             // mismatch fails exactly like a corrupt download.
+            var fromAssembly = false;
             if (!File.Exists(destPath))
             {
                 var embedded = CircleAI.Core.Models.EmbeddedVoiceConfigs.TryGet(file.Name);
                 if (embedded is not null)
                 {
                     await File.WriteAllBytesAsync(destPath, embedded, ct).ConfigureAwait(false);
+                    fromAssembly = true;
                 }
             }
 
@@ -327,6 +329,24 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                     continue;
                 }
                 File.Delete(destPath);
+
+                // A STALE COPY OF A FILE WE CARRY IS REWRITTEN FROM THE ASSEMBLY,
+                // not fetched. The embedded copy above is written only when nothing
+                // is there, so a copy on disk that fails its pin - mms-amh and
+                // mms-tir, re-pinned at their committed bytes (OPEN-GAPS C4), on a
+                // phone that holds the old pair - went to the network, to an address
+                // most sidecars never had.
+                if (!fromAssembly && CircleAI.Core.Models.EmbeddedVoiceConfigs.TryGet(file.Name) is { } carried)
+                {
+                    await File.WriteAllBytesAsync(destPath, carried, ct).ConfigureAwait(false);
+                    if (await VerifySha256Async(destPath, file.Sha256, ct).ConfigureAwait(false))
+                    {
+                        doneBytes += file.SizeBytes;
+                        Report(file.Name, doneBytes, DownloadPhase.Cached);
+                        continue;
+                    }
+                    File.Delete(destPath);
+                }
             }
 
             var tempPath = destPath + ".tmp";
