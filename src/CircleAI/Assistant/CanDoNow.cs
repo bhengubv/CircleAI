@@ -154,6 +154,10 @@ public static class CanDoNow
                     return new(title, NowState.Soon, ReadinessSentences.For(brain), null);
                 case BrainPhase.Failed or BrainPhase.Paused:
                     return new(title, NowState.Cannot, ReadinessSentences.For(brain), null);
+                case BrainPhase.Unknown when coming is not { Settled: false }:
+                    // THE SERVICE HAS ONLY JUST STARTED and has not chosen its brain yet: not
+                    // "missing", which would send the person to download what is already here.
+                    return new(title, NowState.Soon, "Starting up; it says more in a moment.", null);
             }
         }
 

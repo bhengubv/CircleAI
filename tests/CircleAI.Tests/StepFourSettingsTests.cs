@@ -182,6 +182,12 @@ public sealed class CanDoNowTests
         Assert.Equal(NowState.Soon, CanDoNow.Answer(abilities, dead with { RetryAfter = TimeSpan.FromSeconds(30) },
             NeedsBrain, none, calm, _ => null)[0].State);
         Assert.Equal(NowState.Missing, CanDoNow.Summary(CanDoNow.Answer(abilities, null, NeedsBrain, none, calm, _ => null)).State);
+
+        // A service that has only just started has not chosen its brain: soon, not missing.
+        var starting = ComponentState.Of(ReadinessComponents.Brain, BrainPhase.Unknown, "starting", DateTimeOffset.UtcNow);
+        Assert.Equal(NowState.Soon, CanDoNow.Answer(abilities, starting, NeedsBrain, none, calm, _ => null)[0].State);
+        var none2 = ComponentState.Of(ReadinessComponents.Brain, BrainPhase.NoModel, "", DateTimeOffset.UtcNow);
+        Assert.Equal(NowState.Missing, CanDoNow.Answer(abilities, none2, NeedsBrain, none, calm, _ => null)[0].State);
     }
 }
 
