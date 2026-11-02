@@ -23,14 +23,35 @@
 // with NO ARGUMENTS AT ALL. A search for nothing, a reminder with no time, a
 // message with no recipient: a wrong action taken confidently.
 //
-// THIS IS NOT GRAMMAR-CONSTRAINED DECODING AND DOES NOT PRETEND TO BE.
+// THIS READER IS NOT THE GRAMMAR, AND ON MNN AND LLAMA.CPP IT IS ALL THERE IS.
 // Constraining the sampler so an invalid token cannot be emitted needs logit
 // access, and the MNN bridge exposes generate-and-stream with no hook into
-// sampling - so it is not available from managed code today, at any amount of
-// effort short of changing the native bridge. What IS achievable is to accept
-// every spelling of a correct intention, and to turn a genuinely wrong call
-// into a sentence the model can act on rather than a null.
+// sampling. CircleAI's own C# engine has the logits, and holds a call to the
+// template's form as it is written (ToolCallGrammar); every other engine's
+// calls arrive as they were written. So the reader accepts every spelling of a
+// correct intention, and turns a genuinely wrong call into a sentence the model
+// can act on rather than a null.
+//
+// TWO FORMS, BECAUSE THE MODELS WRITE TWO. Qwen3 writes JSON inside the tag:
+//
+//     <tool_call>{"name": "get_weather", "arguments": {"city": "Durban"}}</tool_call>
+//
+// Qwen3.5 - Bonsai 2 and the MNN brains alike - writes the XML form its own
+// chat template teaches, which this reader never read, so every call a Qwen3.5
+// brain made came back as "no tool call" and the answer went out without it:
+//
+//     <tool_call>
+//     <function=get_weather>
+//     <parameter=city>
+//     Durban
+//     </parameter>
+//     </function>
+//     </tool_call>
+//
+// The XML form writes every value as text - True, None, 2.5, a JSON list - so
+// a value is typed by the type its tool declares, when the tool is known.
 
+using System.Globalization;
 using System.Text.Json;
 
 namespace CircleAI.Tools;
@@ -40,6 +61,11 @@ public static class ToolCallReader
 {
     private const string Open  = "<tool_call>";
     private const string Close = "</tool_call>";
+
+    private const string FunctionOpen   = "<function=";
+    private const string FunctionClose  = "</function>";
+    private const string ParameterOpen  = "<parameter=";
+    private const string ParameterClose = "</parameter>";
 
     /// <summary>
     /// Every tool call in a response, in the order the model emitted them.
@@ -51,17 +77,30 @@ public static class ToolCallReader
     /// Sipho" quietly became just the reminder. A caller that only wants one can
     /// still take the first, but it can no longer do so by accident.
     /// </remarks>
-    public static IReadOnlyList<ToolInvocation> ReadAll(string? response)
+    public static IReadOnlyList<ToolInvocation> ReadAll(string? response) => ReadAll(response, tools: null);
+
+    /// <summary>
+    /// Every tool call in a response, in the order the model emitted them, with the XML
+    /// form's values typed as <paramref name="tools"/> declare them.
+    /// </summary>
+    /// <param name="response">What the model wrote.</param>
+    /// <param name="tools">
+    /// What is registered, or null. The XML form writes every value as text; a parameter
+    /// a tool declares as an integer, a number or a boolean comes back as one.
+    /// </param>
+    public static IReadOnlyList<ToolInvocation> ReadAll(string? response, IReadOnlyList<ToolDefinition>? tools)
     {
         if (string.IsNullOrWhiteSpace(response)) return [];
 
         var calls = new List<ToolInvocation>();
         var at = 0;
+        var tagged = false;
 
         while (true)
         {
             var start = response.IndexOf(Open, at, StringComparison.Ordinal);
             if (start < 0) break;
+            tagged = true;
 
             var from = start + Open.Length;
             var end  = response.IndexOf(Close, from, StringComparison.Ordinal);
@@ -72,12 +111,26 @@ public static class ToolCallReader
             // the response recovers the call the model had already decided on.
             var body = end < 0 ? response[from..] : response[from..end];
 
-            var call = ReadOne(body);
-            if (call is not null) calls.Add(call);
+            if (body.Contains(FunctionOpen, StringComparison.Ordinal))
+            {
+                calls.AddRange(ReadFunctions(body, tools));
+            }
+            else
+            {
+                var call = ReadOne(body);
+                if (call is not null) calls.Add(call);
+            }
 
             if (end < 0) break;
             at = end + Close.Length;
         }
+
+        // THE INNER BLOCK WITHOUT ITS WRAPPER. A model that drops the outer tag
+        // still wrote the call it meant, function, parameters and all; reading
+        // the bare block is the same back-off vLLM's reader for this form makes.
+        // Only when there was no tag at all, so a call is never read twice.
+        if (!tagged && response.Contains(FunctionOpen, StringComparison.Ordinal))
+            calls.AddRange(ReadFunctions(response, tools));
 
         return calls;
     }
@@ -85,6 +138,10 @@ public static class ToolCallReader
     /// <summary>The first tool call in a response, or <c>null</c>.</summary>
     public static ToolInvocation? Read(string? response)
         => ReadAll(response) is [var first, ..] ? first : null;
+
+    /// <summary>The first tool call in a response, typed as <paramref name="tools"/> declare, or <c>null</c>.</summary>
+    public static ToolInvocation? Read(string? response, IReadOnlyList<ToolDefinition>? tools)
+        => ReadAll(response, tools) is [var first, ..] ? first : null;
 
     /// <summary>
     /// Whether a call names a registered tool and carries what it requires.
@@ -175,6 +232,135 @@ public static class ToolCallReader
             if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
                 return value;
         return null;
+    }
+
+    // ── Reading the XML form ────────────────────────────────────────────
+
+    /// <summary>Every <c>&lt;function=...&gt;</c> block in <paramref name="text"/>.</summary>
+    /// <remarks>
+    /// A BLOCK ENDS AT ITS CLOSE, AT THE NEXT BLOCK, OR AT THE END - the same
+    /// leniency the JSON form gets for a reply the token ceiling cut short. A
+    /// name the ceiling cut in half is nothing to run and is dropped.
+    /// </remarks>
+    private static IEnumerable<ToolInvocation> ReadFunctions(string text, IReadOnlyList<ToolDefinition>? tools)
+    {
+        var at = 0;
+        while (true)
+        {
+            var start = text.IndexOf(FunctionOpen, at, StringComparison.Ordinal);
+            if (start < 0) yield break;
+
+            var nameFrom = start + FunctionOpen.Length;
+            var nameEnd = text.IndexOf('>', nameFrom);
+            if (nameEnd < 0) yield break;
+
+            var bodyFrom = nameEnd + 1;
+            var close = text.IndexOf(FunctionClose, bodyFrom, StringComparison.Ordinal);
+            var next = text.IndexOf(FunctionOpen, bodyFrom, StringComparison.Ordinal);
+            var closed = close >= 0 && (next < 0 || close < next);
+            var bodyEnd = closed ? close : next >= 0 ? next : text.Length;
+
+            // "get_weather()" - the model wrote a call rather than a name, as in the JSON form.
+            var name = text[nameFrom..nameEnd].Trim().TrimEnd('(', ')').Trim();
+            if (name.Length > 0)
+            {
+                var definition = tools?.FirstOrDefault(t => t is not null && string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+                yield return new ToolInvocation
+                {
+                    ToolName  = name,
+                    Arguments = ReadParameters(text[bodyFrom..bodyEnd], definition),
+                };
+            }
+
+            at = closed ? close + FunctionClose.Length : bodyEnd;
+        }
+    }
+
+    /// <summary>The <c>&lt;parameter=...&gt;</c> blocks of one function, typed by its definition.</summary>
+    /// <remarks>
+    /// The template writes "&lt;parameter=NAME&gt;\nVALUE\n&lt;/parameter&gt;", so one line
+    /// break either side of the value is the form's and not the value's. A value runs to its
+    /// close, to the next parameter, or to the end of the function - never further.
+    /// </remarks>
+    private static Dictionary<string, object?> ReadParameters(string body, ToolDefinition? definition)
+    {
+        var args = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var at = 0;
+        while (true)
+        {
+            var start = body.IndexOf(ParameterOpen, at, StringComparison.Ordinal);
+            if (start < 0) break;
+
+            var nameFrom = start + ParameterOpen.Length;
+            var nameEnd = body.IndexOf('>', nameFrom);
+            if (nameEnd < 0) break;
+
+            var valueFrom = nameEnd + 1;
+            var close = body.IndexOf(ParameterClose, valueFrom, StringComparison.Ordinal);
+            var next = body.IndexOf(ParameterOpen, valueFrom, StringComparison.Ordinal);
+            var closed = close >= 0 && (next < 0 || close < next);
+            var valueEnd = closed ? close : next >= 0 ? next : body.Length;
+
+            var value = body[valueFrom..valueEnd];
+            if (value.StartsWith('\n')) value = value[1..];
+            if (value.EndsWith('\n')) value = value[..^1];
+
+            var name = body[nameFrom..nameEnd].Trim();
+            if (name.Length > 0) args[name] = Typed(value, DeclaredType(definition, name));
+
+            at = closed ? close + ParameterClose.Length : valueEnd;
+        }
+        return args;
+    }
+
+    /// <summary>The type a tool declares for a parameter, or null when nothing says.</summary>
+    private static string? DeclaredType(ToolDefinition? definition, string parameter)
+    {
+        if (definition?.Parameters is not { } parameters) return null;
+        foreach (var (name, declared) in parameters)
+            if (string.Equals(name, parameter, StringComparison.OrdinalIgnoreCase))
+                return declared?.Type;
+        return null;
+    }
+
+    /// <summary>
+    /// A value of the XML form as the type its tool declares.
+    /// </summary>
+    /// <remarks>
+    /// TEXT UNLESS THE TOOL SAYS OTHERWISE. A string parameter holding "123" - a PIN, a
+    /// phone number - is still text; guessing at types would turn it into a number.
+    /// <para>
+    /// The template writes a value with Python's str(): a boolean as True or False, a
+    /// null as None, a list or an object as JSON. An object or a list stays the JSON
+    /// text it was written as, which is what the JSON form hands over for those too, and
+    /// a value that will not parse as its type stays the text it was - the tool reports
+    /// a bad value better than a reader guessing at one.
+    /// </para>
+    /// </remarks>
+    private static object? Typed(string value, string? type)
+    {
+        if (type is null || string.Equals(type, "string", StringComparison.OrdinalIgnoreCase)) return value;
+
+        var text = value.Trim();
+        if (text is "None" or "null" or "NULL" or "Null") return null;
+
+        switch (type.ToLowerInvariant())
+        {
+            case "integer":
+            case "number":
+                // BOXED SEPARATELY, as in Value below: a whole number is a long and nothing else.
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole)) return whole;
+                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var real)) return real;
+                return value;
+
+            case "boolean":
+                if (string.Equals(text, "true", StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(text, "false", StringComparison.OrdinalIgnoreCase)) return false;
+                return value;
+
+            default:
+                return value;
+        }
     }
 
     // ── Reading one block ───────────────────────────────────────────────
