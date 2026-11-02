@@ -269,10 +269,39 @@ public sealed class ServiceApplication : Application
             thermal.StateChanged += (_, state) => CircleAI.Core.Logging.CircleLog.Info("Balance", $"thermal state {state}");
             thermal.StartMonitoring();
             CircleAI.Inference.PowerBudgetPolicy.Conditions = () => (BatteryPercent(), thermal.ShouldPauseInference);
+
+            // AND STEP 1 READS THE SAME DEVICE (S4): the brain plan sees the battery, the charger,
+            // the heat and the kind of device this is - things Core cannot read on a phone.
+            CircleAI.Core.DeviceContext.PowerProbe = () => new CircleAI.Core.PowerState(BatteryPercent(), Plugged(), thermal.ShouldPauseInference);
+            CircleAI.Core.DeviceContext.FormFactorProbe = FormFactorHere;
         }
         catch (Exception ex)
         {
             CircleAI.Core.Logging.CircleLog.Warn("Balance", "the device's conditions are not read here: " + ex.GetType().Name);
+        }
+    }
+
+    // Whether the phone is charging, or null when it does not say.
+    private bool? Plugged()
+    {
+        try { return (GetSystemService(BatteryService) as global::Android.OS.BatteryManager)?.IsCharging; }
+        catch { return null; }
+    }
+
+    // What kind of device this is: a watch or a TV by its UI mode, a tablet by its smallest width.
+    private CircleAI.Core.FormFactor FormFactorHere()
+    {
+        try
+        {
+            var mode = (GetSystemService(UiModeService) as global::Android.App.UiModeManager)?.CurrentModeType;
+            if (mode == global::Android.Content.Res.UiMode.TypeWatch) return CircleAI.Core.FormFactor.Watch;
+            if (mode == global::Android.Content.Res.UiMode.TypeTelevision) return CircleAI.Core.FormFactor.Desktop;
+            var smallestDp = Resources?.Configuration?.SmallestScreenWidthDp ?? 0;
+            return smallestDp >= 600 ? CircleAI.Core.FormFactor.Tablet : CircleAI.Core.FormFactor.Phone;
+        }
+        catch
+        {
+            return CircleAI.Core.FormFactor.Unknown;
         }
     }
 

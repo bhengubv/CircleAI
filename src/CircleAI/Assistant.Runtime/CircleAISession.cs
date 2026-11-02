@@ -359,18 +359,16 @@ public sealed class CircleAISession : IAsyncDisposable
     // The image bytes were set on the turn and then silently ignored by a
     // text-only generator, so vision read as "not implemented" when in fact it
     // was written and merely unreachable.
+    //
+    // AND THROUGH THE ONE BRAIN FACTORY (S4), so a Bonsai 2 GGUF opens with its own engine here
+    // as it does in the service: this wrote QwenTextGenerator outright.
     private static IChatGenerator BuildGenerator(string modelPath)
-        => IsVisionModel(modelPath)
-            ? new KimiVlGenerator(
-                modelPath,
-                contextSize: 4096,
-                threads: null,
-                templateEngine: new PromptTemplateEngine())
-            : new QwenTextGenerator(
-                modelPath,
-                contextSize: 4096,
-                threads: null,
-                templateEngine: new PromptTemplateEngine());
+        => BrainFactory.Default.Build(new BrainRequest(modelPath)
+        {
+            ContextSize = 4096,
+            Capability = IsVisionModel(modelPath) ? ChatCapability.Default | ChatCapability.Vision : ChatCapability.Default,
+            TemplateEngine = new PromptTemplateEngine(),
+        });
 
     /// <summary>
     /// Whether the resolved model is a vision-language model, and therefore

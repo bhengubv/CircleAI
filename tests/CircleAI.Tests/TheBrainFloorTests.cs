@@ -572,7 +572,8 @@ public sealed class TheBrainFloorTests : IDisposable
         var mnnOnly = ModelSetup.Unfinished(loader, MnnOnly).Select(u => u.Name).ToList();
         Assert.DoesNotContain("Ternary-Bonsai-2-27B", mnnOnly);
         Assert.Contains("Qwen3.5-0.8B-MNN", mnnOnly);
-        Assert.Contains("Ternary-Bonsai-2-27B", ModelSetup.Unfinished(loader, MnnAndLlama).Select(u => u.Name));
+        // The fleet runs on the C# engine since S4, so a build that ships it resumes the Bonsai.
+        Assert.Contains("Ternary-Bonsai-2-27B", ModelSetup.Unfinished(loader, [ModelEngine.Mnn, ModelEngine.Managed]).Select(u => u.Name));
     }
 
     [Fact]

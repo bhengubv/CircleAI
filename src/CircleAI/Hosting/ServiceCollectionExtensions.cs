@@ -248,22 +248,20 @@ public static class ServiceCollectionExtensions
             var modelPath       = ResolveModelPath(opts, sp);
             var templateEngine  = sp.GetService<IPromptTemplateEngine>();
             var deviceCtx       = sp.GetService<IDeviceContext>();
-            var contextSize     = (uint)ResolveContextSize(opts, deviceCtx);
+            var registry        = sp.GetService<ModelRegistryService>();
 
-            if (opts.RequiredCapabilities.HasFlag(ChatCapability.Vision))
+            // THE ONE BRAIN FACTORY, so a Bonsai 2 GGUF opens with its own engine here too - this
+            // registration wrote `new QwenTextGenerator` and handed every model to MNN.
+            return BrainFactory.Default.Build(new BrainRequest(modelPath)
             {
-                return new KimiVlGenerator(
-                    modelPath,
-                    contextSize:    contextSize,
-                    threads:        opts.ThreadCount,
-                    templateEngine: templateEngine);
-            }
-
-            return new QwenTextGenerator(
-                modelPath,
-                contextSize:    contextSize,
-                threads:        opts.ThreadCount,
-                templateEngine: templateEngine);
+                ModelId = opts.ModelId,
+                Entry = string.IsNullOrWhiteSpace(opts.ModelId) ? null : registry?.GetLatestModel(opts.ModelId!),
+                Engine = opts.Engine,
+                ContextSize = ResolveContextSize(opts, deviceCtx),
+                Threads = opts.ThreadCount,
+                Capability = opts.RequiredCapabilities,
+                TemplateEngine = templateEngine,
+            });
         });
 
         // ---------------------------------------------------------------
@@ -284,12 +282,16 @@ public static class ServiceCollectionExtensions
             // Generator factory so AIService can lazy-load via DI with the
             // resolved model path. Context size resolved per-call so a
             // device tier change between Start cycles is honoured.
+            // THROUGH THE ONE BRAIN FACTORY: AIService hands this the resolved path only, so the
+            // engine comes from the host's choice or the file itself.
             IChatGenerator GeneratorFactory(string path) =>
-                new QwenTextGenerator(
-                    path,
-                    contextSize:    (uint)ResolveContextSize(opts, deviceCtx),
-                    threads:        opts.ThreadCount,
-                    templateEngine: templateEngine);
+                BrainFactory.Default.Build(new BrainRequest(path)
+                {
+                    Engine = opts.Engine,
+                    ContextSize = ResolveContextSize(opts, deviceCtx),
+                    Threads = opts.ThreadCount,
+                    TemplateEngine = templateEngine,
+                });
 
             return new AIService(
                 opts, modelLoader, GeneratorFactory, modelSelector, modelRegistry, logger);

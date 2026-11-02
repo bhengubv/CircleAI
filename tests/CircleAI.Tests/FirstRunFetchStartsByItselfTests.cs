@@ -478,8 +478,13 @@ public sealed class FirstRunFetchStartsByItselfTests : IDisposable
         // back to a single generator.
         var service = File.ReadAllText(Path.Combine(RepoRoot(), "src", "CircleAI", "Hosting", "AIService.cs"));
 
-        Assert.Contains("new LlamaGenerator(", service);
-        Assert.Contains("EngineChoice.Run(entry)", service);
+        // THE BRANCHES LIVE IN THE ONE BRAIN FACTORY SINCE S4, which every site that builds a
+        // brain asks - and BuildByEngine is that factory.
+        var factory = File.ReadAllText(Path.Combine(RepoRoot(), "src", "CircleAI", "Inference", "BrainFactory.cs"));
+        Assert.Contains("new LlamaGenerator(", factory);
+        Assert.Contains("ManagedChatGenerator.Load(", factory);
+        Assert.Contains("EngineChoice.Run(entry)", factory);
+        Assert.Contains("BrainFactory.Default.Build(", service);
 
         // AND BOTH SITES GO THROUGH IT. The start path builds the brain; BuildGenerator
         // builds a specialist. Wiring only the second would leave the brain - the one

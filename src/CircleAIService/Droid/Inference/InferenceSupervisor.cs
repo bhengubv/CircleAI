@@ -171,6 +171,7 @@ public sealed class InferenceSupervisor : IBrainWorker
                 }
 
                 lastProgress = DateTimeOffset.UtcNow;
+                if (chunk.Final) LearnSpeed(model, chunk.Timing);
                 yield return chunk;
             }
         }
@@ -180,6 +181,26 @@ public sealed class InferenceSupervisor : IBrainWorker
             watch.Cancel();
             await stream.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>The fewest tokens an answer needs for its speed to count.</summary>
+    /// <remarks>A two-word answer is mostly start-up; its rate says little about the brain.</remarks>
+    private const int TokensForASpeed = 8;
+
+    /// <summary>
+    /// Records how fast a brain answered, so BrainSpeed can judge it - and estimate its siblings
+    /// on the same engine - before anything chooses or fetches.
+    /// </summary>
+    /// <remarks>
+    /// SelfModel.LearnSpeed WAS WRITTEN AND NEVER CALLED, so no speed was ever known and the
+    /// selector could rank only by the shipped quality figure. Every answer is a measurement.
+    /// </remarks>
+    private void LearnSpeed(string? model, TurnTiming? timing)
+    {
+        if (string.IsNullOrWhiteSpace(model) || timing is not { OutputTokens: >= TokensForASpeed, DecodeMs: > 0 }) return;
+        var speed = timing.OutputTokens * 1000.0 / timing.DecodeMs;
+        try { CircleAI.SelfKnowledge.SelfModel.Current?.LearnSpeed(model, speed); }
+        catch (Exception ex) { _log($"could not record {model}'s speed: {ex.GetType().Name}"); }
     }
 
     /// <inheritdoc />
@@ -248,6 +269,12 @@ public sealed class InferenceSupervisor : IBrainWorker
                 text.Append(chunk.Text);
                 if (chunk.Final) timing = chunk.Timing;
             }
+
+            // A CHECK IS A MEASUREMENT TOO - of the model on the engine its row names. A check
+            // through another engine measures that engine, not the brain this phone would run.
+            using (var registry = new ModelRegistryService())
+                if (engine is null || registry.GetLatestModel(model)?.Engine == engine) LearnSpeed(model, timing);
+
             return (text.ToString(), timing, loadMs);
         }
         finally
@@ -519,7 +546,16 @@ public sealed class InferenceSupervisor : IBrainWorker
 
         string? wanted = options.ModelId;
         if (!string.IsNullOrWhiteSpace(wanted) && registry.GetLatestModel(wanted!) is { Retired: true }) wanted = null;
-        if (string.IsNullOrWhiteSpace(wanted)) wanted = selector.BestFit(probe, options.RequiredCapabilities)?.ModelId;
+        if (string.IsNullOrWhiteSpace(wanted))
+        {
+            wanted = selector.BestFit(probe, options.RequiredCapabilities)?.ModelId;
+
+            // STEP 1, SAID OUT LOUD: the device as read, the brain chosen for it, and - when a
+            // higher-ranked one was too slow to talk with here - which and why.
+            var context = DeviceContext.Read(probe);
+            _log("plan: " + BrainPlan.Explain(context, wanted is null ? null : registry.GetLatestModel(wanted), registry.AllModels)
+                 + " | " + context.Describe());
+        }
 
         // NOT DOWNLOADED IS NOT "THE BIG ONE STOPPED THIS PHONE". The old host said
         // OnTheSmallerBrain here; the preferred model was simply not on the phone.
@@ -613,16 +649,34 @@ public sealed class InferenceSupervisor : IBrainWorker
             lock (_gate) _loading = Task.Run(() => LoadAsync(candidate));
             await EnsureReadyAsync(ct).ConfigureAwait(false);
             var right = 0;
+            var tokens = 0;
+            var decodeMs = 0L;
             foreach (var (q, a) in golden)
             {
                 var text = new System.Text.StringBuilder();
                 var job = new BrainJob("validate-" + Guid.NewGuid().ToString("N"),
                     new[] { new ChatMessage("user", q) }, q, 64, false, DateTimeOffset.UtcNow.AddMinutes(2));
-                await foreach (var chunk in GenerateAsync(job, ct).ConfigureAwait(false)) text.Append(chunk.Text);
+                await foreach (var chunk in GenerateAsync(job, ct).ConfigureAwait(false))
+                {
+                    text.Append(chunk.Text);
+                    if (chunk is { Final: true, Timing: { OutputTokens: > 0, DecodeMs: > 0 } t }) { tokens += t.OutputTokens; decodeMs += t.DecodeMs; }
+                }
                 if (text.ToString().Contains(a, StringComparison.OrdinalIgnoreCase)) right++;
             }
             passed = right == golden.Length;
             _log($"validation of {candidate}: {right}/{golden.Length}");
+
+            // RIGHT IS NOT ENOUGH; IT HAS TO BE QUICK ENOUGH TO TALK WITH. The three answers
+            // together are the measurement - one short answer is mostly start-up - and it is
+            // recorded, so the selector passes this model over from now on instead of offering
+            // it again next week.
+            LearnSpeed(candidate, new TurnTiming(DecodeMs: decodeMs, OutputTokens: tokens));
+            if (passed && tokens >= TokensForASpeed && decodeMs > 0
+                && tokens * 1000.0 / decodeMs < CircleAI.Inference.BrainSpeed.InteractiveTokensPerSecond)
+            {
+                passed = false;
+                _log($"validation of {candidate}: right, but {tokens * 1000.0 / decodeMs:0.0} tokens a second is too slow to talk with; keeping {active}");
+            }
         }
         catch (Exception ex)
         {

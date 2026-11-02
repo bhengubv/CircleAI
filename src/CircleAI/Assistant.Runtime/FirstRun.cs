@@ -339,11 +339,12 @@ public static class FirstRun
                     // off the system-wide low-memory kills on 2026-10-10. So this
                     // would download 1.39 GB to crash the phone, twice, before the
                     // two-strike rule refused it and the 0.8B was fetched after all.
-                    pick = eligible
-                        .Where(m => CircleAI.Inference.ModelFit.Fits(m, probe))
-                        .OrderByDescending(m => m.QualityRank)
-                        .ThenBy(m => m.MinRamGb)
-                        .FirstOrDefault()
+                    // AND QUICK ENOUGH TO TALK WITH, by the rule the selector uses
+                    // (BrainSpeed.Pick): a brain this phone has measured, or can estimate,
+                    // as too slow is passed over for a quick one before it is fetched.
+                    pick = CircleAI.Inference.BrainSpeed.Pick(
+                               eligible.Where(m => CircleAI.Inference.ModelFit.Fits(m, probe)).ToList(),
+                               registry.AllModels)
                         ?? CircleAI.Inference.ModelChoice.SmallestEverHeld(
                                eligible.Where(m => CircleAI.Inference.ModelFit.FitsStorage(m, probe.StorageFreeGb)),
                                probe);

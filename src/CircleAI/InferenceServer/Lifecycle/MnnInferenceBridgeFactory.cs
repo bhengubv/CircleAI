@@ -11,7 +11,7 @@
 //   3. NativeLibraryResolver.OverrideDirectory → P/Invoke resolves there
 //   4. ModelRegistryService.GetLatestModel(modelId) → ModelEntry { Url, Sha }
 //   5. ModelDownloadService.EnsureModelAsync(modelId, uri, sha) → modelPath
-//   6. new QwenTextGenerator(modelPath) → IChatGenerator
+//   6. BrainFactory.Default.Build(modelPath) → IChatGenerator, by the model's engine
 //   7. new LocalProcessInferenceBridge(generator, descriptor, probe)
 //
 // Replaces UnconfiguredBridgeFactory. Wired by default in
@@ -195,7 +195,8 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
         // 4096 token context is the Qwen 3 family default. Hosts that want a
         // different size can subclass and override; the SDK doesn't expose
         // a per-call context override through IInferenceBridge.
-        var generator = new QwenTextGenerator(modelPath, contextSize: 4096);
+        // THROUGH THE ONE BRAIN FACTORY (S4): a GGUF here opens with its own engine, not MNN.
+        var generator = BrainFactory.Default.Build(new BrainRequest(modelPath) { ModelId = modelId, ContextSize = 4096 });
 
         // ── 7. Build a descriptor + wrap as IInferenceBridge ──────────────
         var descriptor = new ModelDescriptor(

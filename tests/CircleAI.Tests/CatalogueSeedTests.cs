@@ -71,12 +71,13 @@ public class CatalogueSeedTests
     [Fact]
     public void A_row_the_registry_names_an_engine_for_keeps_it()
     {
-        // Ternary-Bonsai-2-27B says "Engine": "LlamaCpp"; derivation from PTQ1_0 and qwen35
-        // said MNN, and on 2026-10-19 the Windows service chose a GGUF it could not load.
+        // Ternary-Bonsai-2-27B names its engine - "Managed", the C# engine, since S4 - and
+        // derivation from PTQ1_0 and qwen35 said MNN: on 2026-10-19 the Windows service chose a
+        // GGUF it could not load because the derived engine won over the named one.
         using var cat = NewCatalog();
         CatalogueSeed.SeedFromEmbedded(cat);
 
-        Assert.Equal(ModelEngine.LlamaCpp, cat.Get("Ternary-Bonsai-2-27B")!.Engine);
+        Assert.Equal(ModelEngine.Managed, cat.Get("Ternary-Bonsai-2-27B")!.Engine);
         Assert.Equal(ModelEngine.Mnn, cat.Get("Qwen3.5-4B-MNN")!.Engine);
     }
 
