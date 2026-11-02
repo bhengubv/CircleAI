@@ -2308,7 +2308,7 @@ public sealed class AIService : IAIService
     /// and, crucially, no longer invokes a tool with an EMPTY argument list when
     /// the arguments arrived as a JSON string rather than an object.
     /// <para>
-    /// The agentic loop calls <see cref="ToolCallReader.ReadAll"/> directly,
+    /// The agentic loop calls <see cref="ToolCallReader.ReadAll(string?, IReadOnlyList{ToolDefinition}?)"/> directly,
     /// because a reply can carry more than one call and only the first was ever
     /// run. This remains for callers that want just the first.
     /// </para>
