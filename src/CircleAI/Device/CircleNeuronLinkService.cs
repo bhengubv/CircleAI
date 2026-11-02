@@ -686,6 +686,27 @@ public sealed class CircleNeuronLinkService : Service
                 return LinkRowsReply.Success((HealthFacts?.Invoke() ?? Array.Empty<KeyValuePair<string, string>>())
                     .Select(p => LinkAskRows.Health(p.Key, p.Value)).ToList());
 
+            case LinkVerb.Healing:
+            {
+                var healing = Healing;
+                if (healing is null) return LinkRowsReply.Failure("healing not available");
+                return LinkRowsReply.Success(await healing.RowsAsync(req.Limit > 0 ? req.Limit : 20).ConfigureAwait(false));
+            }
+
+            case LinkVerb.HealingSet:
+            {
+                // FIRST PARTY ALREADY CHECKED ABOVE (LinkVerbs.FirstPartyOnly), and the endpoint is
+                // refused by the loop itself to anybody else - said twice on purpose: where reports
+                // go is the one setting here that could send something off the device.
+                var healing = Healing;
+                if (healing is null) return LinkRowsReply.Failure("healing not available");
+                var problem = await healing.SetAsync(
+                    req.Args ?? new Dictionary<string, string>(), IsFirstParty(uid)).ConfigureAwait(false);
+                if (problem is not null) return LinkRowsReply.Failure(problem);
+                var rows = await healing.RowsAsync(0).ConfigureAwait(false);
+                return LinkRowsReply.Success(rows.Take(1).ToList());
+            }
+
             case LinkVerb.QualityRun:
             {
                 var asks = CircleNeuronService.Asks;
@@ -1084,6 +1105,13 @@ public sealed class CircleNeuronLinkService : Service
             new CircleAI.Assistant.Requests.AskFrontGenerator(asks, caller, CircleAI.Assistant.Requests.AskLane.Foreground, TranslateBudget),
             CircleAI.Assistant.BrainTranslation.Name);
     }
+
+    /// <summary>
+    /// Wolverine on this device, for the healing verbs (S6). Set by the host once the loop is
+    /// running; null answers "healing not available" rather than an empty status, which a client
+    /// could not tell from a device that never failed.
+    /// </summary>
+    public static ILinkHealing? Healing { get; set; }
 
     /// <summary>This build's versionCode, for the handshake. Set by the host.</summary>
     public static long VersionCode { get; set; }

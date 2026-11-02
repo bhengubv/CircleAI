@@ -80,6 +80,13 @@ public sealed record ManagedGeneratorOptions
     public int MaxNewTokens { get; init; } = 512;
 
     /// <summary>
+    /// The most tokens a reply may spend thinking before the reasoning is closed and the answer
+    /// begins; 0 is no budget. Wolverine tightens it when a reply thought its whole length away
+    /// and said nothing (S6).
+    /// </summary>
+    public int ThinkingBudget { get; init; }
+
+    /// <summary>
     /// How the attention layers hold their keys and values: Off is fp16, as the fork holds them; a
     /// TurboQuant mode holds codes at that many bits a coordinate (S3).
     /// </summary>
@@ -534,7 +541,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
 
         // THE THOUGHT HAS ITS OWN ALLOWANCE, ON TOP OF THE ANSWER'S. A budget counted inside
         // MaxTokens let a long thought eat the answer's share and end the turn mid-thought.
-        var thinkingBudget = thinking && options.ThinkingBudget > 0 && _thinkEnd >= 0 ? options.ThinkingBudget : 0;
+        // ONE BUDGET, TWO OWNERS: the call's is the effort router's, per question; the generator's
+        // is Wolverine's knob (S6), which caps the call's once it has tightened it - a reply that
+        // thought its whole length away - and is the budget when a call names none.
+        var thinkingBudget = thinking && _thinkEnd >= 0 ? Tighter(options.ThinkingBudget, _options.ThinkingBudget) : 0;
         var maxTokens = Math.Min(PowerBudgetPolicy.Resolve(options.Budget, requested).MaxTokens + thinkingBudget, _state.Capacity - prompt.Count);
         var grammar = GrammarFor(tools);
         var lastTurn = _turnStart < 0 ? -1 : prompt.LastIndexOf(_turnStart);
@@ -1106,6 +1116,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator
     // Whether this call thinks: as its effort says, or the generator's own default when it says none.
     private bool ThinkingFor(GenerationOptions options) =>
         options.Effort is { } effort ? effort != ReasoningEffort.Off && _thinkStart >= 0 : _options.Thinking;
+
+    // The tighter of two token budgets where both are set, else whichever is; 0 is none.
+    private static int Tighter(int a, int b) =>
+        a > 0 && b > 0 ? Math.Min(a, b) : Math.Max(Math.Max(a, 0), Math.Max(b, 0));
 
     // The form a call is held to on this call: the offered tools' own signatures, or any
     // identifier when no tools came with it. A tool whose name - or a required parameter's -

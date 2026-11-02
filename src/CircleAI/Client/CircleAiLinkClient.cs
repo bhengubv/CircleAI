@@ -278,6 +278,17 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> HealthAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Health), ct);
 
+    /// <summary>How the service is healing itself, as <see cref="LinkHealingRows"/>, with up to <paramref name="limit"/> records.</summary>
+    public Task<LinkRowsReply> HealingAsync(int limit = 20, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Healing, Limit: Math.Max(1, limit)), ct);
+
+    /// <summary>
+    /// Changes how the service heals itself - our own apps only. Arguments by
+    /// <see cref="LinkHealingRows"/> name: autonomy, reports, handled, selfcheck, endpoint.
+    /// </summary>
+    public Task<LinkRowsReply> HealingSetAsync(IReadOnlyDictionary<string, string> args, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.HealingSet, Args: args ?? throw new ArgumentNullException(nameof(args))), ct);
+
     /// <summary>First party only: start a quality run; returns the previous run's verdicts.</summary>
     public Task<LinkRowsReply> QualityRunAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.QualityRun), ct);

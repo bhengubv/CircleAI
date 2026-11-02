@@ -611,6 +611,15 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             {
                 Finish(ask.Id, AskState.Failed, FailureKind.ManagedError, AskSentences.CouldNotAnswer, keepText: false);
                 _log($"ask {ask.Id} produced no answer");
+
+                // A REPLY THAT RAN ITS WHOLE LENGTH AND SAID NOTHING (S6). With thinking on, that
+                // is a reply that thought its length away; Wolverine's rule for it is a tighter
+                // thinking budget. Nothing of the question or the reply travels with it.
+                if (workerTiming?.Finish == "length")
+                    CircleAI.Core.Logging.HealthEvents.Raise(CircleAI.Core.Logging.HealthEvents.Of(
+                        "Engine", "answer", "NoAnswer", "Reply.Length",
+                        "the reply ran to its length limit and said nothing",
+                        subject: workerTiming.ModelId ?? ask.ModelId));
                 return;
             }
 

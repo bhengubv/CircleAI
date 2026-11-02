@@ -26,6 +26,10 @@ namespace CircleAI.Core.Logging;
 /// <param name="Context">The device context at that moment, if the caller had it.</param>
 /// <param name="Remedy">What was done about it, once something was.</param>
 /// <param name="Worked">Whether the remedy worked, once that is known.</param>
+/// <param name="Subject">
+/// What the failure was about - a model id, a file - so a remedy can act on it without parsing
+/// prose (S6). Code fills it with identifiers only; never anything a person said.
+/// </param>
 public sealed record HealthEvent(
     DateTimeOffset At,
     string Area,
@@ -36,7 +40,8 @@ public sealed record HealthEvent(
     string Fingerprint,
     string? Context = null,
     string? Remedy = null,
-    bool? Worked = null);
+    bool? Worked = null,
+    string? Subject = null);
 
 /// <summary>Makes, keeps and announces <see cref="HealthEvent"/>s.</summary>
 public static partial class HealthEvents
@@ -56,12 +61,32 @@ public static partial class HealthEvents
     }
 
     /// <summary>Builds an event from an exception.</summary>
-    public static HealthEvent From(string area, string attempted, Exception exception, string? context = null)
+    public static HealthEvent From(string area, string attempted, Exception exception, string? context = null, string? subject = null)
     {
         ArgumentNullException.ThrowIfNull(exception);
         var type = exception.GetType().Name;
         var site = SiteOf(exception);
-        return new HealthEvent(DateTimeOffset.UtcNow, area, attempted, type, Template(exception.Message), site, Fingerprint(type, site), context);
+        return new HealthEvent(DateTimeOffset.UtcNow, area, attempted, type, Template(exception.Message), site, Fingerprint(type, site), context,
+            Subject: subject);
+    }
+
+    /// <summary>
+    /// Builds an event for a failure that threw nothing here - a process that died, a reply that
+    /// ended empty, a call that could not be read. The error type and the site are named by the
+    /// code that saw it, in the same shape an exception's would have.
+    /// </summary>
+    /// <remarks>
+    /// THE COMMONEST FAILURES ON THE PHONE THROW NOTHING. The inference process dying by a signal
+    /// or the low-memory killer is seen in this process as a binder going quiet, and until S6 none
+    /// of them became a HealthEvent: healing only ever heard about exceptions.
+    /// </remarks>
+    public static HealthEvent Of(string area, string attempted, string errorType, string site, string? message = null,
+        string? context = null, string? subject = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(site);
+        return new HealthEvent(DateTimeOffset.UtcNow, area, attempted, errorType, Template(message), site, Fingerprint(errorType, site),
+            context, Subject: subject);
     }
 
     /// <summary>The de-duplication key, in WolverineAPI's shape.</summary>
@@ -88,11 +113,48 @@ public static partial class HealthEvents
             var method = frame.GetMethod();
             var type = method?.DeclaringType;
             if (method is null || type is null) continue;
-            var name = $"{type.Name}.{method.Name}";
+            var name = Readable(type, method.Name);
             first ??= name;
             if (type.FullName?.StartsWith("CircleAI", StringComparison.Ordinal) == true) return name;
         }
         return first ?? "unknown";
+    }
+
+    /// <summary>A frame as its author wrote it: Type.Method, not the compiler's state machine.</summary>
+    /// <remarks>
+    /// THE FINGERPRINT HAS TO SURVIVE A REBUILD (S6). An async method throws through
+    /// "&lt;EnsureBundleCoreAsync&gt;d__12.MoveNext", and the d__12 is the compiler's numbering -
+    /// adding one async method above it renumbers it, and every phone's reports of the same
+    /// failure would split into two fingerprints at WolverineAPI. So the state machine and the
+    /// lambda's closure class give way to the type and method they belong to, and a local
+    /// function keeps its own name under its outer method.
+    /// </remarks>
+    internal static string Readable(Type type, string method)
+    {
+        var owner = type;
+        var name = method;
+        if (owner.Name.StartsWith('<') && owner.DeclaringType is not null)
+        {
+            // <Method>d__N (async, iterator) is named for its method; <>c and <>c__DisplayClass
+            // hold lambdas, whose own names carry the outer method.
+            var close = owner.Name.IndexOf('>');
+            if (!owner.Name.StartsWith("<>", StringComparison.Ordinal) && close > 1) name = owner.Name[1..close];
+            while (owner.Name.StartsWith('<') && owner.DeclaringType is { } outer) owner = outer;
+        }
+
+        if (name.StartsWith('<'))
+        {
+            var close = name.IndexOf('>');
+            if (close > 1)
+            {
+                var outerMethod = name[1..close];
+                var local = name.IndexOf("g__", close, StringComparison.Ordinal);
+                var bar = local < 0 ? -1 : name.IndexOf('|', local);
+                name = local >= 0 && bar > local + 3 ? $"{outerMethod}.{name[(local + 3)..bar]}" : outerMethod;
+            }
+        }
+
+        return $"{owner.Name}.{name}";
     }
 
     /// <summary>Keeps the event, writes it to the log, and tells every subscriber.</summary>

@@ -796,6 +796,7 @@ public sealed class AIService : IAIService
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
         string lastResponse = string.Empty;
+        var retriedMalformed = false;
         for (int iteration = 0; iteration < maxIter; iteration++)
         {
             // forceTools: this IS the tool loop. Whatever the question looks
@@ -829,6 +830,32 @@ public sealed class AIService : IAIService
             // text, and a tool that declares a number gets a number.
             var available = await AvailableToolsAsync(linked.Token).ConfigureAwait(false);
             var invocations = ToolCallReader.ReadAll(response, available);
+
+            // A CALL THAT COULD NOT BE READ IS RETRIED ONCE, HELD TO ITS FORM (S6). The reply
+            // looked like a tool call and nothing in it parsed: ending here would hand the person
+            // a fragment of markup as their answer. The retry spells out the template's own form,
+            // and on the C# engine ToolCallGrammar holds every token of it once "<tool_call>" is
+            // written. Wolverine hears both halves - that it happened, and whether the retry read.
+            if (retriedMalformed)
+            {
+                retriedMalformed = false;
+                CircleAI.Core.Logging.HealthEvents.Raise(MalformedToolCall() with
+                {
+                    Remedy = CircleAI.Hosting.SelfHealing.Remedies.ToolCallRetry,
+                    Worked = invocations.Count > 0,
+                });
+            }
+            else if (invocations.Count == 0 && CircleAI.Assistant.ToolCall.Looks(response))
+            {
+                if (iteration + 1 < maxIter)
+                {
+                    retriedMalformed = true;
+                    history.Add(new ChatMessage("tool", MalformedToolCallReply));
+                    continue;
+                }
+                CircleAI.Core.Logging.HealthEvents.Raise(MalformedToolCall());   // no turn left to retry in
+            }
+
             if (invocations.Count == 0) break; // No tool call — we're done.
 
             if (_options.ToolBridge is null)
@@ -891,6 +918,20 @@ public sealed class AIService : IAIService
 
         return lastResponse;
     }
+
+    /// <summary>What the model is told when its tool call could not be read: the template's own form, spelled out.</summary>
+    /// <remarks>
+    /// The Qwen3.5 template's XML form (ToolCallGrammar's), not JSON: it is what the model was
+    /// trained to write, and what the C# engine holds a call to once it is opened.
+    /// </remarks>
+    internal const string MalformedToolCallReply =
+        "{\"error\": \"The tool call could not be read. Write it again in exactly this form: "
+        + "<tool_call>\\n<function=NAME>\\n<parameter=NAME>\\nVALUE\\n</parameter>\\n</function>\\n</tool_call>\"}";
+
+    /// <summary>A tool call that could not be read, as Wolverine reads it (S6). Nothing of the reply travels.</summary>
+    private CircleAI.Core.Logging.HealthEvent MalformedToolCall() =>
+        CircleAI.Core.Logging.HealthEvents.Of("Tools", "tool call", "MalformedToolCall", "AIService.AgenticChatAsync",
+            "a reply looked like a tool call and none of it could be read", subject: _resolvedModelId);
 
     // ------------------------------------------------------------------
     // v2.0 — Feedback

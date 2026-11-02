@@ -227,6 +227,26 @@ public enum LinkVerb
     /// with no persona and no notes in front of the engine's prompt.
     /// </remarks>
     Translate,
+
+    // -- WOLVERINE, SEEN FROM AN APP (S6) ----------------------------------------
+    //
+    // The healing loop runs in the service, which has no screens, so what it fixed, what is
+    // turned down and what waits for a person reached nobody: the sample's Wolverine screen
+    // said "self-healing runs in CircleAI" and could show nothing more, for want of a verb.
+
+    /// <summary>
+    /// How the service is healing itself, as <see cref="LinkHealingRows"/>: one summary row, a row
+    /// per switch, a row per knob in force, then the newest healing records - text-free of
+    /// anything a person said.
+    /// </summary>
+    Healing,
+
+    /// <summary>
+    /// Change how the service heals itself, by named arguments (<see cref="LinkHealingRows"/>):
+    /// the autonomy dial, the WolverineAPI reports on or off, one record marked handled, a
+    /// self-check run, or - our own apps only - where reports are sent. Answers with the summary row.
+    /// </summary>
+    HealingSet,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -332,6 +352,13 @@ public static class LinkVerbs
         // The chat floor, and for the same reason: it asks the brain about the caller's own
         // text and reads nothing of the person's - which is what "may ask the assistant" means.
         LinkVerb.Translate      => LinkScope.Chat,
+
+        // READING HOW THE SERVICE HEALS ITSELF is the chat floor, like Health: it is about the
+        // service, and its rows carry nothing a person said. CHANGING IT administers the brain -
+        // the dial decides whether it may step its own brain down - so it is ModelAdmin, and
+        // first party only besides (FirstPartyOnly).
+        LinkVerb.Healing    => LinkScope.Chat,
+        LinkVerb.HealingSet => LinkScope.ModelAdmin,
         _                     => LinkScope.Chat,
     };
 
@@ -343,7 +370,7 @@ public static class LinkVerbs
     /// a test instrument, not a feature, and a third party has no business occupying
     /// the brain with it.
     /// </remarks>
-    public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun;
+    public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun or LinkVerb.HealingSet;
 }
 
 /// <summary>The translate verb's arguments and its one row: <c>[translation, from, to]</c>.</summary>

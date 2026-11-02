@@ -107,6 +107,7 @@ public sealed class ServiceApplication : Application
         base.OnCreate();
         InstallLogging("inference");
         InstallBalance();
+        InstallWolverineFiles(inferenceProcess: true);
         global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
 
         // A TEST SWITCH, NOT A LOG: with soak/prompt-dump.on in this app's own test folder,
@@ -680,6 +681,7 @@ public sealed class ServiceApplication : Application
         base.OnCreate();
         InstallLogging("service");
         InstallBalance();
+        InstallWolverineFiles(inferenceProcess: false);
 
         // WHERE STANDING GRANTS LIVE. A killed service process must not forget who
         // the person already approved: an in-memory store is safe but asks again on
@@ -1478,6 +1480,8 @@ public sealed class ServiceApplication : Application
         // sheet. Approval happens in LinkConsentActivity, launched FOR RESULT by the
         // foreground client, which is also how the OS tells the consent screen which
         // package is really asking.
+
+        ComposeWolverine();   // S6: last, once the brain, the queue and the catalogue exist
     }
 
     /// <summary>
@@ -1521,4 +1525,174 @@ public sealed class ServiceApplication : Application
             return null;
         }
     }
+
+    // ═════════════════════════════════════════════════════════════════════════════
+    // WOLVERINE ON THE DEVICE (S6) - one block; called from both processes' OnCreate.
+    //
+    // SelfHealer, FailureAnalyst, the healing log, DeviceSelfHealPolicy and
+    // MemoryManagerSafeFix were all built and never started: not one line here composed
+    // them, so no failure on a phone was ever healed by the loop. DeviceWolverine (in the
+    // library, tested with fakes) is the loop started and fed by HealthEvents; this block
+    // hands it the Android parts as delegates, the way every other static here is wired.
+    // ═════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The service's state folder, which both processes share.</summary>
+    private string WolverineState => System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI", "state");
+
+    /// <summary>
+    /// Where both processes find the brain's knobs, and where the inference process marks each
+    /// risky step: the knobs are decided in this process and the brain is built in the other.
+    /// </summary>
+    private void InstallWolverineFiles(bool inferenceProcess)
+    {
+        try
+        {
+            CircleAI.Inference.BrainTuning.Directory = System.IO.Path.Combine(WolverineState, "wolverine");
+            if (inferenceProcess)
+                CircleAI.Assistant.RiskySteps.Directory = CircleAI.Assistant.RiskySteps.For(WolverineState, "inference");
+        }
+        catch (Exception ex)
+        {
+            CircleAI.Core.Logging.CircleLog.Warn("Heal", "Wolverine's files are not set in this process: " + ex.GetType().Name);
+        }
+    }
+
+    /// <summary>Starts the healing loop at AutoFixSafe, fed by HealthEvents. Main process only, after the brain and the queue exist.</summary>
+    private void ComposeWolverine()
+    {
+        try
+        {
+            var supervisor = _supervisor;
+            var asks = CircleNeuronService.Asks;
+            var settings = new SqliteAppStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI", "app.db"));
+            const string autonomyKey = "service.selfheal.autonomy";   // the key DeviceSettings keeps it under
+
+            // THE BRAIN IS ASKED ONLY ABOUT A FAULT NO RULE KNOWS, and through the one door for
+            // questions, in the background lane - so an analysis never takes the brain from somebody.
+            CircleAI.Hosting.SelfHealing.IFailureAnalyst? analyst = asks is null
+                ? null
+                : new CircleAI.Hosting.SelfHealing.FailureAnalyst((system, user, ct) => AskAsideAsync(asks, system, user, ct));
+
+            var outbox = new CircleAI.Hosting.SelfHealing.Upstream.WolverineOutbox(
+                System.IO.Path.Combine(WolverineState, "wolverine"),
+                isKnownSubject: id =>
+                {
+                    using var registry = new CircleAI.Core.Models.ModelRegistryService();
+                    return registry.GetLatestModel(id) is not null;
+                });
+
+            var memory = new MemoryManager(new DeviceResourcesReader());
+            var wolverine = new CircleAI.Hosting.SelfHealing.DeviceWolverine(new CircleAI.Hosting.SelfHealing.WolverineOptions
+            {
+                StateDirectory = WolverineState,
+                Policy = new DeviceSelfHealPolicy(
+                    _ => Task.FromResult(settings.Get(autonomyKey)),
+                    () => supervisor?.Status.Phase == CircleAI.Assistant.Lifecycle.BrainPhase.Ready),
+                Analyst = analyst,
+                ExtraFixes =
+                [
+                    new MemoryManagerSafeFix(memory, CircleAI.Hosting.SelfHealing.Remedies.Memory, reclaimAll: true),
+                    new MemoryManagerSafeFix(memory, CircleAI.Hosting.SelfHealing.Remedies.Cache, reclaimAll: false),
+                ],
+                Announce = sentence => CircleNeuronLinkService.Decided(sentence),
+                RunningModel = () => supervisor?.RunningModel,
+                HasAnotherBrain = HasAnotherBrain,
+                ApplyBetweenTurns = async () =>
+                {
+                    // BETWEEN TURNS ONLY: a brain somebody is waiting on keeps answering, and the
+                    // new knobs reach the next one it builds.
+                    if (supervisor is not null && supervisor.SchedulerIdle?.Invoke() == true
+                        && supervisor.Status.Phase == CircleAI.Assistant.Lifecycle.BrainPhase.Ready)
+                        await supervisor.ReleaseAsync(CancellationToken.None).ConfigureAwait(false);
+                },
+                Redownload = model => FetchWhenFree($"{model} failed its hash"),
+                ResumeDownload = model => FetchWhenFree($"{model} stalled"),
+                ReadAutonomy = _ => Task.FromResult(settings.Get(autonomyKey)),
+                WriteAutonomy = (value, _) =>
+                {
+                    settings.Set(autonomyKey, value);
+                    return Task.CompletedTask;
+                },
+                Outbox = outbox,
+                AppVersion = VersionNameOf(this) + "+" + VersionCodeOf(this).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+
+            CircleAI.Hosting.SelfHealing.DeviceWolverine.Current = wolverine;
+            CircleNeuronLinkService.Healing = wolverine;
+            wolverine.Start();   // it hears every landed model itself: the wake word keeps the one hook here
+        }
+        catch (Exception ex)
+        {
+            CircleAI.Core.Logging.CircleLog.Error("Heal", "Wolverine is not running on this device", ex);
+        }
+    }
+
+    /// <summary>The analyst's question, asked in the background lane and waited for.</summary>
+    private static async Task<string> AskAsideAsync(CircleAI.Assistant.Requests.IAskFront asks, string system, string user, CancellationToken ct)
+    {
+        const string caller = "internal:wolverine";
+        var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+            caller, Guid.NewGuid().ToString("N"), string.Empty, CircleAI.Assistant.Requests.AskLane.Background,
+            system + "\n\n" + user, Question: user, Spoken: false));
+        if (!admission.Accepted || admission.Record is null)
+            throw new InvalidOperationException("the queue refused the analysis: " + admission.Refusal);
+        var done = await asks.WaitAsync(caller, admission.Record.Id, TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+        return done?.State == CircleAI.Assistant.Requests.AskState.Succeeded
+            ? done.Text
+            : throw new TimeoutException("the analysis did not finish: " + (done?.State.ToString() ?? "missing"));
+    }
+
+    /// <summary>Whether this phone holds a brain other than <paramref name="model"/> that it can run - the floor holds.</summary>
+    private static bool HasAnotherBrain(string model)
+    {
+        using var registry = new CircleAI.Core.Models.ModelRegistryService();
+        using var loader = new CircleAI.Inference.BundleModelLoader(ModelStore.Path, registry);
+        var catalogue = CircleNeuronService.Catalogue;
+        var tuning = CircleAI.Inference.BrainTuning.Current();
+        return loader.BestInstalledChatModel(CircleAI.Core.DeviceProbe.Snapshot(),
+                   refused: id => string.Equals(id, model, StringComparison.OrdinalIgnoreCase)
+                                  || CircleAI.Inference.CrashVerdict.IsRefused(catalogue, id)
+                                  || tuning.Avoids(id)) is not null;
+    }
+
+    /// <summary>
+    /// Fetches what is owed - a file that failed its hash, a download that stalled - once
+    /// housekeeping has finished (the owner's rule for every pull), the fetch running now has
+    /// finished and the phone is online, through the same foreground service as every other
+    /// fetch. Waits at most an hour; the hourly review picks it up after that.
+    /// </summary>
+    private bool FetchWhenFree(string why)
+    {
+        var app = this;
+        _ = Task.Run(async () =>
+        {
+            await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+                CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }).ConfigureAwait(false);
+            var until = DateTimeOffset.UtcNow.AddHours(1);
+            while (DateTimeOffset.UtcNow < until
+                   && (CircleAI.Device.ModelFetchService.Fetching
+                       || CircleAI.Core.DeviceProbe.Snapshot().Connectivity == CircleAI.Core.Connectivity.Offline))
+                await Task.Delay(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+            try
+            {
+                using var registry = new CircleAI.Core.Models.ModelRegistryService();
+                using var loader = new CircleAI.Inference.BundleModelLoader(ModelStore.Path, registry);
+                CircleAI.Core.Logging.CircleLog.Info("Heal", $"fetching what is owed, because {why}");
+                CircleAI.Device.ModelFetchService.StartIfAnythingIsOwed(app, loader);
+            }
+            catch (Exception ex)
+            {
+                CircleAI.Core.Logging.CircleLog.Warn("Heal", $"could not fetch after {why}: {ex.GetType().Name}");
+            }
+        });
+        return true;
+    }
+
+    private static string VersionNameOf(global::Android.Content.Context context)
+    {
+        try { return context.PackageManager?.GetPackageInfo(context.PackageName!, 0)?.VersionName ?? "unknown"; }
+        catch { return "unknown"; }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════
 }

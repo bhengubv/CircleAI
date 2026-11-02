@@ -70,16 +70,22 @@ public static class Ptq1
 
     private static ReadOnlySpan<byte> Pow3 => [1, 3, 9, 27, 81];
 
-    /// <summary>The fastest path this CPU and runtime can take.</summary>
-    public static KernelPath Best { get; } =
+    /// <summary>
+    /// The fastest path this CPU and runtime can take - or the scalar reference while
+    /// <see cref="KernelChoice.ScalarOnly"/> holds vector instructions off (S6).
+    /// </summary>
+    public static KernelPath Best => KernelChoice.Pick(Fastest);
+
+    // What the CPU and runtime offer, read once.
+    private static readonly KernelPath Fastest =
         Dp.IsSupported ? KernelPath.Dp :
         AdvSimd.Arm64.IsSupported ? KernelPath.AdvSimd :
         System.Runtime.Intrinsics.X86.Avx2.IsSupported ? KernelPath.Avx2 :
         System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated ? KernelPath.Vector128 :
         KernelPath.Scalar;
 
-    /// <summary>Whether <paramref name="path"/> can run here.</summary>
-    public static bool CanRun(KernelPath path) => path switch
+    /// <summary>Whether <paramref name="path"/> can run here - and is not switched off (<see cref="KernelChoice"/>).</summary>
+    public static bool CanRun(KernelPath path) => KernelChoice.Allows(path) && path switch
     {
         KernelPath.Scalar => true,
         KernelPath.Table => true,

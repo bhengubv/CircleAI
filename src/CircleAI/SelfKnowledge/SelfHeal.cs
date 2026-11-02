@@ -77,6 +77,28 @@ public static class SelfHeal
         /// <summary>Claiming the microphone foreground-service type.</summary>
         public const string MicrophoneForegroundType = "fgs.microphone";
 
+        // -- THE C# ENGINE'S KNOBS (S6) ------------------------------------------
+        //
+        // A knob turned down is a switch tripped: each trip turns it one notch further and
+        // holds it there for OffFor(trips), and when the window runs out the brain runs at
+        // full again - the half-open try. HealingKnobs (Hosting.SelfHealing) owns the
+        // notches; these names are what both halves agree on.
+
+        /// <summary>All the brain's threads. Off means fewer.</summary>
+        public const string BrainThreads = "engine.threads";
+
+        /// <summary>Working memory at its usual bits. Off means fewer bits a value.</summary>
+        public const string WorkingMemoryBits = "engine.memory-bits";
+
+        /// <summary>The full context. Off means a shorter one.</summary>
+        public const string LongContext = "engine.context";
+
+        /// <summary>An unbounded thinking budget. Off means a tighter one.</summary>
+        public const string ThinkingBudget = "engine.thinking";
+
+        /// <summary>Vector kernels. Off means scalar ones, after an illegal instruction.</summary>
+        public const string VectorKernels = "engine.vector-kernels";
+
         /// <summary>Every switch there is, so a status can report on all of them.</summary>
         /// <remarks>
         /// WRITTEN OUT RATHER THAN REFLECTED. Reflection over the consts above would
@@ -96,6 +118,11 @@ public static class SelfHeal
             TranscribingWake,
             PrefixCache,
             MicrophoneForegroundType,
+            BrainThreads,
+            WorkingMemoryBits,
+            LongContext,
+            ThinkingBudget,
+            VectorKernels,
         ];
     }
 

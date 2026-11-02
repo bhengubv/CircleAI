@@ -76,7 +76,7 @@ public sealed class FailureAnalyst : IFailureAnalyst
         string reply;
         try
         {
-            reply = await _chat(Instruction, Describe(failure), ct).ConfigureAwait(false);
+            reply = await _chat(InstructionFor(failure.Remedies), Describe(failure), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -88,7 +88,32 @@ public sealed class FailureAnalyst : IFailureAnalyst
             return HealingVerdict.NeedsAHuman($"The analyst could not reach the brain: {ex.GetType().Name}.");
         }
 
-        return Parse(reply);
+        return Confine(Parse(reply), failure.Remedies);
+    }
+
+    /// <summary>
+    /// The instruction, with the remedies that exist when the loop offers them (S6): the brain
+    /// picks one of those as the category, or says "none" - it is not asked to think one up.
+    /// </summary>
+    private static string InstructionFor(IReadOnlyList<string>? remedies)
+    {
+        if (remedies is not { Count: > 0 }) return Instruction;
+        var menu = string.Join("; ", remedies.Select(r => $"\"{r}\" ({Remedies.Describe(r)})"));
+        return Instruction + "\nFor a quick-fix, category MUST be exactly one of: " + menu
+             + ". If none of them fits, use kind \"defer\" and category \"none\".";
+    }
+
+    /// <summary>
+    /// A quick-fix whose category is not on the list is not a fix: the brain chooses from the
+    /// list and never invents an action, so anything else becomes "needs a human".
+    /// </summary>
+    private static HealingVerdict Confine(HealingVerdict verdict, IReadOnlyList<string>? remedies)
+    {
+        if (remedies is not { Count: > 0 } || verdict.Kind != HealingKind.QuickFix) return verdict;
+        var chosen = remedies.FirstOrDefault(r => string.Equals(r, verdict.Category?.Trim(), StringComparison.OrdinalIgnoreCase));
+        return chosen is null
+            ? HealingVerdict.NeedsAHuman($"The brain named an action that is not one of Circle AI's remedies ({verdict.Category}).")
+            : verdict with { Category = chosen };
     }
 
     /// <summary>Lay the failure out for the model, skipping empty parts.</summary>
