@@ -10,10 +10,12 @@
 // A ROW THE ENGINE CANNOT OPEN YET IS DEAD DATA UNTIL ITS CODE LANDS: no selector picks it, no setup
 // plan names it, no fetch starts or resumes it, no screen offers it, and no request is routed to a
 // brain for a capability the engine cannot hand back (tool calls in the XML form the app does not
-// read yet; sight before the tower is built). When the code lands, the engine's own gate
+// read yet; sight, which needs a tower beside the brain). When the code lands, the engine's own gate
 // (ManagedChatGenerator.Reads, .Delivers) opens them with no catalogue edit - as it did for the
-// PQ2_0-MTP files when the engine learned to draft with their head: they are brains now, and the
-// DFlash 2 drafters and the vision towers are what still waits.
+// PQ2_0-MTP files when the engine learned to draft with their head: they are brains now. The DFlash 2
+// drafters still wait for their code; the vision towers for a plan that fetches each beside its
+// brain - S8 taught the engine to see with the 2B's, and ManagedChatGenerator.FindTower already looks
+// in the "-Vision" folder these rows install into.
 
 using System;
 using System.Collections.Generic;

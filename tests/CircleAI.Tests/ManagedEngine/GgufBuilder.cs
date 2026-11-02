@@ -163,9 +163,38 @@ internal static class Bonsai2Model
 
     /// <summary>A fixture from fixtures/bonsai2/<paramref name="set"/> (linked into the test output).</summary>
     public static JsonDocument Fixture(string set, string name) =>
-        JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", set, name)));
+        JsonDocument.Parse(File.ReadAllText(FixturePath(set, name)));
 
     /// <summary>Whether fixtures/bonsai2/<paramref name="set"/> holds <paramref name="name"/>.</summary>
-    public static bool HasFixture(string set, string name) =>
-        File.Exists(Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", set, name));
+    public static bool HasFixture(string set, string name) => File.Exists(FixturePath(set, name));
+
+    /// <summary>Where a file of fixtures/bonsai2/2B is in the test output.</summary>
+    public static string FixturePath(string name) => FixturePath("2B", name);
+
+    /// <summary>Where a file of fixtures/bonsai2/<paramref name="set"/> is in the test output.</summary>
+    public static string FixturePath(string set, string name) => Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", set, name);
+
+    /// <summary>Said by a vision test that cannot run here.</summary>
+    public const string MissingTower = "SKIPPED: the 2B or its Q8_0 vision tower is not on this machine; set BONSAI2_2B_GGUF and BONSAI2_2B_MMPROJ to run this.";
+
+    /// <summary>The 2B's Q8_0 vision tower: BONSAI2_2B_MMPROJ, else beside the 2B where the app keeps it; null when neither is there.</summary>
+    public static string? Tower()
+    {
+        var path = Environment.GetEnvironmentVariable("BONSAI2_2B_MMPROJ");
+        if (string.IsNullOrEmpty(path))
+            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CircleAI", "models", "Ternary-Bonsai-2-2B", "Ternary-Bonsai-2-2B-mmproj-Q8_0.gguf");
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// A photo to describe: BONSAI2_PHOTO, else the lake at sunset Windows ships as a lock-screen
+    /// picture (photorealistic; Windows carries no photographs); null when neither is here.
+    /// </summary>
+    public static string? Photo()
+    {
+        var path = Environment.GetEnvironmentVariable("BONSAI2_PHOTO");
+        if (string.IsNullOrEmpty(path)) path = @"C:\Windows\Web\Screen\img102.jpg";
+        return File.Exists(path) ? path : null;
+    }
 }

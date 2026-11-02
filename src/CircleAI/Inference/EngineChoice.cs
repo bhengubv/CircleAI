@@ -83,8 +83,10 @@ public static class EngineChoice
     /// </summary>
     /// <remarks>
     /// A ROW ON THE C# ENGINE NEEDS THE ENGINE TO READ IT, WHATEVER IT IS FOR. The Bonsai 2 fleet
-    /// catalogues files this engine has no code for yet beside the brains it runs - a vision tower
-    /// (a Vision row, "clip"), a speculative drafter ("dflash"), an MTP file - and the speech
+    /// catalogues files this engine does not open as rows of their own beside the brains it runs - a
+    /// vision tower (a Vision row, "clip": the engine sees with the 2B's when it sits beside the brain,
+    /// S8, but nothing plans a tower as its brain's companion yet), a speculative drafter ("dflash",
+    /// no code yet) - and the speech
     /// stack's carve-out below ("not this list's") would have let the tower through: the setup
     /// plan's eyes slot and its everything-else list take any Vision row that fits, and a fetch's
     /// own check passed every row that was not chat. So the C# engine's pack rule
@@ -111,8 +113,8 @@ public static class EngineChoice
     /// THE ROW SAYS WHAT THE MODEL CAN DO; THIS SAYS WHAT THE ENGINE CAN DO WITH IT. The Bonsai 2
     /// cards give the brains tool calls, thinking and a 262K context, and their rows say so - but
     /// the C# engine's tool calls are the template's XML form, which the app's tool reader does not
-    /// read yet, and its vision tower is not built, so a request needing either must not be routed
-    /// to it. <see cref="Managed.ManagedChatGenerator.Delivers"/> is the engine's own list; when it
+    /// read yet, and a brain sees only with its tower beside it, which nothing fetches yet, so a
+    /// request needing either must not be routed to it. <see cref="Managed.ManagedChatGenerator.Delivers"/> is the engine's own list; when it
     /// grows, the rows are already right.
     /// </remarks>
     public static ChatCapability Delivers(ModelEntry entry, ChatCapability declared)

@@ -3,7 +3,9 @@
 // The qwen35 architecture - the whole Bonsai 2 fleet - run one token at a time in C#, the way
 // the pinned fork's graph runs it (src/models/qwen35.cpp, delta-net-base.cpp, ggml-cpu ops):
 //
-//   x = the token's embedding row, turned back from the table's rotation
+//   x = the token's embedding row, turned back from the table's rotation - or, for an image token,
+//       the vision tower's output as it comes (ForwardImageToken), placed by its row and column
+//       through the h and w sections of the interleaved multi-section RoPE
 //   each layer:  h = rms(x) * attn_norm
 //                three of every four - Gated DeltaNet: qkv and z from h, beta and alpha from h
 //                  unturned; a causal conv over 4 steps then silu; q and k L2-normalised per
@@ -53,6 +55,7 @@ public sealed class Qwen35Model
     private readonly float[] _qg, _q, _k, _v, _gate, _attn, _cos, _sin;
     private readonly float[] _mixOut, _ffnGate, _ffnUp, _ffnOut;
     private readonly sbyte[] _weights = new sbyte[Ptq1.BlockWeights]; // one decoded embedding block (both packings hold 128)
+    private readonly int[] _ropeSection; // per rotary pair: which of t, h, w turns it
 
     // The value heads of a DeltaNet layer, shared out to the pool's threads; each thread has its
     // own delta buffer.
@@ -98,6 +101,8 @@ public sealed class Qwen35Model
         _attn = new float[c.Heads * c.HeadDim];
         _cos = new float[c.RopeDims / 2];
         _sin = new float[c.RopeDims / 2];
+        _ropeSection = new int[c.RopeDims / 2];
+        for (var pair = 0; pair < _ropeSection.Length; pair++) _ropeSection[pair] = c.RopeSection(pair);
         _mixOut = new float[c.Embedding];
         _ffnGate = new float[c.FeedForward];
         _ffnUp = new float[c.FeedForward];
@@ -197,7 +202,10 @@ public sealed class Qwen35Model
         m.Q.MatVec(m.Narrow, m.Qg, _pool);
         m.K.MatVec(m.Narrow, _k, _pool);
         m.V.MatVec(m.Narrow, _v, _pool);
-        QueriesAndKeys(m.Qg, m.QNorm, m.KNorm, position);
+        // The head drafts text: its rotary position is the cell's (a conversation with a picture in it
+        // places text further on - the head's drafts there may miss, and the trunk decides).
+        RopeAngles(position, position, position);
+        QueriesAndKeys(m.Qg, m.QNorm, m.KNorm);
         AttendFp16(mtp.Keys, mtp.Values, position);
         m.Heads.Quantize(_attn);
         m.Output.MatVec(m.Heads, m.Out, _pool);
@@ -253,12 +261,52 @@ public sealed class Qwen35Model
         ArgumentNullException.ThrowIfNull(state);
         var c = Config;
         if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(token), token, $"The vocabulary holds {c.Vocabulary}.");
-        if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
-        if (logits.Length != 0 && logits.Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
+        Check(state, logits);
         if (nextn.Length != 0 && nextn.Length != c.Embedding) throw new ArgumentException($"The hidden state takes {c.Embedding} values.", nameof(nextn));
 
         var started = Stopwatch.GetTimestamp();
         Embed(token, _x);
+        var p = state.RopePosition;
+        Step(state, p, p, p, logits, nextn, started);
+        state.RopePosition = p + 1;
+    }
+
+    /// <summary>
+    /// Runs token <paramref name="index"/> of an image - its tokens row by row over a grid of
+    /// <paramref name="columns"/> x <paramref name="rows"/>, each <paramref name="embedding"/> taken
+    /// as the input in place of a token's row - at the state's next position, placed as the fork
+    /// places image tokens (mtmd_image_tokens_get_decoder_pos): from p, where the image starts,
+    /// (t, h, w) = (p, p + row, p + column). After its last token the next text sits at
+    /// p + max(columns, rows). Logits as <see cref="Forward(int, Qwen35State, Span{float}, Span{float})"/>.
+    /// </summary>
+    public void ForwardImageToken(ReadOnlySpan<float> embedding, int index, int columns, int rows, Qwen35State state, Span<float> logits = default)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var c = Config;
+        if (embedding.Length != c.Embedding) throw new ArgumentException($"An image token is {c.Embedding} values, not {embedding.Length}.", nameof(embedding));
+        if (columns <= 0 || rows <= 0) throw new ArgumentOutOfRangeException(nameof(columns), $"A grid of {columns}x{rows} holds no tokens.");
+        if ((uint)index >= (uint)(columns * rows)) throw new ArgumentOutOfRangeException(nameof(index), index, $"The image holds {columns * rows} tokens.");
+        Check(state, logits);
+
+        var started = Stopwatch.GetTimestamp();
+        embedding.CopyTo(_x); // the primal basis already: the Hadamard turn belongs to the token table alone
+        var p = state.RopePosition; // where the image starts, until its last token has run
+        Step(state, p, p + index / columns, p + index % columns, logits, default, started);
+        if (index == columns * rows - 1) state.RopePosition = p + Math.Max(columns, rows);
+    }
+
+    private void Check(Qwen35State state, Span<float> logits)
+    {
+        if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
+        if (logits.Length != 0 && logits.Length != Config.Vocabulary) throw new ArgumentException($"Logits take {Config.Vocabulary} values.", nameof(logits));
+    }
+
+    // One position through every layer, its input in _x and its rotary position (t, h, w); then the
+    // head when logits (or the MTP head's input, h_nextn) are wanted.
+    private void Step(Qwen35State state, int t, int h, int w, Span<float> logits, Span<float> nextn, long started)
+    {
+        var c = Config;
+        RopeAngles(t, h, w);
         for (var il = 0; il < c.Layers; il++)
         {
             var layer = _layers[il];
@@ -311,6 +359,7 @@ public sealed class Qwen35Model
         var b = Batch(n);
         for (var i = 0; i < n; i++) Embed(tokens[i], b.X[i]);
         var position = state.Position;
+        var rope = state.RopePosition; // text: each token one further, as Forward places it
         for (var il = 0; il < c.Layers; il++)
         {
             var layer = _layers[il];
@@ -336,6 +385,7 @@ public sealed class Qwen35Model
                     b.Qg[i].CopyTo(_qg, 0);
                     b.K[i].CopyTo(_k, 0);
                     b.V[i].CopyTo(_v, 0);
+                    RopeAngles(rope + i, rope + i, rope + i);
                     AttentionCore(il, layer, state, position + i);
                     _attn.CopyTo(b.Attn[i], 0);
                 }
@@ -357,6 +407,7 @@ public sealed class Qwen35Model
             for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
         }
         state.Position += n;
+        state.RopePosition = rope + n;
 
         var head = Stopwatch.GetTimestamp();
         var heads = 0;
@@ -621,7 +672,7 @@ public sealed class Qwen35Model
         var c = Config;
         var hd = c.HeadDim;
         var started = Stopwatch.GetTimestamp();
-        QueriesAndKeys(_qg, layer.QNorm!, layer.KNorm!, position);
+        QueriesAndKeys(_qg, layer.QNorm!, layer.KNorm!);
 
         var count = position + 1;
         var scores = Scores(count);
@@ -649,8 +700,10 @@ public sealed class Qwen35Model
     }
 
     // attn_q gives each head [q | gate]: q into _q and the gate into _gate; q and k (in _k) are
-    // RMS-normalised per head; RoPE turns both at the position.
-    private void QueriesAndKeys(float[] qg, float[] qNorm, float[] kNorm, int position)
+    // RMS-normalised per head; RoPE turns both by the angles RopeAngles last set - the caller sets
+    // them for this token's rotary position (Step once per token, ForwardBatch and the MTP head per
+    // token), which an image's tokens make differ from the cell the keys go in.
+    private void QueriesAndKeys(float[] qg, float[] qNorm, float[] kNorm)
     {
         var c = Config;
         var hd = c.HeadDim;
@@ -667,7 +720,6 @@ public sealed class Qwen35Model
             RmsNorm(k, kNorm, k, c.RmsEps);
         }
 
-        RopeAngles(position);
         for (var h = 0; h < c.Heads; h++) Rope(_q.AsSpan(h * hd, hd));
         for (var g = 0; g < c.KvHeads; g++) Rope(_k.AsSpan(g * hd, hd));
     }
@@ -786,16 +838,22 @@ public sealed class Qwen35Model
         for (var t = 0; t < scores.Length; t++) scores[t] /= sum;
     }
 
-    // ggml's rope cache: theta starts at the position and is multiplied by base^(-2/dims) per pair.
-    private void RopeAngles(int position)
+    // ggml's IMROPE cache (ggml_mrope_cache_init, is_imrope): each component's angle starts at its
+    // position and is multiplied by base^(-2/dims) pair by pair; each pair takes the angle of the
+    // component its section names. For text t = h = w, so every pair's angle is the one rotate-half
+    // RoPE gives - the same multiplications in the same order.
+    private void RopeAngles(int t, int h, int w)
     {
-        var theta = (float)position;
+        float byT = t, byH = h, byW = w;
         var thetaScale = MathF.Pow(Config.RopeBase, -2.0f / Config.RopeDims);
         for (var i = 0; i < _cos.Length; i++)
         {
+            var theta = _ropeSection[i] switch { 1 => byH, 2 => byW, _ => byT };
             _cos[i] = MathF.Cos(theta);
             _sin[i] = MathF.Sin(theta);
-            theta *= thetaScale;
+            byT *= thetaScale;
+            byH *= thetaScale;
+            byW *= thetaScale;
         }
     }
 

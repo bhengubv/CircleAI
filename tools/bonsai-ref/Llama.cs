@@ -103,6 +103,7 @@ internal static unsafe class Llama
     [DllImport(Lib)] public static extern void llama_free(nint ctx);
     [DllImport(Lib)] public static extern nint llama_model_get_vocab(nint model);
     [DllImport(Lib)] public static extern int llama_vocab_n_tokens(nint vocab);
+    [DllImport(Lib)] public static extern int llama_model_n_embd(nint model);
     [DllImport(Lib)] public static extern byte llama_vocab_is_eog(nint vocab, int token);
     [DllImport(Lib)] public static extern int llama_model_meta_count(nint model);
     [DllImport(Lib)] public static extern int llama_model_meta_key_by_index(nint model, int i, byte* buf, nuint size);

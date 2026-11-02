@@ -5,6 +5,12 @@
 // compressed mode - and each DeltaNet layer's last conv-kernel-minus-one inputs and its fp32 state
 // (one 128x128 matrix per value head, stored transposed as the fork stores it: row j of a head is
 // column j of its state).
+//
+// TWO POSITIONS. Position counts what the state holds - one cell per token, an image's tokens
+// included - and is where the next token's keys and values go. RopePosition is where the next
+// text token sits in the rotary embedding: the same as Position for text, but an image of rows x
+// columns tokens fills that many cells and moves it by only max(rows, columns), as the fork places
+// images (mtmd_image_tokens_get_n_pos). Both are kept, marked, primed and written together.
 
 using CircleAI.Core;
 using CircleAI.Core.Compression;
@@ -75,8 +81,14 @@ public sealed class Qwen35State
     /// <summary>Tokens this state can hold.</summary>
     public int Capacity { get; }
 
-    /// <summary>Tokens consumed so far: the position the next token takes.</summary>
+    /// <summary>Tokens consumed so far, an image's included: the cell the next token takes.</summary>
     public int Position { get; internal set; }
+
+    /// <summary>
+    /// Where the next text token sits in the rotary embedding: <see cref="Position"/> until an image
+    /// is read, which moves it by the larger side of its token grid rather than by its token count.
+    /// </summary>
+    public int RopePosition { get; internal set; }
 
     /// <summary>How the attention layers hold their keys and values.</summary>
     public KvCompressionMode KvMode { get; }
@@ -100,12 +112,14 @@ public sealed class Qwen35State
     // copy - what they hold before that position is not written again until a reset, which
     // forgets the mark.
     private int _markedPosition = -1;
+    private int _markedRope;
     private float[][]? _markedConv;
     private float[][]? _markedSsm;
 
     // And a second point: where the system turn ends - the primed start every conversation with
     // the same system turn can begin from (S3).
     private int _primedPosition = -1;
+    private int _primedRope;
     private float[][]? _primedConv;
     private float[][]? _primedSsm;
 
@@ -119,6 +133,7 @@ public sealed class Qwen35State
     internal void Reset()
     {
         Position = 0;
+        RopePosition = 0;
         _markedPosition = -1;
         _primedPosition = -1;
         _checkpointPosition = -1;
@@ -134,6 +149,7 @@ public sealed class Qwen35State
         CopyInto(Conv, _primedConv);
         CopyInto(Ssm, _primedSsm);
         _primedPosition = Position;
+        _primedRope = RopePosition;
     }
 
     /// <summary>
@@ -146,6 +162,7 @@ public sealed class Qwen35State
         CopyInto(_primedConv!, Conv);
         CopyInto(_primedSsm!, Ssm);
         Position = _primedPosition;
+        RopePosition = _primedRope;
         if (_markedPosition > _primedPosition) _markedPosition = -1;
     }
 
@@ -157,6 +174,7 @@ public sealed class Qwen35State
         CopyInto(Conv, _markedConv);
         CopyInto(Ssm, _markedSsm);
         _markedPosition = Position;
+        _markedRope = RopePosition;
     }
 
     /// <summary>Goes back to the point <see cref="Mark"/> remembered.</summary>
@@ -166,6 +184,7 @@ public sealed class Qwen35State
         CopyInto(_markedConv!, Conv);
         CopyInto(_markedSsm!, Ssm);
         Position = _markedPosition;
+        RopePosition = _markedRope;
         if (_primedPosition > _markedPosition) _primedPosition = -1;
     }
 
@@ -173,10 +192,11 @@ public sealed class Qwen35State
     // back out of the recurrent layers (S5). Its own copy, apart from the turn's mark and the primed
     // start, which a conversation is still using while it speculates.
     private int _checkpointPosition = -1;
+    private int _checkpointRope;
     private float[][]? _checkpointConv;
     private float[][]? _checkpointSsm;
 
-    /// <summary>Remembers this point for <see cref="RestoreCheckpoint"/>: the recurrent layers and the position.</summary>
+    /// <summary>Remembers this point for <see cref="RestoreCheckpoint"/>: the recurrent layers and both positions.</summary>
     internal void Checkpoint()
     {
         _checkpointConv ??= Allocate(Conv);
@@ -184,6 +204,7 @@ public sealed class Qwen35State
         CopyInto(Conv, _checkpointConv);
         CopyInto(Ssm, _checkpointSsm);
         _checkpointPosition = Position;
+        _checkpointRope = RopePosition;
     }
 
     /// <summary>
@@ -196,6 +217,7 @@ public sealed class Qwen35State
         CopyInto(_checkpointConv!, Conv);
         CopyInto(_checkpointSsm!, Ssm);
         Position = _checkpointPosition;
+        RopePosition = _checkpointRope;
         if (_markedPosition > Position) _markedPosition = -1;
         if (_primedPosition > Position) _primedPosition = -1;
     }
@@ -217,6 +239,7 @@ public sealed class Qwen35State
 
     private const ulong Magic = 0x3154_5335_4E45_5751;      // "QWEN5ST1", little-endian: fp16 keys and values
     private const ulong MagicModes = 0x3254_5335_4E45_5751; // "QWEN5ST2": the working memory's mode after the shape
+    private const ulong MagicRope = 0x3354_5335_4E45_5751;  // "QWEN5ST3": the rotary position after the position
 
     /// <summary>
     /// Writes this state: its shape (so it is never read into another model), how it holds its
@@ -229,14 +252,16 @@ public sealed class Qwen35State
         if (!BitConverter.IsLittleEndian) throw new PlatformNotSupportedException("Sessions are written little-endian.");
         if (atMark && _markedPosition < 0) throw new InvalidOperationException("Nothing is marked.");
         var position = atMark ? _markedPosition : Position;
+        var rope = atMark ? _markedRope : RopePosition;
         var conv = atMark ? _markedConv! : Conv;
         var ssm = atMark ? _markedSsm! : Ssm;
 
-        writer.Write(MagicModes);
+        writer.Write(MagicRope);
         foreach (var n in Shape(config, Capacity)) writer.Write(n);
         writer.Write((int)KvMode);
         writer.Write((int)KeyForm);
         writer.Write(position);
+        writer.Write(rope);
         var kvWidth = config.KvHeads * config.HeadDim;
         for (var layer = 0; layer < config.Layers; layer++)
         {
@@ -259,13 +284,14 @@ public sealed class Qwen35State
 
     /// <summary>
     /// A state written by <see cref="Write"/> for a model of this shape, in the mode it was written
-    /// in (a session from before the modes holds fp16); anything else is refused.
+    /// in (a session from before the modes holds fp16; one from before images has its rotary
+    /// position at its position); anything else is refused.
     /// </summary>
     internal static Qwen35State Read(BinaryReader reader, Qwen35Config config)
     {
         if (!BitConverter.IsLittleEndian) throw new PlatformNotSupportedException("Sessions are read little-endian.");
         var magic = reader.ReadUInt64();
-        if (magic != Magic && magic != MagicModes) throw new InvalidDataException("This is not a qwen35 session.");
+        if (magic != Magic && magic != MagicModes && magic != MagicRope) throw new InvalidDataException("This is not a qwen35 session.");
         var shape = Shape(config, 0);
         var stored = new int[shape.Length];
         for (var i = 0; i < stored.Length; i++) stored[i] = reader.ReadInt32();
@@ -274,7 +300,7 @@ public sealed class Qwen35State
         var capacity = stored[^1];
         var mode = KvCompressionMode.Off;
         var form = TurboQuantForm.Mse;
-        if (magic == MagicModes)
+        if (magic != Magic)
         {
             mode = (KvCompressionMode)reader.ReadInt32();
             form = (TurboQuantForm)reader.ReadInt32();
@@ -283,7 +309,10 @@ public sealed class Qwen35State
         var state = new Qwen35State(config, capacity, mode, form);
         var position = reader.ReadInt32();
         if (position < 0 || position > capacity) throw new InvalidDataException($"The session's position {position} is outside its {capacity} tokens.");
+        var rope = magic == MagicRope ? reader.ReadInt32() : position;
+        if (rope < 0 || rope > position) throw new InvalidDataException($"The session's rotary position {rope} is outside its {position} tokens.");
         state.Position = position;
+        state.RopePosition = rope;
 
         var kvWidth = config.KvHeads * config.HeadDim;
         for (var layer = 0; layer < config.Layers; layer++)
