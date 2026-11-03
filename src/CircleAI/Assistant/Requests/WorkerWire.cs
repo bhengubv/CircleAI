@@ -42,7 +42,10 @@ public static class WorkerWire
                         Engine = "engine", Effort = "effort", Think = "think", Plain = "plain", Tools = "tools",
                         // THE BALANCE'S SHAPE FOR A LOAD (Step 4): the working memory's bits and the
                         // share of the context. Absent means the brain as built.
-                        KvMode = "kv", ContextShare = "ctxshare";
+                        KvMode = "kv", ContextShare = "ctxshare",
+                        // THE WORKER'S OWN ACCOUNT OF A TURN (OPEN-GAPS E33): the brain answering it, the
+                        // process's CPU time, and how far past its deadline the job in flight is.
+                        Working = "working", WorkingSlot = "slot", CpuMs = "cpu", OverdueMs = "overdue";
 
     /// <summary>The largest image a message may carry between the two processes.</summary>
     public const int MaxImageBytes = 16 * 1024 * 1024;
@@ -208,6 +211,22 @@ public static class WorkerWire
             retry >= 0 ? TimeSpan.FromSeconds(retry) : null,
             pid > 0 ? pid : null, now);
     }
+
+    // ── the brain answering ──────────────────────────────────────────────────
+
+    /// <summary>Write the brain answering the job in flight; nothing when it is not known yet.</summary>
+    public static void PutAnswering(IDictionary<string, string> map, AnsweringBrain? brain)
+    {
+        if (brain is null) return;
+        map[Working] = brain.ModelId;
+        map[WorkingSlot] = brain.Slot;
+    }
+
+    /// <summary>The brain answering the job in flight, or null when the map names none.</summary>
+    public static AnsweringBrain? GetAnswering(IReadOnlyDictionary<string, string> map) =>
+        map.TryGetValue(Working, out var model) && !string.IsNullOrWhiteSpace(model)
+            ? new AnsweringBrain(model, map.TryGetValue(WorkingSlot, out var slot) && !string.IsNullOrWhiteSpace(slot) ? slot : AnsweringBrain.Main)
+            : null;
 
     // ── scalars ──────────────────────────────────────────────────────────────
 

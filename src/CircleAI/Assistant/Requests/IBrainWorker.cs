@@ -73,6 +73,26 @@ public sealed record BrainJob(
 /// <param name="Timing">Measured timing, on the final piece.</param>
 public sealed record BrainChunk(string Text, bool Final = false, TurnTiming? Timing = null);
 
+/// <summary>
+/// The brain answering a turn: the main brain, or a specialist a router brought in beside it.
+/// </summary>
+/// <remarks>
+/// THE MAIN SLOT IS NOT ALWAYS THE ONE WORKING (OPEN-GAPS E33). On the P30 on 2026-11-02 a picture
+/// went to the C# 2B and its tower, and when the watchdog ended them the health event, the death line
+/// and the strike rules all named Qwen3.5-0.8B-MNN - the brain in the main slot, idle. A host that
+/// watches a turn from another process sets a death, a failure and a speed against this brain.
+/// </remarks>
+/// <param name="ModelId">The model.</param>
+/// <param name="Slot">Where it answers from: <see cref="Main"/>, or the specialist's ("Vision specialist").</param>
+public sealed record AnsweringBrain(string ModelId, string Slot)
+{
+    /// <summary>The main brain's slot.</summary>
+    public const string Main = "main";
+
+    /// <summary>The model and its slot, as a log line names them: "Ternary-Bonsai-2-2B (Vision specialist)".</summary>
+    public override string ToString() => $"{ModelId} ({Slot})";
+}
+
 /// <summary>A worker that could not do what it was asked, with the classified reason.</summary>
 public sealed class BrainWorkerException : Exception
 {

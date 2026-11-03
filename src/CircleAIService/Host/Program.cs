@@ -231,6 +231,7 @@ public static class Program
             // THE SAME REQUEST PATH AS THE PHONE: durable questions, one worker, readiness.
             var readiness = new CircleAI.Assistant.Lifecycle.ReadinessTracker(Path.Combine(data, "readiness.json"));
             Action<CircleAI.Assistant.Lifecycle.LoadStep>? reportStep = null; // the brain's, once it exists
+            Action<CircleAI.Assistant.Requests.AnsweringBrain>? reportAnswering = null;
             await using var brain = new InProcessBrainWorker(async ct =>
             {
                 // IT WAITS FOR THE CHOICE RATHER THAN DENYING ONE. A question can now
@@ -248,10 +249,12 @@ public static class Program
                 // reach.
                 options.ModelId = pick;
                 options.LoadStepChanged = step => reportStep?.Invoke(step);
+                options.Answering = answering => reportAnswering?.Invoke(answering);
                 await service.StartAsync(ct).ConfigureAwait(false);
                 return new InProcessBrain(service, pick!);
             }, log: say);
             reportStep = brain.ReportStep; // "Warming" while the first prefill runs (OPEN-GAPS A14)
+            reportAnswering = brain.ReportAnswering; // and which brain answers a turn, a specialist included (OPEN-GAPS E33)
 
             // A MODEL THAT LOADED HERE IS PROVEN HERE - the only kind housekeeping lets
             // replace another (rule 5), so without this line nothing is ever reclaimed.

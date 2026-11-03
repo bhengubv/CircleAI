@@ -1375,6 +1375,13 @@ public sealed class AIService : IAIService
         catch (Exception ex) { _logger.LogDebug(ex, "LoadStepChanged threw; the start goes on."); }
     }
 
+    // Tells the host which brain answers the turn (OPEN-GAPS E33); a host's handler never stops a turn.
+    private void TellAnswering(CircleAI.Assistant.Requests.AnsweringBrain brain)
+    {
+        try { _options.Answering?.Invoke(brain); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Answering threw; the turn goes on."); }
+    }
+
     // internal, not private: the seam test builds through it directly.
     internal IChatGenerator BuildByEngine(
         string? modelId, string modelPath, int contextSize, ChatCapability capability)
@@ -1416,7 +1423,23 @@ public sealed class AIService : IAIService
     /// itself, gate denial, or a build failure — degrades to the generalist and
     /// never throws.
     /// </summary>
+    /// <remarks>
+    /// AND IT SAYS WHICH BRAIN ANSWERS (<see cref="AIOptions.Answering"/>, OPEN-GAPS E33): a
+    /// specialist as it is brought in, before its load - a second brain loading beside the first is
+    /// where a phone runs out of memory - and the main brain whenever it is the one answering, so a
+    /// specialist that was denied is not left named.
+    /// </remarks>
     private async Task<IChatGenerator> SelectSlotAsync(
+        string userQuery, bool hasImage, CancellationToken ct)
+    {
+        var generator = await ChooseSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
+        if (!(_slots is { } slots && ReferenceEquals(generator, slots.ResidentSpecialist)) && _resolvedModelId is { } main)
+            TellAnswering(new CircleAI.Assistant.Requests.AnsweringBrain(main, CircleAI.Assistant.Requests.AnsweringBrain.Main));
+        return generator;
+    }
+
+    // The choice itself; SelectSlotAsync says which brain it came to.
+    private async Task<IChatGenerator> ChooseSlotAsync(
         string userQuery, bool hasImage, CancellationToken ct)
     {
         var generalist = _generator
@@ -1463,6 +1486,7 @@ public sealed class AIService : IAIService
             }
 
             _slots ??= new Neuron.ResidentSlotManager(_generalistReservedBytes, ProbeDevice);
+            TellAnswering(new CircleAI.Assistant.Requests.AnsweringBrain(selection.ModelId, $"{decision.Capability} specialist"));
             // THE CAPABILITY WAS KNOWN HERE AND THROWN AWAY ONE LINE LATER. The
             // slot manager's callback takes only an id, so passing the method
             // group dropped decision.Capability at exactly the point that

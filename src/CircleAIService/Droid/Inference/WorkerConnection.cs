@@ -31,6 +31,7 @@ public sealed class WorkerConnection : IAsyncDisposable
     private WorkPhase _phase = WorkPhase.None;
     private string? _model;
     private string? _ask;
+    private AnsweringBrain? _working;
     private bool _disposed;
 
     /// <summary>A connection over this app's context.</summary>
@@ -45,6 +46,12 @@ public sealed class WorkerConnection : IAsyncDisposable
 
     /// <summary>Whether a live binder is held.</summary>
     public bool IsConnected { get { lock (_gate) return _binder is { } b && b.IsBinderAlive; } }
+
+    /// <summary>
+    /// The brain answering the latest ask, as the worker said once its slot was chosen - the main
+    /// brain, or a specialist beside it (OPEN-GAPS E33); null until it said.
+    /// </summary>
+    public AnsweringBrain? Working { get { lock (_gate) return _working; } }
 
     /// <summary>The worker process died.</summary>
     public event EventHandler<WorkerDeath>? Died;
@@ -135,7 +142,7 @@ public sealed class WorkerConnection : IAsyncDisposable
     /// <summary>Write one answer, piece by piece.</summary>
     public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)
     {
-        lock (_gate) { _phase = WorkPhase.Prefill; _ask = job.AskId; }
+        lock (_gate) { _phase = WorkPhase.Prefill; _ask = job.AskId; _working = null; }
         var start = new Dictionary<string, string>
         {
             [WorkerWire.Op] = WorkerWire.OpGenerate,
@@ -191,6 +198,7 @@ public sealed class WorkerConnection : IAsyncDisposable
                     [WorkerWire.Since] = WorkerWire.I(since),
                     [WorkerWire.WaitMs] = "250",
                 }, since == 0 ? WorkPhase.Prefill : WorkPhase.Decode, CancellationToken.None).ConfigureAwait(false);
+                if (WorkerWire.GetAnswering(poll) is { } working) lock (_gate) _working = working;
                 Check(poll, WorkPhase.Decode);
 
                 poll.TryGetValue(WorkerWire.Text, out var text);
@@ -236,7 +244,11 @@ public sealed class WorkerConnection : IAsyncDisposable
         return new WorkerHeartbeat(
             WorkerWire.Int(map, WorkerWire.Pid), WorkerWire.Long(map, WorkerWire.RssKb),
             WorkerWire.Long(map, WorkerWire.MemAvailKb), WorkerWire.Long(map, WorkerWire.MemTotalKb),
-            WorkerWire.Int(map, WorkerWire.Trim), status.Phase, status.ModelId, DateTimeOffset.UtcNow);
+            WorkerWire.Int(map, WorkerWire.Trim), status.Phase, status.ModelId, DateTimeOffset.UtcNow,
+            CpuMs: WorkerWire.Long(map, WorkerWire.CpuMs, -1),
+            Job: map.TryGetValue(WorkerWire.Job, out var job) && job.Length > 0 ? job : null,
+            OverdueMs: WorkerWire.Long(map, WorkerWire.OverdueMs),
+            Working: WorkerWire.GetAnswering(map));
     }
 
     /// <summary>End the worker process (it is ours; the same uid may kill it).</summary>
@@ -320,10 +332,12 @@ public sealed class WorkerConnection : IAsyncDisposable
         }
     }, ct);
 
+    // What the worker was doing as it died - and, inside an ask, which brain was answering it.
     private WorkerDeath Death(WorkPhase fallback)
     {
         lock (_gate)
-            return new WorkerDeath(_pid, _phase == WorkPhase.None ? fallback : _phase, _model, _ask, DateTimeOffset.UtcNow);
+            return new WorkerDeath(_pid, _phase == WorkPhase.None ? fallback : _phase, _model, _ask, DateTimeOffset.UtcNow,
+                                   _ask is null ? null : _working);
     }
 
     private void OnConnected(IBinder binder)
@@ -343,7 +357,7 @@ public sealed class WorkerConnection : IAsyncDisposable
             // ONCE PER DEATH. The binder's death notice and the connection's
             // disconnect both arrive for the same event.
             if (_binder is null) return;
-            death = new WorkerDeath(_pid, _phase, _model, _ask, DateTimeOffset.UtcNow);
+            death = new WorkerDeath(_pid, _phase, _model, _ask, DateTimeOffset.UtcNow, _ask is null ? null : _working);
             _binder = null;
             _phase = WorkPhase.None;
         }

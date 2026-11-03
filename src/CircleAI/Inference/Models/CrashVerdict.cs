@@ -122,8 +122,17 @@ public static class CrashVerdict
     /// keeps the ones that could never fit off the phone before any of this runs.
     /// </para>
     /// </param>
+    /// <param name="doing">
+    /// What the model was doing when it stopped, for the words. A load's breadcrumb is "loading"; the
+    /// supervisor names a turn and its slot - "reading its turn as the Vision specialist" - because
+    /// on the P30 on 2026-11-02 a turn's death was said as the main brain's load (OPEN-GAPS E33).
+    /// </param>
+    /// <param name="why">
+    /// How the death was classified, when the caller knows it - said in place of "the system stopped
+    /// this service", which a watchdog's own kill is not.
+    /// </param>
     public static string? Record(IModelCatalog? catalog, string? crumb, Action<string>? say = null,
-                                 bool killedByTheSystem = false)
+                                 bool killedByTheSystem = false, string doing = "loading", string? why = null)
     {
         try
         {
@@ -134,7 +143,9 @@ public static class CrashVerdict
             // process died, a memory kill is the phone's, not the model's.
             if (killedByTheSystem)
             {
-                say?.Invoke($"the system stopped this service while {model} was loading; not held against the model");
+                say?.Invoke(why is null
+                    ? $"the system stopped this service while {model} was {doing}; not held against the model"
+                    : $"{model} stopped while {doing} ({why}); not held against the model");
                 return null;
             }
 
@@ -143,18 +154,18 @@ public static class CrashVerdict
             {
                 // NOT CATALOGUED: there is no row to hold a verdict, and nothing that
                 // selects from the catalogue can pick it again. "0 of 2" would be a lie.
-                say?.Invoke($"{model} stopped while loading, and it is not in this phone's catalogue");
+                say?.Invoke($"{model} stopped while {doing}, and it is not in this phone's catalogue");
                 return null;
             }
 
             if (strikes < StrikesToRefuse)
             {
-                say?.Invoke($"{model} stopped while loading ({strikes} of {StrikesToRefuse}); trying it again before refusing it");
+                say?.Invoke($"{model} stopped while {doing} ({strikes} of {StrikesToRefuse}); trying it again before refusing it");
                 return null;
             }
 
             catalog.Refuse(model, Reason);
-            say?.Invoke($"{model} stopped this phone {strikes} times in a row while loading; not using it again");
+            say?.Invoke($"{model} stopped this phone {strikes} times in a row while {doing}; not using it again");
             return model;
         }
         catch (Exception ex)

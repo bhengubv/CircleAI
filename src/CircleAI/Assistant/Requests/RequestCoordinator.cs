@@ -829,8 +829,16 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
     private IReadOnlyList<ChatMessage> Conversation(AskRecord ask)
     {
+        // AND THE PICTURE THE QUESTION IS ABOUT, when one came with it (Step 4): kept on disk beside
+        // the ask, so a question re-queued after a crash still has its picture.
+        var image = ImageOf(ask);
+
+        // A PICTURE TURN CARRIES NO HISTORY (OPEN-GAPS E33). The picture is what it is about, and the
+        // brain that sees reads every token before it writes one: on the P30 on 2026-11-02 the C# 2B
+        // read the picture turn - persona, the session's history and the question - at about two
+        // tokens a second, and that phone allows the history 1,200 characters.
         var messages = new List<ChatMessage>();
-        if (!string.IsNullOrEmpty(ask.SessionId))
+        if (image is null && !string.IsNullOrEmpty(ask.SessionId))
         {
             if (_conversations is not null)
             {
@@ -860,9 +868,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             }
         }
 
-        // AND THE PICTURE THE QUESTION IS ABOUT, when one came with it (Step 4): kept on disk beside
-        // the ask, so a question re-queued after a crash still has its picture.
-        messages.Add(new ChatMessage("user", ask.Message) { ImageBytes = ImageOf(ask) });
+        messages.Add(new ChatMessage("user", ask.Message) { ImageBytes = image });
         return messages;
     }
 

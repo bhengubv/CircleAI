@@ -130,23 +130,47 @@ public sealed class InferenceSupervisor : IBrainWorker
         var model = Status.ModelId;
 
         // THE WATCHDOG: no progress for 90 s means a hung native call, not a slow
-        // phone (a P30 prefill of a long prompt is ~30 s). It ends the worker, and the
-        // death that follows is classified as ours, not the model's or Android's.
+        // phone. It ends the worker, and the death that follows is classified as ours,
+        // not the model's or Android's.
+        //
+        // PROGRESS IS A PIECE OF THE ANSWER, OR THE WORKER SPENDING THE PROCESSOR ON IT
+        // (OPEN-GAPS E33). "No output for 90 s" ended the C# 2B and its tower twice on the
+        // P30 on 2026-11-02 while they read a picture turn at about two tokens a second, and
+        // Wolverine, told the turn had timed out, shortened every brain's context for seven
+        // hours. A hung call spends no CPU; the worker's heartbeat carries its own CPU time.
+        // A call that spins and never writes is ended by its ceiling instead: a minute past
+        // its ask's own deadline, by the heartbeat (StartHeartbeat).
         using var watch = new CancellationTokenSource();
-        var lastProgress = DateTimeOffset.UtcNow;
+        var progress = new ProgressWatch(DateTimeOffset.UtcNow, NoProgress);
         _ = Task.Run(async () =>
         {
+            var waiting = false;
             try
             {
                 while (!watch.IsCancellationRequested)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(10), watch.Token).ConfigureAwait(false);
-                    if (DateTimeOffset.UtcNow - lastProgress > NoProgress)
+                    WorkerHeartbeat? beat;
+                    lock (_gate) beat = _heartbeat;
+                    if (beat is { CpuMs: >= 0 }) progress.Worked(beat.Pid, beat.CpuMs, beat.At);
+
+                    var now = DateTimeOffset.UtcNow;
+                    if (progress.Stalled(now))
                     {
-                        _log($"no progress on ask {job.AskId} for {NoProgress.TotalSeconds:0} s; ending the worker");
+                        _log($"no progress on ask {job.AskId} for {NoProgress.TotalSeconds:0} s: nothing written, "
+                             + $"and the inference process spent no time on it{On(_connection.Working)}; ending the worker");
                         lock (_gate) _killedByUs = true;
                         _connection.Kill();
                         return;
+                    }
+
+                    // SAID ONCE, where the old rule ended it: the phone is slow, not stuck.
+                    if (!waiting && progress.Silent(now))
+                    {
+                        waiting = true;
+                        _log($"ask {job.AskId}: nothing written for {NoProgress.TotalSeconds:0} s, and the inference process "
+                             + $"is working on it{(progress.Cores is { } cores ? $" ({cores:0.0} cores)" : string.Empty)}"
+                             + $"{On(_connection.Working)}; waiting");
                     }
                 }
             }
@@ -167,26 +191,33 @@ public sealed class InferenceSupervisor : IBrainWorker
                 catch (WorkerDiedException died)
                 {
                     var failure = await ClassifyDeathAsync(died.Death).ConfigureAwait(false);
-                    Fail(failure, model);
+                    Fail(failure, model, died.Death.Working);
                     throw new BrainWorkerException(failure, died);
                 }
                 catch (BrainWorkerException refused)
                 {
                     // THE WORKER LIVED AND SAID WHY IT COULD NOT ANSWER (S6) - an error in its own
                     // code, a prompt too long for its context. Its process's HealthEvents never reach
-                    // this one, so the failure is raised here, where Wolverine runs.
-                    RaiseHealth(refused.Failure, model, null);
+                    // this one, so the failure is raised here, where Wolverine runs - AGAINST THE BRAIN
+                    // THE WORKER NAMES (OPEN-GAPS E33): SmolVLM's -6 for a picture was raised as the
+                    // main brain's failure on the P30.
+                    var working = _connection.Working;
+                    var subject = refused.Failure.ModelId ?? working?.ModelId ?? model;
+                    RaiseHealth(refused.Failure, subject, null, working?.ModelId == subject ? working?.Slot : null);
                     throw;
                 }
 
-                lastProgress = DateTimeOffset.UtcNow;
+                progress.Wrote(DateTimeOffset.UtcNow);
                 if (chunk.Final)
                 {
-                    LearnSpeed(model, chunk.Timing);
+                    // THE BRAIN THAT ANSWERED, as the worker names it in the timing: a specialist's
+                    // speed is not the main brain's (OPEN-GAPS E33).
+                    var answered = chunk.Timing?.ModelId ?? model;
+                    LearnSpeed(answered, chunk.Timing);
 
                     // AN ANSWER IS WOLVERINE'S PROOF (S6): a knob it turned down worked, and one
                     // back at full after its window has worked at full.
-                    CircleAI.Hosting.SelfHealing.DeviceWolverine.Current?.BrainAnswered(model);
+                    CircleAI.Hosting.SelfHealing.DeviceWolverine.Current?.BrainAnswered(answered);
                 }
                 yield return chunk;
             }
@@ -571,8 +602,13 @@ public sealed class InferenceSupervisor : IBrainWorker
     /// <remarks>
     /// NOT for what is nobody's fault to heal: a cancellation, a test's own kill, a busy worker,
     /// no model yet (setup's business, raised by every question that waits on it).
+    /// <para>
+    /// <paramref name="model"/> IS THE BRAIN THAT WAS WORKING, and <paramref name="slot"/> where it
+    /// answered from when that was not the main slot (OPEN-GAPS E33): Wolverine steps down from the
+    /// event's subject.
+    /// </para>
     /// </remarks>
-    private void RaiseHealth(Failure failure, string? model, string? marker)
+    private void RaiseHealth(Failure failure, string? model, string? marker, string? slot = null)
     {
         try
         {
@@ -580,8 +616,9 @@ public sealed class InferenceSupervisor : IBrainWorker
                 return;
             var errorType = CircleAI.Hosting.SelfHealing.EngineFaults.ErrorType(failure.Kind, failure.Evidence);
             var context = DeviceContext.Read().Describe() + (marker is null ? string.Empty : " | died during: " + marker);
+            var where = slot is null or AnsweringBrain.Main ? string.Empty : $" ({slot})";
             CircleAI.Core.Logging.HealthEvents.Raise(CircleAI.Core.Logging.HealthEvents.Of(
-                CircleAI.Hosting.SelfHealing.HealingRules.EngineArea, $"{failure.Phase} {model ?? failure.ModelId}".Trim(),
+                CircleAI.Hosting.SelfHealing.HealingRules.EngineArea, $"{failure.Phase} {model ?? failure.ModelId}{where}".Trim(),
                 errorType, CircleAI.Hosting.SelfHealing.EngineFaults.Site(failure.Phase),
                 failure.Evidence + "; " + failure.Detail, context, subject: model ?? failure.ModelId));
         }
@@ -601,6 +638,23 @@ public sealed class InferenceSupervisor : IBrainWorker
         return model.Length == 0 ? null : model;
     }
 
+    /// <summary>What a brain was doing when its process ended, for the death line: the step, and the slot when not the main one.</summary>
+    private static string Doing(WorkPhase phase, AnsweringBrain? working)
+    {
+        var step = phase switch
+        {
+            WorkPhase.Startup or WorkPhase.Verify or WorkPhase.Load => "loading",
+            WorkPhase.Warm => "warming up",
+            WorkPhase.Prefill => "reading its turn",
+            WorkPhase.Decode => "answering",
+            _ => "working",
+        };
+        return working is { Slot: not AnsweringBrain.Main } w ? $"{step} as the {w.Slot}" : step;
+    }
+
+    // " on Ternary-Bonsai-2-2B (Vision specialist)" for a log line, once the worker has said; else nothing.
+    private static string On(AnsweringBrain? working) => working is null ? string.Empty : $" on {working}";
+
     /// <summary>The inference process's surviving marker, read and cleared; null when it ended every step it began.</summary>
     private string? TakeWorkerMarker()
     {
@@ -614,20 +668,30 @@ public sealed class InferenceSupervisor : IBrainWorker
         catch { return null; }
     }
 
-    private void Fail(Failure failure, string? model)
+    private void Fail(Failure failure, string? model, AnsweringBrain? working = null)
     {
-        RaiseHealth(failure, model, TakeWorkerMarker());
+        // AGAINST THE BRAIN THAT WAS WORKING (OPEN-GAPS E33). On the P30 on 2026-11-02 the C# 2B
+        // and its tower, reading a picture turn as the Vision specialist, were ended by the
+        // watchdog, and the health event and this line both named Qwen3.5-0.8B-MNN - the main
+        // brain, idle in its slot - "while ... loading". The worker says which brain answers; its
+        // marker says it too, for a death before the next poll heard. The hold-off, the retry and
+        // the status stay the main brain's: it is what the next load loads.
+        var marker = TakeWorkerMarker();
+        if (working is null && failure.Phase is WorkPhase.Prefill or WorkPhase.Decode && marker is not null
+            && ModelOfMarker(marker) is { } named && named != model)
+            working = new AnsweringBrain(named, "specialist");
+        var subject = working?.ModelId ?? model;
+        RaiseHealth(failure, subject, marker, working?.Slot);
 
         // THE VERDICT FOLLOWS THE KIND. Only a native crash while the model was
         // working is a strike; everything else is the moment or the phone, and
         // refusing the model for it would refuse the only brain this phone can run. A
         // load that stopped unexplained, or for memory, holds the next one off instead.
-        if (model is not null)
-        {
-            CrashVerdict.Record(_catalogue(), CrashVerdict.Breadcrumb(model), line => _log(line),
-                                killedByTheSystem: !failure.CountsAgainstModel);
-            if (FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);
-        }
+        if (subject is not null)
+            CrashVerdict.Record(_catalogue(), CrashVerdict.Breadcrumb(subject), line => _log(line),
+                                killedByTheSystem: !failure.CountsAgainstModel, doing: Doing(failure.Phase, working),
+                                why: $"{failure.Kind}, {failure.Evidence}");
+        if (model is not null && FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);
 
         _readiness.Failed(failure);
         var holdOff = model is not null && HeldOff(model) is { } held ? held.Remaining : TimeSpan.Zero;
@@ -659,7 +723,8 @@ public sealed class InferenceSupervisor : IBrainWorker
             _ = Task.Run(async () =>
             {
                 var failure = await ClassifyDeathAsync(death).ConfigureAwait(false);
-                RaiseHealth(failure, death.ModelId, TakeWorkerMarker());
+                var marker = TakeWorkerMarker();   // inside an ask, it names the brain answering (OPEN-GAPS E33)
+                RaiseHealth(failure, (marker is null ? null : ModelOfMarker(marker)) ?? death.ModelId, marker);
                 _readiness.Failed(failure);
                 Set(new BrainWorkerStatus(BrainPhase.Installed, LoadStep.None, death.ModelId, failure, null, null, DateTimeOffset.UtcNow));
                 Report(BrainPhase.Installed, LoadStep.None, death.ModelId, failure.Kind, ReadinessSentences.For(failure.Kind));
@@ -1179,6 +1244,20 @@ public sealed class InferenceSupervisor : IBrainWorker
                 var beat = await _connection.HeartbeatAsync(CancellationToken.None).ConfigureAwait(false);
                 if (beat is null) return;
                 lock (_gate) _heartbeat = beat;
+
+                // THE CEILING (OPEN-GAPS E33). The watchdog counts the worker's CPU time as progress,
+                // so a native call that spins and never writes is not ended there - it is ended here,
+                // a minute past its ask's own deadline, whoever is still waiting for it. The queue gave
+                // up at the deadline and a cancelled C# prefill stops at its next token, so an ask
+                // still running then is a call that will not stop.
+                if (beat.Job is not null && ProgressWatch.Overran(TimeSpan.FromMilliseconds(beat.OverdueMs)))
+                {
+                    _log($"the inference process is still on ask {beat.Job}{On(beat.Working)}, {beat.OverdueMs / 1000} s past "
+                         + "its deadline: a call that does not stop; ending the worker");
+                    lock (_gate) _killedByUs = true;
+                    _connection.Kill();
+                    return;
+                }
 
                 // THE WORKER IS BOUNDED. The same ceiling the fit rules use - total
                 // memory less 1.5 GB, or 40% of it, whichever is larger (2.37 GB on the

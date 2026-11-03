@@ -308,6 +308,28 @@ reports upstream with nothing a person said.
 | A fingerprint names the method, not its state machine, so it survives a rebuild | tested | An_async_method_is_its_own_site_not_its_state_machine |
 | Wolverine heals on the phone: a brain too big for it, loaded and killed for memory, is stepped down from for an hour and the next brain is built without it | measured | P30 Lite MAR-LX1M, 2026-11-02 (Qwen3.5-2B on MNN, fetched and pinned by broadcast; HEALTH OutOfMemory, then "smaller-brain: stepped down", read back from the log file, S9) |
 
+## Slow is not stuck
+
+The supervisor's watchdog against a slow phone, and every report naming the brain that was working
+(OPEN-GAPS E33).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| A turn that writes nothing while its process works is not ended | tested | A_turn_that_writes_nothing_while_its_process_works_is_not_stalled |
+| A turn that writes nothing while its process spends nothing is ended at 90 s, as before | tested | A_turn_that_writes_nothing_while_its_process_spends_nothing_is_stalled_at_the_limit |
+| Work that stops counts for 90 s after it, and a piece of the answer always counts | tested | Work_that_stops_counts_until_the_limit_after_it_and_a_piece_of_the_answer_always_counts |
+| A new process, a sample read twice or a time that could not be read is no evidence of work | tested | A_new_process_a_sample_seen_before_or_a_time_that_could_not_be_read_is_no_evidence |
+| A process's CPU time is read from its /proc stat line | tested | The_cpu_time_is_read_from_a_proc_stat_line |
+| A job a minute past its own deadline is ended however busy it is | tested | A_job_a_minute_past_its_deadline_is_a_call_that_will_not_stop |
+| The worker says which brain is answering across the process boundary | tested | The_worker_says_which_brain_is_answering_across_the_process_boundary |
+| The supervisor counts the worker's CPU time and ends a job past its ceiling | tested | The_supervisor_counts_the_workers_cpu_and_ends_a_job_past_its_ceiling |
+| The service names a specialist before its load, and the main brain when it answers | tested | The_service_names_the_specialist_before_its_load_and_the_main_brain_when_it_answers |
+| The worker names the brain answering in its marker, its timing and its failure | tested | The_worker_names_the_brain_answering_in_its_marker_its_timing_and_its_failure |
+| The death line says which brain was doing what, and why | tested | The_death_line_says_which_brain_was_doing_what_and_why |
+| A death, a failure and a speed are set against the brain the worker named | tested | The_supervisor_sets_a_death_a_failure_and_a_speed_against_the_brain_the_worker_named |
+| A picture turn is the picture and its question, with no history | tested | A_picture_turn_is_the_picture_and_its_question_and_the_next_text_turn_has_its_history |
+| A slow C# prefill under the watchdog on the P30 answers instead of being ended | unproven | not run on a phone since the fix (2026-11-03); on the P30 nothing the app sends reaches a C# prefill today |
+
 ## Every brain on, primed and balanced
 
 Step 4 on the device: what is fetched by default, progress an app can show, priming before Ready,

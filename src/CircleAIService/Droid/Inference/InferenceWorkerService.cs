@@ -44,6 +44,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
     private sealed class Job
     {
         public required string Id { get; init; }
+        public DateTimeOffset Deadline { get; init; }   // the ask's own; past it by a minute, the supervisor ends this process (OPEN-GAPS E33)
         public readonly System.Text.StringBuilder Text = new();
         public readonly CancellationTokenSource Cts = new();
         public readonly SemaphoreSlim News = new(0, int.MaxValue);
@@ -177,7 +178,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             {
                 previous = _brain;
                 InProcessBrainWorker? created = null;
-                created = new InProcessBrainWorker(ct => StartAsync(request, step => created?.ReportStep(step), ct),
+                created = new InProcessBrainWorker(ct => StartAsync(request, step => created?.ReportStep(step),
+                                                                    answering => created?.ReportAnswering(answering), ct),
                                                    log: line => global::Android.Util.Log.Info(Tag, line));
                 brain = _brain = created;
                 _loaded = request;
@@ -193,7 +195,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         });
     }
 
-    private static async Task<InProcessBrain> StartAsync(WorkerLoadRequest request, Action<LoadStep> step, CancellationToken ct)
+    private static async Task<InProcessBrain> StartAsync(WorkerLoadRequest request, Action<LoadStep> step,
+                                                         Action<AnsweringBrain> answering, CancellationToken ct)
     {
         var factory = OptionsFactory ?? throw new InvalidOperationException("the inference process has no options");
         var options = factory(request);
@@ -202,6 +205,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         options.KvMode = request.KvMode;              // the balance's working memory (Step 4)
         options.ContextShare = request.ContextShare;  // and its share of the context
         options.LoadStepChanged = step; // the status says "Warming" while the first prefill runs (OPEN-GAPS A14)
+        options.Answering = answering;  // and which brain answers each ask, a specialist included (OPEN-GAPS E33)
 
         var registry = new ModelRegistryService();
         var loader = new BundleModelLoader(request.ModelDirectory, registry);
@@ -219,6 +223,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
     private static IReadOnlyDictionary<string, string> Generate(IReadOnlyDictionary<string, string> req, Dictionary<string, string> res)
     {
+        var deadlineMs = WorkerWire.Long(req, WorkerWire.DeadlineMs);
+        var deadline = deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2);
         InProcessBrainWorker? brain;
         Job job;
         lock (Gate)
@@ -238,11 +244,14 @@ public sealed class InferenceWorkerService : global::Android.App.Service
                     _loaded?.ModelId, "busy", "an answer is already being written", DateTimeOffset.UtcNow));
                 return res;
             }
-            job = _job = new Job { Id = req.TryGetValue(WorkerWire.Job, out var id) && id.Length > 0 ? id : Guid.NewGuid().ToString("N") };
+            job = _job = new Job
+            {
+                Id = req.TryGetValue(WorkerWire.Job, out var id) && id.Length > 0 ? id : Guid.NewGuid().ToString("N"),
+                Deadline = deadline,
+            };
         }
 
         req.TryGetValue(WorkerWire.Retrieval, out var retrieval);
-        var deadlineMs = WorkerWire.Long(req, WorkerWire.DeadlineMs);
         var (effort, thinkingBudget, plain) = WorkerWire.GetJobSettings(req);
         var brainJob = new BrainJob(
             AskId: job.Id,
@@ -250,7 +259,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             RetrievalQuery: retrieval,
             MaxTokens: Math.Max(1, WorkerWire.Int(req, WorkerWire.MaxTokens, 512)),
             Spoken: WorkerWire.Flag(req, WorkerWire.Spoken),
-            Deadline: deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2),
+            Deadline: deadline,
             Effort: effort,
             ThinkingBudget: thinkingBudget,
             Plain: plain,
@@ -297,7 +306,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
     private static IReadOnlyDictionary<string, string> Poll(IReadOnlyDictionary<string, string> req, Dictionary<string, string> res)
     {
         Job? job;
-        lock (Gate) job = _job;
+        InProcessBrainWorker? brain;
+        lock (Gate) { job = _job; brain = _brain; }
         if (job is null || !req.TryGetValue(WorkerWire.Job, out var id) || id != job.Id)
         {
             res[WorkerWire.Ok] = "0";
@@ -323,6 +333,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
         res[WorkerWire.Text] = text;
         res[WorkerWire.Length] = WorkerWire.I(length);
+        WorkerWire.PutAnswering(res, brain?.Answering);   // which brain is answering, once its slot is chosen (OPEN-GAPS E33)
         res[WorkerWire.Final] = job.Final ? "1" : "0";
         if (job.Final && job.Timing is { } t) WorkerWire.PutTiming(res, t);
         if (job.Final && job.Failure is { } f) WorkerWire.PutFailure(res, f);
@@ -330,13 +341,25 @@ public sealed class InferenceWorkerService : global::Android.App.Service
     }
 
     // WHAT THE SUPERVISOR NEEDS TO JUDGE A DEATH LATER: this process's size, the phone's
-    // free memory, and the last trim level Android sent here.
+    // free memory, and the last trim level Android sent here - AND WHAT IT IS SPENDING ON AN ASK
+    // (OPEN-GAPS E33): its own CPU time, which tells a working prefill from a hung call; the ask
+    // still being answered, how far past its deadline, and the brain answering it.
     private static void Heartbeat(Dictionary<string, string> res)
     {
         res[WorkerWire.RssKb] = WorkerWire.L(ProcKb("/proc/self/status", "VmRSS:"));
         res[WorkerWire.MemAvailKb] = WorkerWire.L(ProcKb("/proc/meminfo", "MemAvailable:"));
         res[WorkerWire.MemTotalKb] = WorkerWire.L(ProcKb("/proc/meminfo", "MemTotal:"));
         res[WorkerWire.Trim] = WorkerWire.I(Volatile.Read(ref _trim));
+        res[WorkerWire.CpuMs] = WorkerWire.L(ProcessCpu.OfThisProcess());
+
+        Job? job;
+        InProcessBrainWorker? brain;
+        lock (Gate) { job = _job; brain = _brain; }
+        if (job is not { Final: false }) return;
+        res[WorkerWire.Job] = job.Id;
+        var late = DateTimeOffset.UtcNow - job.Deadline;
+        if (late > TimeSpan.Zero) res[WorkerWire.OverdueMs] = WorkerWire.L((long)late.TotalMilliseconds);
+        WorkerWire.PutAnswering(res, brain?.Answering);
     }
 
     internal static long ProcKb(string file, string key)

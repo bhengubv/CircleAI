@@ -48,6 +48,18 @@ public static class RiskySteps
         return new Survived(dir!);
     }
 
+    /// <summary>
+    /// Rewrites the marker of the step in progress once more is known about it - which brain a turn
+    /// went to (OPEN-GAPS E33). The step's own <see cref="Begin"/> still clears it. Never throws, and
+    /// costs nothing when no folder is set.
+    /// </summary>
+    public static void Restate(string what)
+    {
+        var dir = Directory;
+        if (string.IsNullOrWhiteSpace(dir) || string.IsNullOrWhiteSpace(what)) return;
+        DeviceDiagnostics.BeginRisky(dir!, what);
+    }
+
     /// <summary>What a process died inside, from its folder; null when it ended every step it began.</summary>
     public static string? Leftover(string directory) => DeviceDiagnostics.PreviousCrash(directory);
 

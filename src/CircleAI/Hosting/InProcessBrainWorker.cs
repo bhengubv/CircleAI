@@ -39,6 +39,8 @@ public sealed class InProcessBrainWorker : IBrainWorker
     private BrainWorkerStatus _status;
     private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
     private string _knobs = string.Empty;   // what Wolverine had turned down when this brain was built (S6)
+    private bool _inTurn;
+    private AnsweringBrain? _answering;     // the brain answering the turn in flight, once it is known (OPEN-GAPS E33)
 
     /// <summary>A worker that builds its brain with <paramref name="start"/> the first time it is needed.</summary>
     public InProcessBrainWorker(Func<CancellationToken, Task<InProcessBrain>> start, TimeProvider? clock = null, Action<string>? log = null)
@@ -134,6 +136,32 @@ public sealed class InProcessBrainWorker : IBrainWorker
         Set(BrainPhase.Loading, step, status.ModelId, null, null);
     }
 
+    /// <summary>
+    /// Which brain answers the turn in flight - the main brain, or a specialist a router brought in
+    /// beside it - so its timing, a failure and a death name the brain that was working, not the one
+    /// in the main slot (OPEN-GAPS E33). Ignored outside a turn. Wire it to <c>AIOptions.Answering</c>.
+    /// </summary>
+    public void ReportAnswering(AnsweringBrain brain)
+    {
+        ArgumentNullException.ThrowIfNull(brain);
+        string knobs;
+        lock (_gate)
+        {
+            if (!_inTurn) return;
+            _answering = brain;
+            knobs = _knobs;
+        }
+
+        // THE MARKER SAYS WHO IS WORKING: a process that dies in this turn is read by its marker.
+        CircleAI.Assistant.RiskySteps.Restate($"generate {brain.ModelId} | {brain.Slot} | {knobs}");
+    }
+
+    /// <summary>The brain answering the turn in flight, once its slot is chosen; null between turns.</summary>
+    public AnsweringBrain? Answering { get { lock (_gate) return _inTurn ? _answering : null; } }
+
+    // The model a turn's timing and failures name: the brain answering it, else the one loaded.
+    private string Working(InProcessBrain brain) => Answering?.ModelId ?? brain.ModelId;
+
     /// <inheritdoc />
     public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)
     {
@@ -170,7 +198,7 @@ public sealed class InProcessBrainWorker : IBrainWorker
             // AND BEFORE EVERY ANSWER (S6): an illegal instruction or a SIGSEGV in the kernels
             // ends this process mid-answer with no catch block run.
             string knobs;
-            lock (_gate) knobs = _knobs;
+            lock (_gate) { knobs = _knobs; _inTurn = true; _answering = null; }
             using var risky = CircleAI.Assistant.RiskySteps.Begin($"generate {brain.ModelId} | {knobs}");
 
             // A TURN WITH TOOLS IS ANSWERED WHOLE (OPEN-GAPS A16): the engine's own tool for a
@@ -188,13 +216,13 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 catch (BrainWorkerException) { throw; }
                 catch (Exception ex)
                 {
-                    throw new BrainWorkerException(Classify(ex, WorkPhase.Prefill, brain.ModelId, _clock.GetUtcNow()), ex);
+                    throw new BrainWorkerException(Classify(ex, WorkPhase.Prefill, Working(brain), _clock.GetUtcNow()), ex);
                 }
 
                 ttft = clock.ElapsedMilliseconds;
                 _log($"tool turn answered in {ttft} ms");
                 if (answer.Length > 0) yield return new BrainChunk(answer);
-                yield return Ending(brain, recorder, clock.ElapsedMilliseconds, ttft, answer.Length > 0 ? 1 : 0);
+                yield return Ending(Working(brain), recorder, clock.ElapsedMilliseconds, ttft, answer.Length > 0 ? 1 : 0);
                 yield break;
             }
 
@@ -214,7 +242,7 @@ public sealed class InProcessBrainWorker : IBrainWorker
                     catch (Exception ex)
                     {
                         throw new BrainWorkerException(
-                            Classify(ex, pieces == 0 ? WorkPhase.Prefill : WorkPhase.Decode, brain.ModelId, _clock.GetUtcNow()), ex);
+                            Classify(ex, pieces == 0 ? WorkPhase.Prefill : WorkPhase.Decode, Working(brain), _clock.GetUtcNow()), ex);
                     }
 
                     if (string.IsNullOrEmpty(piece)) continue;
@@ -228,16 +256,18 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 await stream.DisposeAsync().ConfigureAwait(false);
             }
 
-            yield return Ending(brain, recorder, clock.ElapsedMilliseconds, ttft, pieces);
+            yield return Ending(Working(brain), recorder, clock.ElapsedMilliseconds, ttft, pieces);
         }
         finally
         {
+            lock (_gate) _inTurn = false;
             _one.Release();
         }
     }
 
-    // The last piece of an answer: what the recorder measured, else what the stream showed.
-    private static BrainChunk Ending(InProcessBrain brain, TurnTimingRecorder recorder, long total, long ttft, int pieces) =>
+    // The last piece of an answer: what the recorder measured, else what the stream showed - and the
+    // brain that answered it, which a speed is learned for.
+    private static BrainChunk Ending(string modelId, TurnTimingRecorder recorder, long total, long ttft, int pieces) =>
         new(string.Empty, Final: true, Timing: new TurnTiming(
             EnrichMs: recorder.EnrichMs,
             PrefillMs: recorder.PrefillMs >= 0 ? recorder.PrefillMs : ttft,
@@ -245,7 +275,7 @@ public sealed class InProcessBrainWorker : IBrainWorker
             DecodeMs: recorder.DecodeMs >= 0 ? recorder.DecodeMs : (ttft >= 0 ? total - ttft : -1),
             OutputTokens: recorder.OutputTokens >= 0 ? recorder.OutputTokens : pieces,
             TtftMs: ttft,
-            ModelId: brain.ModelId,
+            ModelId: modelId,
             KvPath: recorder.KvPath,
             Finish: recorder.Finish ?? "eos"));
 

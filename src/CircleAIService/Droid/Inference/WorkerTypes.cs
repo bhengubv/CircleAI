@@ -4,6 +4,7 @@
 // one exception that says "it died" rather than "it refused".
 
 using CircleAI.Assistant.Lifecycle;
+using CircleAI.Assistant.Requests;
 
 namespace CircleAI.Service.Droid.Inference;
 
@@ -21,11 +22,19 @@ public sealed record WorkerLoadRequest(string ModelId, string ModelDirectory, bo
                                        CircleAI.Core.KvCompressionMode? KvMode = null, double ContextShare = 1.0);
 
 /// <summary>The worker process died: when, and what it was doing.</summary>
-public sealed record WorkerDeath(int? Pid, WorkPhase Phase, string? ModelId, string? AskId, DateTimeOffset At);
+/// <param name="ModelId">The brain it was told to load - the main slot's.</param>
+/// <param name="Working">The brain answering the ask in flight, as the worker last said; null when it had not said (OPEN-GAPS E33).</param>
+public sealed record WorkerDeath(int? Pid, WorkPhase Phase, string? ModelId, string? AskId, DateTimeOffset At,
+                                 AnsweringBrain? Working = null);
 
-/// <summary>The worker's size and the phone's memory, sampled while it lives.</summary>
+/// <summary>The worker's size and the phone's memory, sampled while it lives - and what it is spending on the ask in flight.</summary>
+/// <param name="CpuMs">The worker process's CPU time so far; -1 where it could not read it (OPEN-GAPS E33).</param>
+/// <param name="Job">The ask the worker is still answering; null when none.</param>
+/// <param name="OverdueMs">How far past its deadline that ask is; 0 when it is not.</param>
+/// <param name="Working">The brain answering it, once its slot is chosen.</param>
 public sealed record WorkerHeartbeat(int Pid, long VmRssKb, long MemAvailableKb, long MemTotalKb, int LastTrimLevel,
-                                     BrainPhase Phase, string? ModelId, DateTimeOffset At);
+                                     BrainPhase Phase, string? ModelId, DateTimeOffset At,
+                                     long CpuMs = -1, string? Job = null, long OverdueMs = 0, AnsweringBrain? Working = null);
 
 /// <summary>The worker process died during a call.</summary>
 public sealed class WorkerDiedException(WorkerDeath death) : Exception("the inference process died")

@@ -96,6 +96,15 @@ public sealed class AIOptions
     /// </summary>
     public Action<CircleAI.Assistant.Lifecycle.LoadStep>? LoadStepChanged { get; set; }
 
+    /// <summary>
+    /// Told, as a turn's slot is chosen, which brain answers it: the main brain, or the specialist a
+    /// <see cref="Router"/> brings in beside it - named as it is brought in, before its load. For a
+    /// host that watches turns from outside, so a death, a failure and a speed are set against the
+    /// brain that was working, not the one in the main slot (OPEN-GAPS E33). Settable: the host wires
+    /// it after building the options.
+    /// </summary>
+    public Action<CircleAI.Assistant.Requests.AnsweringBrain>? Answering { get; set; }
+
     // ------------------------------------------------------------------
     // Inference
     // ------------------------------------------------------------------
