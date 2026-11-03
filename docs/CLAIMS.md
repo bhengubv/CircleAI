@@ -310,8 +310,8 @@ reports upstream with nothing a person said.
 
 ## Slow is not stuck
 
-The supervisor's watchdog against a slow phone, and every report naming the brain that was working
-(OPEN-GAPS E33).
+The supervisor's watchdog against a slow phone, and the supervisor's reports naming the brain that was
+working (OPEN-GAPS E33).
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -328,7 +328,9 @@ The supervisor's watchdog against a slow phone, and every report naming the brai
 | The death line says which brain was doing what, and why | tested | The_death_line_says_which_brain_was_doing_what_and_why |
 | A death, a failure and a speed are set against the brain the worker named | tested | The_supervisor_sets_a_death_a_failure_and_a_speed_against_the_brain_the_worker_named |
 | A picture turn is the picture and its question, with no history | tested | A_picture_turn_is_the_picture_and_its_question_and_the_next_text_turn_has_its_history |
-| A slow C# prefill under the watchdog on the P30 answers instead of being ended | unproven | not run on a phone since the fix (2026-11-03); on the P30 nothing the app sends reaches a C# prefill today |
+| On the P30 a C# prefill that writes nothing for 90 s while its process works is waited on, not ended | measured | P30 Lite MAR-LX1M, 2026-11-03 (the 2B through the supervisor's validation and through the queue: working on it at 3.2 and 3.1 cores, each turn ended by its own two-minute deadline, the inference process alive, no health event) |
+| On the P30 a picture SmolVLM fails is raised against SmolVLM as the Vision specialist | measured | P30 Lite MAR-LX1M, 2026-11-03 (attempted=Prefill SmolVLM-256M-Instruct-MNN (Vision specialist); S9's named Qwen3.5-0.8B-MNN) |
+| A slow C# prefill the watchdog waits on goes on to answer on the P30 | unproven | both turns the C# 2B read on the P30 on 2026-11-03 outlasted their two-minute deadlines; no turn short enough to answer within one was sent |
 
 ## Every brain on, primed and balanced
 
