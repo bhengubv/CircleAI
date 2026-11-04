@@ -144,6 +144,28 @@ public static class BrainSpeed
             : set.OrderByDescending(e => Of(e, catalogue)?.TokensPerSecond ?? 0).ThenByDescending(e => e.QualityRank).First();
     }
 
+    /// <summary>
+    /// The brain to answer with while the device is under pressure, of those smaller than the one
+    /// answering: the one <see cref="Pick"/> takes - unless it is too slow to talk with and the one
+    /// answering is not. Null keeps the one answering, lean; null too for an empty set.
+    /// </summary>
+    /// <remarks>
+    /// SMALLER IS NOT BETTER FOR BEING SMALLER (OPEN-GAPS E33). On the P30 the C# 2B is the smaller of
+    /// its two brains - 429 MB against the 0.8B's 548 - and answers at 1.7 tokens a second, so the
+    /// balance stepping down to it turned a conversation into a wait. The rung after this one lets the
+    /// brain go while nobody is asking, if the pressure holds; on the P30 the quick brain kept lean until
+    /// then holds only 118 MB more than the slow one would have. When neither is quick enough, memory decides.
+    /// </remarks>
+    /// <param name="current">The brain answering now.</param>
+    /// <param name="smaller">The brains on the device smaller than it that run here.</param>
+    /// <param name="catalogue">The models speeds may be estimated from.</param>
+    public static ModelEntry? StepDown(ModelEntry current, IReadOnlyList<ModelEntry> smaller, IReadOnlyList<ModelEntry> catalogue)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        var pick = Pick(smaller, catalogue);
+        return pick is not null && TooSlow(pick, catalogue) && !TooSlow(current, catalogue) ? null : pick;
+    }
+
     /// <summary>One sentence on why a model is too slow here, or null when it is not.</summary>
     public static string? WhyTooSlow(ModelEntry entry, IEnumerable<ModelEntry> catalogue)
     {

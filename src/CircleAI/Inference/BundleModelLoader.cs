@@ -438,8 +438,9 @@ public sealed class BundleModelLoader : IModelLoader
             // comment below. "Fits right now" and "could ever fit" are both
             // real, both have taken a phone down when used alone, and the right
             // pick is the best of the first and the SMALLEST of the second.
-            string? bestNow = null;
-            var bestNowRank = int.MinValue;
+            // Every one of the first is kept, so the best of them can be chosen
+            // by speed as well as rank.
+            var fitsNow = new List<(ModelEntry Entry, string Name)>();
 
             string? smallestEver = null;
             var smallestEverGb = double.MaxValue;
@@ -532,17 +533,14 @@ public sealed class BundleModelLoader : IModelLoader
                 // a phone that is momentarily full still names a model instead
                 // of claiming it has none - it just names a smaller one.
                 // A NULL PROBE ASKS NO FIT QUESTION AT ALL, so everything counts
-                // as fitting and the highest rank wins - the behaviour before any
-                // of this. My first version of this branch required a probe, which
+                // as fitting and the pick below chooses among all of it - the
+                // behaviour before any of this, speed aside. My first version of
+                // this branch required a probe, which
                 // silently turned a probe-less caller into "pick the smallest",
                 // the opposite of what the comment below it promised.
                 if (probe is null || ModelFit.Fits(entry, probe))
                 {
-                    if (entry.QualityRank > bestNowRank)
-                    {
-                        bestNowRank = entry.QualityRank;
-                        bestNow = name;
-                    }
+                    fitsNow.Add((entry, name));
                     continue;
                 }
 
@@ -557,9 +555,15 @@ public sealed class BundleModelLoader : IModelLoader
                 }
             }
 
-            // A probe-less caller gets the old behaviour: no fit question was
-            // asked, so whatever ranked highest among what is present wins.
-            var best = bestNow ?? smallestEver;
+            // QUICK ENOUGH TO TALK WITH FIRST, THEN BY RANK (BrainSpeed.Pick, OPEN-GAPS
+            // E33) - the rule the selector chose by, so the fallback standing in for it
+            // cannot overrule it on speed the way it once overruled it on memory. By rank
+            // alone this handed back the C# 2B on the P30 - rank 9 at 1.7 tokens a second,
+            // ahead of the 0.8B's 8 - wherever the chosen brain was missing, refused or
+            // stepped down from. A probe-less caller asked no fit question, so everything
+            // present counts as fitting.
+            var quick = BrainSpeed.Pick(fitsNow.Select(f => f.Entry).ToList(), _registry.AllModels);
+            var best = quick is null ? smallestEver : fitsNow.First(f => ReferenceEquals(f.Entry, quick)).Name;
 
             return best;
         }

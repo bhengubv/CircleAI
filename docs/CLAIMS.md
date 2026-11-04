@@ -312,7 +312,8 @@ reports upstream with nothing a person said.
 
 The supervisor's watchdog against a slow phone, and the supervisor's reports naming the brain that was
 working (OPEN-GAPS E33) - and what its run on the P30 found: the ask naming the brain working on it, the
-validation's known questions asked plain, and the brain kept answering chosen by speed first.
+validation's known questions asked plain, and the brain kept answering chosen by speed first - as are the
+brain standing in for a missing one and the smaller brain under pressure, and a sum offered one tool.
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -334,6 +335,9 @@ validation's known questions asked plain, and the brain kept answering chosen by
 | A known question the supervisor asks reaches the brain as written, and latches no tools into the turns after it | tested | A_known_question_reaches_the_brain_as_written_and_latches_no_tools_into_the_turns_after_it |
 | The supervisor asks its known questions plain | tested | The_supervisor_asks_its_known_questions_plain |
 | While a candidate waits, the brain kept answering is the quick one, not the best-ranked | tested | While_a_candidate_waits_the_quick_brain_answers_not_the_best_ranked |
+| The brain on the phone that stands in for one missing, refused or stepped down from is the quick one, not the best-ranked | tested | Standing_in_for_a_missing_brain_the_phone_answers_with_the_quick_one |
+| Under pressure, a smaller brain too slow to talk with does not stand in for a quick one | tested | Under_pressure_a_slow_smaller_brain_does_not_stand_in_for_a_quick_one |
+| A sum is offered the calculator alone - a tool's own "do not use it for" is not a cue - and a live question still the search | tested | A_sum_is_offered_the_calculator_alone_and_a_live_question_still_the_search |
 | On the P30 a C# prefill that writes nothing for 90 s while its process works is waited on, not ended | measured | P30 Lite MAR-LX1M, 2026-11-03 (the 2B through the supervisor's validation and through the queue: working on it at 3.2 and 3.1 cores, each turn ended by its own two-minute deadline, the inference process alive, no health event) |
 | On the P30 a picture SmolVLM fails is raised against SmolVLM as the Vision specialist | measured | P30 Lite MAR-LX1M, 2026-11-03 (attempted=Prefill SmolVLM-256M-Instruct-MNN (Vision specialist); S9's named Qwen3.5-0.8B-MNN) |
 | A slow C# prefill the watchdog waits on goes on to answer on the P30 | unproven | both turns the C# 2B read on the P30 on 2026-11-03 outlasted their two-minute deadlines; no turn short enough to answer within one was sent |

@@ -13,6 +13,11 @@
 // named the main brain; the supervisor's known questions reached the 2B as turns, one with two tool
 // definitions, and it was rejected by its deadline instead of its speed; and the brain kept answering
 // while a candidate waits was chosen by rank alone, which made it the C# 2B at 1.7 tokens a second.
+//
+// AND WHAT FIXING THOSE FOUND, 2026-11-04: two more picks by rank alone - the brain on the phone that
+// stands in for a missing one, and the smaller brain under pressure, which on the P30 is the 2B - and
+// the second tool on that sum was the search, offered because its own description says not to use it
+// for arithmetic.
 
 using System.Runtime.CompilerServices;
 using CircleAI.Assistant;
@@ -660,6 +665,39 @@ public sealed class AKnownAnswerIsTheBrainsOwnTests : IDisposable
     }
 
     [Fact]
+    public async Task A_sum_is_offered_the_calculator_alone_and_a_live_question_still_the_search()
+    {
+        // The search's description ends "Do not use it for arithmetic", and the sum's cue serves
+        // "arithmetic": the P30's templateTools=2 was the calculator and the search.
+        var brain = new TemplateBrain();
+        var service = new AIService(new AIOptions
+        {
+            ModelPath = _placeholder,
+            WarmOnStart = false,
+            SystemPrompt = AssistantPersona.Prompt,
+            ToolBridge = new CircleAIToolBridge(() => 64),
+        }, generatorFactory: _ => brain);
+        await using var worker = new InProcessBrainWorker(async ct =>
+        {
+            await service.StartAsync(ct);
+            return new InProcessBrain(service, "Ternary-Bonsai-2-2B");
+        });
+
+        async Task<string[]> Offered(string question)
+        {
+            var job = new BrainJob("ask-" + Guid.NewGuid().ToString("N"), [new ChatMessage("user", question)], question, 64, false,
+                                   DateTimeOffset.UtcNow.AddMinutes(2));
+            await foreach (var _ in worker.GenerateAsync(job, CancellationToken.None)) { }
+            return brain.Calls[^1].Options!.Tools!.Select(t => t.Name).ToArray();
+        }
+
+        Assert.Equal(new[] { "calculate" }, await Offered(Q));
+
+        // What the search says it IS for still counts.
+        Assert.Contains("web_search", await Offered("What is the weather in Durban today?"));
+    }
+
+    [Fact]
     public void The_supervisor_asks_its_known_questions_plain()
     {
         // ANDROID CODE THE TEST LEGS DO NOT COMPILE, read rather than run.
@@ -675,11 +713,14 @@ public sealed class AKnownAnswerIsTheBrainsOwnTests : IDisposable
 /// <summary>
 /// The P30, 2026-11-03: the validation loaded the C# 2B there, so it counts as loaded - and while a candidate
 /// waits, the brain kept answering was the best-ranked loaded one: the 2B, rank 9 at 1.7 tokens a second,
-/// ahead of the 0.8B the plan wants.
+/// ahead of the 0.8B the plan wants. And two more places chose by rank alone: the brain on the phone that
+/// stands in for one missing, refused or stepped down from, and the smaller brain under pressure.
 /// </summary>
 [Collection(nameof(BrainSpeedCollection))]
 public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
 {
+    private readonly List<string> _stores = [];
+
     public TheBrainKeptAnsweringIsQuickEnoughTests()
     {
         // The 2B's speed is the P30's; the 0.8B's is any speed a conversation can bear.
@@ -696,6 +737,8 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
     {
         BrainSpeed.Measured = null;
         BrainSpeed.Kernels = null;
+        foreach (var store in _stores)
+            try { Directory.Delete(store, recursive: true); } catch { /* temp */ }
     }
 
     private static ModelEntry Chat(string name, ModelEngine engine, string packing, long bytes, int rank) =>
@@ -720,5 +763,61 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         var waits = supervisor.IndexOf("_pendingCandidate = wanted;", pick, StringComparison.Ordinal);
         Assert.True(keep >= 0 && pick > keep && waits > pick, "the brain kept answering is not chosen by BrainSpeed.Pick");
         Assert.DoesNotContain(".OrderByDescending(a => a!.Entry.QualityRank)", supervisor, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Standing_in_for_a_missing_brain_the_phone_answers_with_the_quick_one()
+    {
+        // The supervisor's fallback when the brain it chose is missing, refused or stepped down from - the
+        // P30's two brains on disk, with room for either right now.
+        var registry = new ModelRegistryService();
+        var store = Directory.CreateTempSubdirectory("circleai-e33-installed-").FullName;
+        _stores.Add(store);
+        foreach (var name in new[] { "Qwen3.5-0.8B-MNN", "Ternary-Bonsai-2-2B" })
+        {
+            var bundle = Path.Combine(store, name);
+            Directory.CreateDirectory(bundle);
+            foreach (var f in registry.GetLatestModel(name)!.BundleFiles!)
+                SparseStore.Write(Path.Combine(bundle, f.Name), f.SizeBytes);
+        }
+        using var loader = new BundleModelLoader(store, registry);
+        var p30 = new DeviceProbe(RamAvailableBytes: 2_500_000_000, StorageFreeBytes: 29_000_000_000, Gpu: GpuKind.None,
+                                  CpuCores: 8, Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
+        { RamTotalBytes = 3_776_516L * 1024 };
+        ModelEngine[] engines = [ModelEngine.Mnn, ModelEngine.Managed];
+
+        Assert.Equal("Qwen3.5-0.8B-MNN", loader.BestInstalledChatModel(p30, engines: engines));
+
+        // With no speed known, rank decides - as it did for every speed before.
+        BrainSpeed.Measured = _ => null;
+        Assert.Equal("Ternary-Bonsai-2-2B", loader.BestInstalledChatModel(p30, engines: engines));
+    }
+
+    [Fact]
+    public void Under_pressure_a_slow_smaller_brain_does_not_stand_in_for_a_quick_one()
+    {
+        var mnn = Chat("Qwen3.5-0.8B-MNN", ModelEngine.Mnn, "MNN-Q4", 547_645_481, rank: 8);
+        var bonsai = Chat("Ternary-Bonsai-2-2B", ModelEngine.Managed, "PTQ1_0", 429_183_456, rank: 9);
+        ModelEntry[] both = [mnn, bonsai];
+
+        // The P30: the 2B is the smaller of the two and too slow to talk with, so the 0.8B stays, lean.
+        Assert.Null(BrainSpeed.StepDown(mnn, [bonsai], both));
+        Assert.Null(BrainSpeed.StepDown(mnn, [], both));
+
+        // A smaller brain quick enough to talk with does stand in.
+        BrainSpeed.Measured = id => id == bonsai.Name ? 6.0 : 9.0;
+        Assert.Equal(bonsai.Name, BrainSpeed.StepDown(mnn, [bonsai], both)?.Name);
+
+        // And when neither is quick enough, memory decides: the smaller one.
+        BrainSpeed.Measured = id => id == bonsai.Name ? 1.7 : 2.0;
+        Assert.Equal(bonsai.Name, BrainSpeed.StepDown(mnn, [bonsai], both)?.Name);
+
+        // And it is the rule the supervisor's balance steps down by.
+        var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var balance = supervisor.IndexOf("A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE", StringComparison.Ordinal);
+        var stepDown = supervisor.IndexOf("var instead = CircleAI.Inference.BrainSpeed.StepDown(current, smaller, registry.AllModels);", balance, StringComparison.Ordinal);
+        var taken = supervisor.IndexOf("if (instead is not null) wanted = instead.Name;", stepDown, StringComparison.Ordinal);
+        Assert.True(balance >= 0 && stepDown > balance && taken > stepDown, "the balance's smaller brain is not chosen by BrainSpeed.StepDown");
+        Assert.DoesNotContain(".OrderByDescending(e => e!.QualityRank)", supervisor, StringComparison.Ordinal);
     }
 }

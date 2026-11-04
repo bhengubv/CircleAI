@@ -1970,7 +1970,7 @@ public sealed class AIService : IAIService
                 // A cue that names no serving words wants everything.
                 if (cue.Serves.Length == 0) { picked.Add(tool); continue; }
 
-                var describes = (tool.Name + " " + tool.Description).ToLowerInvariant();
+                var describes = (tool.Name + " " + WhatItIsFor(tool.Description)).ToLowerInvariant();
                 if (cue.Serves.Any(w => describes.Contains(w, StringComparison.Ordinal)))
                     picked.Add(tool);
             }
@@ -1978,6 +1978,31 @@ public sealed class AIService : IAIService
 
         return picked;
     }
+
+    /// <summary>A tool's description without the sentences that say what it is NOT for.</summary>
+    /// <remarks>
+    /// A TOOL'S "DO NOT USE IT FOR X" IS NOT A CUE FOR X (OPEN-GAPS E33). The search's description
+    /// ends "Do not use it for arithmetic, definitions, translation, or anything already known" - the
+    /// policy the model reads to leave it alone - and Maths serves "arithmetic", so every sum offered
+    /// the search beside the calculator: "What is 17 times 4?" reached the C# 2B on the P30 with two
+    /// tool definitions (templateTools=2) where one was wanted. A sentence is left out only when it
+    /// STARTS with the refusal; the calculator's "arithmetic the model must not do in its head" says
+    /// what it is for, and still counts.
+    /// </remarks>
+    private static string WhatItIsFor(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return string.Empty;
+        var kept = new StringBuilder(description.Length);
+        foreach (var sentence in description.Split(SentenceEnds, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (!Refusals.Any(r => sentence.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+                kept.Append(sentence).Append(". ");
+        return kept.ToString();
+    }
+
+    private static readonly char[] SentenceEnds = { '.', '!', '?', ';', '\n' };
+
+    /// <summary>How a tool's description starts a sentence about what it is not for.</summary>
+    private static readonly string[] Refusals = { "do not ", "don't ", "don’t ", "dont ", "never ", "not for ", "avoid " };
 
     /// <summary>A phrase that means a tool is wanted, and what could serve it.</summary>
     /// <param name="Phrase">What a person says.</param>

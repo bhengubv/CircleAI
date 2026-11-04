@@ -884,8 +884,11 @@ public sealed class InferenceSupervisor : IBrainWorker
         }
 
         // A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE (Step 4's balance), when one is here:
-        // the best-ranked brain on the device that is smaller than this one and runs here. None
-        // smaller is not a reason to have no brain; the chosen one stays, lean.
+        // of the brains on the device smaller than this one that run here, the one BrainSpeed.StepDown
+        // takes - quick enough to talk with first, then by rank, and never a slow one in place of a
+        // quick one (OPEN-GAPS E33). By rank alone it was the C# 2B on the P30, smaller than the 0.8B
+        // and at 1.7 tokens a second. None smaller, or none quick enough, is not a reason to have no
+        // brain; the chosen one stays, lean.
         if (Shape.SmallerBrain && registry.GetLatestModel(wanted!) is { } current)
         {
             var smaller = loader.InstalledIds()
@@ -894,12 +897,15 @@ public sealed class InferenceSupervisor : IBrainWorker
                             && e.TotalBytes < current.TotalBytes && !BrainCompanions.IsCompanion(e)
                             && EngineChoice.CanRun(e) && loader.ModelPresent(e.Name)
                             && !CrashVerdict.IsRefused(catalogue, e.Name))
-                .OrderByDescending(e => e!.QualityRank)
-                .FirstOrDefault();
-            _log(smaller is null
+                .Select(e => e!)
+                .ToList();
+            var instead = CircleAI.Inference.BrainSpeed.StepDown(current, smaller, registry.AllModels);
+            _log(smaller.Count == 0
                 ? $"balance: no brain smaller than {wanted} is on this phone; it stays, lean"
-                : $"balance: {smaller.Name} answers instead of {wanted} while the phone is under pressure");
-            if (smaller is not null) wanted = smaller.Name;
+                : instead is null
+                    ? $"balance: {CircleAI.Inference.BrainSpeed.WhyTooSlow(CircleAI.Inference.BrainSpeed.Pick(smaller, registry.AllModels)!, registry.AllModels)}, so {wanted} stays, lean"
+                    : $"balance: {instead.Name} answers instead of {wanted} while the phone is under pressure");
+            if (instead is not null) wanted = instead.Name;
         }
 
         return wanted;
