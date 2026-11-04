@@ -176,6 +176,27 @@ public sealed class SlowIsNotStuckTests
         Assert.Contains("OverdueMs: WorkerWire.Long(map, WorkerWire.OverdueMs)", connection, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_call_to_the_inference_process_gives_its_parcels_back_and_never_disposes_them()
+    {
+        // OPEN-GAPS E35, ANDROID CODE THE TEST LEGS DO NOT COMPILE, read rather than run. A parcel goes back to
+        // Android's pool on Recycle, and a call on another thread that takes it from the pool is handed the same
+        // C# peer: disposed after Recycle, it died under that call - on the P30 an engine check's load failed at
+        // Parcel.Recycle() with ObjectDisposedException while the supervisor's calls ran beside it.
+        var connection = Source("src", "CircleAIService", "Droid", "Inference", "WorkerConnection.cs");
+        var call = connection.IndexOf("private Task<IReadOnlyDictionary<string, string>> CallAsync(", StringComparison.Ordinal);
+        Assert.True(call >= 0, "CallAsync was not found");
+        var body = connection[call..connection.IndexOf("}, ct);", call, StringComparison.Ordinal)];
+
+        Assert.Contains("var data = Parcel.Obtain();", body, StringComparison.Ordinal);
+        Assert.Contains("var reply = Parcel.Obtain();", body, StringComparison.Ordinal);
+        Assert.Contains("data.Recycle();", body, StringComparison.Ordinal);
+        Assert.Contains("reply.Recycle();", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("using var data", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("using var reply", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Dispose()", body, StringComparison.Ordinal);
+    }
+
     internal static string Source(params string[] parts)
     {
         var dir = AppContext.BaseDirectory;

@@ -316,8 +316,14 @@ public sealed class WorkerConnection : IAsyncDisposable
         lock (_gate) binder = _binder;
         if (binder is null || !binder.IsBinderAlive) throw new WorkerDiedException(Death(phase));
 
-        using var data = Parcel.Obtain();
-        using var reply = Parcel.Obtain();
+        // GIVEN BACK, NEVER DISPOSED (OPEN-GAPS E35). A parcel comes from Android's pool and goes back
+        // to it on Recycle - and a call on another thread that takes the same parcel from the pool is
+        // handed the same C# peer. Disposed here after Recycle (it was `using`), that peer died under the
+        // other call: on the P30 on 2026-11-04 an engine check's load failed at Parcel.Recycle(), with
+        // ObjectDisposedException, while the supervisor's own calls ran beside it. The link client
+        // (CircleAiLinkClient) recycles without disposing too.
+        var data = Parcel.Obtain();
+        var reply = Parcel.Obtain();
         try
         {
             data.WriteInterfaceToken(WorkerWire.Descriptor);

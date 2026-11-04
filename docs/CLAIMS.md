@@ -210,6 +210,7 @@ against the pinned llama.cpp fork the repo already ships.
 | The engine's workers stay awake through a turn and sleep once it ends | tested | A_held_pool_keeps_its_workers_awake_through_a_turn_and_lets_them_sleep_once_it_ends |
 | A held pool handing out nothing lets its workers sleep | tested | A_held_pool_handing_out_nothing_lets_its_workers_sleep_after_its_held_spin |
 | The engine holds its workers for each turn | tested | The_engine_holds_its_pool_for_each_turn |
+| A call to the inference process gives its parcels back and never disposes them | tested | A_call_to_the_inference_process_gives_its_parcels_back_and_never_disposes_them |
 
 ## Choosing the brain
 
