@@ -89,6 +89,23 @@ Driven by broadcast (`SoakReceiver`, DUMP-protected) with no screen touched and 
 
 **No primed start for the MNN brain, by design:** its turns are content-only, and a restored prefix on Qwen3.5's linear attention would be full-attention KV without the linear state, so every MNN turn reads `prefix-miss cache=off`. A primed start is the C# engine's (`kv=primed-disk`).
 
+### Where the C# engine runs on this phone (2026-11-04, read only)
+
+Read with the shell while the C# 2B - the phone's brain since the owner ruled the speed gate out that
+day - read one question through the queue. Nothing was written to the phone and no setting changed.
+
+| What | What the phone did |
+|---|---|
+| Where Android lets it run | both processes in the `foreground` cpuset (cores 0-7) and schedtune group, every core allowed; the `background` set (cores 2-3 only) does not apply |
+| Where its threads ran | the engine's three workers moved across all eight cores: in 69 samples a worker was on an A53 little core 17 times, a quarter, and in six samples two or three workers shared one core; the thread that hands them work stayed on the A73s |
+| The big cores' clock | 2.19 GHz for the first 30 s of the turn, then 1.82 GHz to its end, a sixth less; the cause cannot be read from the shell (the cap, the governor and the thermal zones read empty) |
+| The turn | nothing written for over 90 s - the prompt read at about a token a second, not the answer written; the watchdog saw the work (3.1 cores) and waited |
+
+So nothing confines the engine to the slow cores: the scheduler puts its workers there, and stacks them,
+and a product split across the workers waits at its barrier for the slowest. A worker spins 200 us after
+each product and then sleeps (`WorkerPool`), so between products it looks half-busy - the kind of thread
+an energy-aware scheduler moves to a little core.
+
 ## Bugs this testing found (and fixed)
 
 1. **GC-heap-limit misread.** `DeviceProbe.Snapshot()` read RAM from `GC.GetGCMemoryInfo()` — the per-app **GC heap limit (~100 MB)** in an Android sandbox, not physical RAM. The phone classified as a **Wearable** and *every* model came back `NothingFits`. Chat hid it (silent fallback to the smallest model); the per-modality capability sweep surfaced it. **Fix:** a `PlatformMemoryProbe` hook the Android head sets from `ActivityManager` + `StatFs`.
