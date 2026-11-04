@@ -572,7 +572,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         try
         {
             ThrowIfDisposed();
-            return await Task.Run(() => Run(messages, options, emit, ct), ct).ConfigureAwait(false);
+            return await Task.Run(() =>
+            {
+                // THE WORKERS STAY BUSY FOR THE TURN, AND ONLY THE TURN (OPEN-GAPS E34): sleeping between
+                // products, they looked half-idle and the P30 moved them to its slow cores.
+                using var spinning = _pool.KeepSpinning();
+                return Run(messages, options, emit, ct);
+            }, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -583,6 +589,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private Outcome Run(IReadOnlyList<ChatMessage> messages, GenerationOptions options, Action<ChatFragment>? emit, CancellationToken ct)
     {
         var started = Stopwatch.GetTimestamp();
+        var sleptBefore = _pool.Sleeps;
         var timing = options.Timing;
         var thinking = ThinkingFor(options);
         var tools = options.Tools is { Count: > 0 } offered ? offered : null;
@@ -790,7 +797,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var rate = decodeSeconds > 0 ? generated.Count / decodeSeconds : 0;
             var pictures = built.Images.Length == 0 ? "" : Invariant($" ({built.Images.Length} pictures, {built.Images.Sum(p => p.Count)} of them picture tokens)");
             CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens{pictures}, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
-            CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}"));
+            CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}; the {_pool.Threads - 1} workers slept {_pool.Sleeps - sleptBefore} times"));
             var (drafted, accepted) = _speculator?.TakeCounts() ?? (0L, 0L);
             if (drafted > 0)
                 CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));

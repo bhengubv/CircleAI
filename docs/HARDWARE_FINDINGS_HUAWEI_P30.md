@@ -106,6 +106,20 @@ and a product split across the workers waits at its barrier for the slowest. A w
 each product and then sleeps (`WorkerPool`), so between products it looks half-busy - the kind of thread
 an energy-aware scheduler moves to a little core.
 
+**Held through a turn (the same day, the engine check, the same two questions before and after):**
+
+| | Before | Held through a turn |
+|---|---|---|
+| A 46-token answer | 1.56-1.57 tokens a second | 1.73-1.74 |
+| Its 93-token prompt | 49.6-51.0 s | 43.3-43.4 s |
+| A short answer (3-8 tokens) | 1.65-1.67 tokens a second | 1.84-1.86 |
+| Workers sampled on an A53, the long runs | 18 of 78 | 9 of 132 |
+| Worker sleeps in a turn | not counted | 3-5 |
+
+Where a held turn's time went, the long question: the prompt's 93 tokens in 43 s - the matrix products 23.3 s,
+their tables 9.2 s, the linear-attention recurrence 5.9 s, attention 3.6 s - and the answer's 46 in 26 s, the
+output head 3.8 s of it. The A73s stayed at 1.82 GHz throughout.
+
 ## Bugs this testing found (and fixed)
 
 1. **GC-heap-limit misread.** `DeviceProbe.Snapshot()` read RAM from `GC.GetGCMemoryInfo()` — the per-app **GC heap limit (~100 MB)** in an Android sandbox, not physical RAM. The phone classified as a **Wearable** and *every* model came back `NothingFits`. Chat hid it (silent fallback to the smallest model); the per-modality capability sweep surfaced it. **Fix:** a `PlatformMemoryProbe` hook the Android head sets from `ActivityManager` + `StatFs`.

@@ -206,6 +206,10 @@ against the pinned llama.cpp fork the repo already ships.
 | A cold start after the inference process is ended answers from the primed start kept on disk | measured | P30 Lite MAR-LX1M, 2026-11-02 (13 of 76 tokens read at load, 19 of 82 for the question, S9) |
 | The log file holds what logcat shows, and reads back on the phone | measured | P30 Lite MAR-LX1M, 2026-11-02 (the logs broadcast: the kernel measurement, the engine's load and the tool that ran, in both, S9) |
 | A 30-minute soak answers every question with no restart | measured | P30 Lite MAR-LX1M, 2026-11-02 (6 asked, 6 correct, no restart, no fatal line, S9) |
+| Held through a turn, the 2B answers at 1.73 tokens a second on the P30 and reads its prompt 13% faster, up from 1.56 | measured | P30 Lite MAR-LX1M, 2026-11-04 (the engine check, 46 tokens and a 93-token prompt, twice before and twice after; OPEN-GAPS E34) |
+| The engine's workers stay awake through a turn and sleep once it ends | tested | A_held_pool_keeps_its_workers_awake_through_a_turn_and_lets_them_sleep_once_it_ends |
+| A held pool handing out nothing lets its workers sleep | tested | A_held_pool_handing_out_nothing_lets_its_workers_sleep_after_its_held_spin |
+| The engine holds its workers for each turn | tested | The_engine_holds_its_pool_for_each_turn |
 
 ## Choosing the brain
 
