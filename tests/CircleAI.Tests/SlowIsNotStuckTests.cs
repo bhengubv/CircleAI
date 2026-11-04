@@ -18,6 +18,10 @@
 // stands in for a missing one, and the smaller brain under pressure, which on the P30 is the 2B - and
 // the second tool on that sum was the search, offered because its own description says not to use it
 // for arithmetic.
+//
+// THEN THE OWNER, 2026-11-04: no rule decides the brain. Those picks went speed-first that morning,
+// which handed the P30 back to MNN; every pick takes the Bonsai 2 fleet first now, then rank, whatever
+// the speed (EveryPickTakesTheBonsaiFleetFirstTests).
 
 using System.Runtime.CompilerServices;
 using CircleAI.Assistant;
@@ -711,19 +715,20 @@ public sealed class AKnownAnswerIsTheBrainsOwnTests : IDisposable
 }
 
 /// <summary>
-/// The P30, 2026-11-03: the validation loaded the C# 2B there, so it counts as loaded - and while a candidate
-/// waits, the brain kept answering was the best-ranked loaded one: the 2B, rank 9 at 1.7 tokens a second,
-/// ahead of the 0.8B the plan wants. And two more places chose by rank alone: the brain on the phone that
-/// stands in for one missing, refused or stepped down from, and the smaller brain under pressure.
+/// The P30, 2026-11-03, and the owner, 2026-11-04. The brain kept while a candidate waits, the brain on the phone
+/// that stands in for one missing, refused or stepped down from, and the smaller brain under pressure each chose by
+/// a rule of their own - and then by a four-tokens-a-second gate that handed the P30 back to MNN. Every pick takes
+/// the Bonsai 2 fleet first now, then rank (ModelChoice.Best), whatever the speed; and every pick in the supervisor
+/// asks one check of what the phone may use.
 /// </summary>
 [Collection(nameof(BrainSpeedCollection))]
-public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
+public sealed class EveryPickTakesTheBonsaiFleetFirstTests : IDisposable
 {
     private readonly List<string> _stores = [];
 
-    public TheBrainKeptAnsweringIsQuickEnoughTests()
+    public EveryPickTakesTheBonsaiFleetFirstTests()
     {
-        // The 2B's speed is the P30's; the 0.8B's is any speed a conversation can bear.
+        // The P30's speeds - the C# 2B at 1.7 tokens a second, the MNN 0.8B at 9 - and neither decides anything.
         BrainSpeed.Measured = id => id switch
         {
             "Ternary-Bonsai-2-2B" => 1.7,
@@ -749,24 +754,23 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         };
 
     [Fact]
-    public void While_a_candidate_waits_the_quick_brain_answers_not_the_best_ranked()
+    public void While_a_candidate_waits_the_Bonsai_brain_keeps_answering()
     {
-        // The two the P30 has loaded, as the catalogue sizes and ranks them.
+        // The two the P30 had loaded, as the catalogue sizes and ranks them.
         var mnn = Chat("Qwen3.5-0.8B-MNN", ModelEngine.Mnn, "MNN-Q4", 547_645_481, rank: 8);
         var bonsai = Chat("Ternary-Bonsai-2-2B", ModelEngine.Managed, "PTQ1_0", 429_183_456, rank: 9);
-        Assert.Equal(mnn.Name, BrainSpeed.Pick([bonsai, mnn], [mnn, bonsai])!.Name);
+        Assert.Equal(bonsai.Name, ModelChoice.Best([mnn, bonsai])!.Name);
 
         // And it is the rule the supervisor keeps the working brain by.
         var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
         var keep = supervisor.IndexOf("KEEP THE WORKING MODEL UNTIL ITS REPLACEMENT IS VALIDATED", StringComparison.Ordinal);
-        var pick = supervisor.IndexOf("var proven = CircleAI.Inference.BrainSpeed.Pick(loader.InstalledIds()", keep, StringComparison.Ordinal);
+        var pick = supervisor.IndexOf("var proven = CircleAI.Inference.ModelChoice.Best(loader.InstalledIds()", keep, StringComparison.Ordinal);
         var waits = supervisor.IndexOf("_pendingCandidate = wanted;", pick, StringComparison.Ordinal);
-        Assert.True(keep >= 0 && pick > keep && waits > pick, "the brain kept answering is not chosen by BrainSpeed.Pick");
-        Assert.DoesNotContain(".OrderByDescending(a => a!.Entry.QualityRank)", supervisor, StringComparison.Ordinal);
+        Assert.True(keep >= 0 && pick > keep && waits > pick, "the brain kept answering is not chosen by ModelChoice.Best");
     }
 
     [Fact]
-    public void Standing_in_for_a_missing_brain_the_phone_answers_with_the_quick_one()
+    public void Standing_in_for_a_missing_brain_the_phone_answers_with_the_Bonsai_one()
     {
         // The supervisor's fallback when the brain it chose is missing, refused or stepped down from - the
         // P30's two brains on disk, with room for either right now.
@@ -784,40 +788,38 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         var p30 = new DeviceProbe(RamAvailableBytes: 2_500_000_000, StorageFreeBytes: 29_000_000_000, Gpu: GpuKind.None,
                                   CpuCores: 8, Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
         { RamTotalBytes = 3_776_516L * 1024 };
-        ModelEngine[] engines = [ModelEngine.Mnn, ModelEngine.Managed];
 
-        Assert.Equal("Qwen3.5-0.8B-MNN", loader.BestInstalledChatModel(p30, engines: engines));
+        Assert.Equal("Ternary-Bonsai-2-2B", loader.BestInstalledChatModel(p30, engines: [ModelEngine.Mnn, ModelEngine.Managed]));
 
-        // With no speed known, rank decides - as it did for every speed before.
-        BrainSpeed.Measured = _ => null;
-        Assert.Equal("Ternary-Bonsai-2-2B", loader.BestInstalledChatModel(p30, engines: engines));
+        // MNN answers only where no fleet brain can: a build without the C# engine takes the 0.8B.
+        Assert.Equal("Qwen3.5-0.8B-MNN", loader.BestInstalledChatModel(p30, engines: [ModelEngine.Mnn]));
     }
 
     [Fact]
-    public void Under_pressure_a_slow_smaller_brain_does_not_stand_in_for_a_quick_one()
+    public void Under_pressure_a_Bonsai_brain_steps_down_only_to_a_smaller_Bonsai()
     {
         var mnn = Chat("Qwen3.5-0.8B-MNN", ModelEngine.Mnn, "MNN-Q4", 547_645_481, rank: 8);
+        var tinyMnn = Chat("Tiny-MNN", ModelEngine.Mnn, "MNN-Q4", 300_000_000, rank: 7);
         var bonsai = Chat("Ternary-Bonsai-2-2B", ModelEngine.Managed, "PTQ1_0", 429_183_456, rank: 9);
-        ModelEntry[] both = [mnn, bonsai];
+        var bonsai4B = Chat("Ternary-Bonsai-2-4B", ModelEngine.Managed, "PTQ1_0", 949_549_920, rank: 10);
 
-        // The P30: the 2B is the smaller of the two and too slow to talk with, so the 0.8B stays, lean.
-        Assert.Null(BrainSpeed.StepDown(mnn, [bonsai], both));
-        Assert.Null(BrainSpeed.StepDown(mnn, [], both));
+        // The 4B answering: the smaller Bonsai steps in ahead of the MNN brains, whatever its speed.
+        Assert.Equal(bonsai.Name, ModelChoice.StepDown(bonsai4B, [mnn, tinyMnn, bonsai])?.Name);
 
-        // A smaller brain quick enough to talk with does stand in.
-        BrainSpeed.Measured = id => id == bonsai.Name ? 6.0 : 9.0;
-        Assert.Equal(bonsai.Name, BrainSpeed.StepDown(mnn, [bonsai], both)?.Name);
+        // The 2B answering, and only an MNN brain smaller: it stays, lean.
+        Assert.Null(ModelChoice.StepDown(bonsai, [tinyMnn]));
 
-        // And when neither is quick enough, memory decides: the smaller one.
-        BrainSpeed.Measured = id => id == bonsai.Name ? 1.7 : 2.0;
-        Assert.Equal(bonsai.Name, BrainSpeed.StepDown(mnn, [bonsai], both)?.Name);
+        // An MNN brain answering steps down to the fleet first, else the best of the rest.
+        Assert.Equal(bonsai.Name, ModelChoice.StepDown(mnn, [tinyMnn, bonsai])?.Name);
+        Assert.Equal(tinyMnn.Name, ModelChoice.StepDown(mnn, [tinyMnn])?.Name);
+        Assert.Null(ModelChoice.StepDown(mnn, []));
 
         // And it is the rule the supervisor's balance steps down by.
         var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
         var balance = supervisor.IndexOf("A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE", StringComparison.Ordinal);
-        var stepDown = supervisor.IndexOf("var instead = CircleAI.Inference.BrainSpeed.StepDown(current, smaller, registry.AllModels);", balance, StringComparison.Ordinal);
+        var stepDown = supervisor.IndexOf("var instead = CircleAI.Inference.ModelChoice.StepDown(current, smaller);", balance, StringComparison.Ordinal);
         var taken = supervisor.IndexOf("if (instead is not null) wanted = instead.Name;", stepDown, StringComparison.Ordinal);
-        Assert.True(balance >= 0 && stepDown > balance && taken > stepDown, "the balance's smaller brain is not chosen by BrainSpeed.StepDown");
+        Assert.True(balance >= 0 && stepDown > balance && taken > stepDown, "the balance's smaller brain is not chosen by ModelChoice.StepDown");
         Assert.DoesNotContain(".OrderByDescending(e => e!.QualityRank)", supervisor, StringComparison.Ordinal);
     }
 
@@ -829,7 +831,7 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         // at; the smaller brains it may step down to were checked against neither.
         var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
         var balance = supervisor.IndexOf("A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE", StringComparison.Ordinal);
-        var stepDown = supervisor.IndexOf("BrainSpeed.StepDown(current, smaller, registry.AllModels)", balance, StringComparison.Ordinal);
+        var stepDown = supervisor.IndexOf("ModelChoice.StepDown(current, smaller)", balance, StringComparison.Ordinal);
         Assert.True(balance >= 0 && stepDown > balance, "the balance's step down was not found");
 
         var smaller = supervisor[balance..stepDown];
@@ -866,7 +868,7 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         Assert.Contains(".Where(id => id != wanted && UsableNow(id))", choose, StringComparison.Ordinal);
         Assert.Contains("loader.BestInstalledChatModel(probe, refused: id => !UsableNow(id));",
                         Between(choose, "if (tuning.Avoids(wanted))", "KEEP THE WORKING MODEL"), StringComparison.Ordinal);
-        Assert.Contains(".Where(UsableNow)", Between(choose, "var proven =", "registry.AllModels);"), StringComparison.Ordinal);
+        Assert.Contains(".Where(UsableNow)", Between(choose, "var proven =", "a!.Entry));"), StringComparison.Ordinal);
         Assert.Contains(".Where(UsableNow)", Between(choose, "var smaller =", ".ToList();"), StringComparison.Ordinal);
 
         // And no pick keeps a filter of its own.
@@ -874,6 +876,31 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         Assert.Equal(1, Count(choose, "tuning.Avoids(id)"));
         Assert.Equal(2, Count(choose, "KilledAt("));   // the chosen brain's own check, and the shared one
         Assert.DoesNotContain("refused: id => CrashVerdict.IsRefused", choose, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Nothing_in_the_source_chooses_a_brain_by_speed()
+    {
+        // The owner, 2026-11-04: "no rule is valid". The four-tokens-a-second gate decided eight places - the
+        // selector, setup, the upgrade path, the stand-in, the kept brain, the balance, the validation and the
+        // picture route - and none of it is left to come back.
+        var root = SourceRoot();
+        var sep = Path.DirectorySeparatorChar;
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{sep}obj{sep}", StringComparison.Ordinal) || file.Contains($"{sep}bin{sep}", StringComparison.Ordinal)) continue;
+            var code = File.ReadAllText(file);
+            foreach (var gate in new[] { "InteractiveTokensPerSecond", "TooSlow(", "BrainSpeed.Pick(", "BrainSpeed.StepDown(" })
+                Assert.False(code.Contains(gate, StringComparison.Ordinal), $"{Path.GetRelativePath(root, file)} still has {gate}");
+        }
+    }
+
+    private static string SourceRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "CircleAIService")))
+            dir = Path.GetDirectoryName(dir);
+        return dir ?? throw new DirectoryNotFoundException("the repository root was not found above " + AppContext.BaseDirectory);
     }
 
     private static int Count(string text, string what)

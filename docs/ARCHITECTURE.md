@@ -293,12 +293,14 @@ charging, heat and form factor a platform head supplies (`PowerProbe`,
 runs on the thread count this device measured fastest (`KernelThreads`, once per
 device and runtime), falling back to the fast cores less one.
 
-The choice itself stays the selector's, made speed-aware: `BrainSpeed` keeps out
-a brain this device measured - or estimates from a measured sibling on the same
-engine, scaled by weight, in its own packing where one has run and across
-packings by how fast this device's kernels read each (`KernelThreads` measures
-both) - below 4 tokens a second, and a brain with no measured sibling is never
-called too slow. The first choice waits for the speeds to be read back. Speeds are learned from every answer and every
+The choice itself stays the selector's, by the one rule every pick uses
+(`ModelChoice.Best`): the Bonsai 2 fleet first, then rank, the smaller on a tie -
+and no speed gate (the owner, 2026-11-04: each device does the best it can with
+what it has). `BrainSpeed` measures how fast a brain answers here, or estimates it
+from a measured sibling on the same engine, scaled by weight, in its own packing
+where one has run and across packings by how fast this device's kernels read each
+(`KernelThreads` measures both), and the plan says it; it decides nothing. The
+first plan waits for the speeds to be read back, so it can say them. Speeds are learned from every answer and every
 engine check (`SelfModel.LearnSpeed`). `BrainPlan.Explain` puts the choice in one
 line, which the inference supervisor logs as `plan:`.
 

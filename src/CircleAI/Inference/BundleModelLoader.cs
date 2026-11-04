@@ -438,8 +438,8 @@ public sealed class BundleModelLoader : IModelLoader
             // comment below. "Fits right now" and "could ever fit" are both
             // real, both have taken a phone down when used alone, and the right
             // pick is the best of the first and the SMALLEST of the second.
-            // Every one of the first is kept, so the best of them can be chosen
-            // by speed as well as rank.
+            // Every one of the first is kept, so the best of them is chosen by
+            // the one rule every pick uses.
             var fitsNow = new List<(ModelEntry Entry, string Name)>();
 
             string? smallestEver = null;
@@ -534,7 +534,7 @@ public sealed class BundleModelLoader : IModelLoader
                 // of claiming it has none - it just names a smaller one.
                 // A NULL PROBE ASKS NO FIT QUESTION AT ALL, so everything counts
                 // as fitting and the pick below chooses among all of it - the
-                // behaviour before any of this, speed aside. My first version of
+                // behaviour before any of this. My first version of
                 // this branch required a probe, which
                 // silently turned a probe-less caller into "pick the smallest",
                 // the opposite of what the comment below it promised.
@@ -555,15 +555,13 @@ public sealed class BundleModelLoader : IModelLoader
                 }
             }
 
-            // QUICK ENOUGH TO TALK WITH FIRST, THEN BY RANK (BrainSpeed.Pick, OPEN-GAPS
-            // E33) - the rule the selector chose by, so the fallback standing in for it
-            // cannot overrule it on speed the way it once overruled it on memory. By rank
-            // alone this handed back the C# 2B on the P30 - rank 9 at 1.7 tokens a second,
-            // ahead of the 0.8B's 8 - wherever the chosen brain was missing, refused or
-            // stepped down from. A probe-less caller asked no fit question, so everything
-            // present counts as fitting.
-            var quick = BrainSpeed.Pick(fitsNow.Select(f => f.Entry).ToList(), _registry.AllModels);
-            var best = quick is null ? smallestEver : fitsNow.First(f => ReferenceEquals(f.Entry, quick)).Name;
+            // BY THE RULE THE SELECTOR CHOSE BY (ModelChoice.Best): the Bonsai 2 fleet
+            // first, then rank - so the fallback standing in for it cannot overrule it the
+            // way it once overruled it on memory. No speed gate (the owner, 2026-11-04). A
+            // probe-less caller asked no fit question, so everything present counts as
+            // fitting.
+            var chosen = ModelChoice.Best(fitsNow.Select(f => f.Entry));
+            var best = chosen is null ? smallestEver : fitsNow.First(f => ReferenceEquals(f.Entry, chosen)).Name;
 
             return best;
         }

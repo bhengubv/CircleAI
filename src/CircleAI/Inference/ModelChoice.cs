@@ -254,6 +254,44 @@ public static class ModelChoice
             .FirstOrDefault();
     }
 
+    /// <summary>Whether a brain is one of the Bonsai 2 fleet: the brains the C# engine runs.</summary>
+    public static bool Fleet(ModelEntry m) => m.Engine == ModelEngine.Managed;
+
+    /// <summary>
+    /// The best brain of a set: the Bonsai 2 fleet first, then by rank, the smaller on a tie. Null for an
+    /// empty set.
+    /// </summary>
+    /// <remarks>
+    /// ONE RULE FOR EVERY PLACE THAT PICKS A BRAIN, AND NOTHING ELSE IN IT (the owner, 2026-11-04): "no rule
+    /// is valid - if these are cars then a mini cooper must do the best it can do with what it has as
+    /// resources and an F1 car must do the best it can do with what it has as resources." The Bonsai 2 fleet
+    /// is the standard the engine was built for, so a fleet brain the device can hold comes before any other,
+    /// and MNN answers only where no fleet brain can. Speed is no gate. It was one - BrainSpeed's four tokens
+    /// a second - and on the P30, where the C# 2B reads at 1.7, it handed every pick back to MNN. How fast a
+    /// brain answers on a device is the engine's to make the most of, not a reason to choose another brain.
+    /// </remarks>
+    public static ModelEntry? Best(IEnumerable<ModelEntry> set)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        return set.OrderByDescending(Fleet).ThenByDescending(m => m.QualityRank).ThenBy(m => m.MinRamGb).FirstOrDefault();
+    }
+
+    /// <summary>Whether <paramref name="m"/> is a better brain than <paramref name="than"/>, by <see cref="Best"/>'s rule.</summary>
+    public static bool Better(ModelEntry m, ModelEntry than) =>
+        (Fleet(m), m.QualityRank).CompareTo((Fleet(than), than.QualityRank)) > 0;
+
+    /// <summary>
+    /// The brain to answer with while the device is under pressure, of those smaller than the one answering:
+    /// the best of them by <see cref="Best"/>, and never one outside the fleet in place of one in it. Null
+    /// keeps the one answering, lean.
+    /// </summary>
+    public static ModelEntry? StepDown(ModelEntry current, IEnumerable<ModelEntry> smaller)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(smaller);
+        return Best(smaller.Where(m => Fleet(m) || !Fleet(current)));
+    }
+
     /// <summary>The smallest of <paramref name="candidates"/> this device could ever hold.</summary>
     public static ModelEntry? SmallestEverHeld(IEnumerable<ModelEntry> candidates, DeviceProbe probe)
         => candidates

@@ -209,17 +209,17 @@ against the pinned llama.cpp fork the repo already ships.
 
 ## Choosing the brain
 
-Step 1 of the Bonsai 2 plan: read the device, choose the best brain quick enough to talk with, build
-it through one factory, and say why.
+Step 1 of the Bonsai 2 plan: read the device, choose the best brain for it - the Bonsai 2 fleet first, then
+rank, with no speed gate (the owner, 2026-11-04) - build it through one factory, and say what it is.
 
 | Claim | Status | Evidence |
 |---|---|---|
-| A brain this device measured too slow to talk with is passed over | tested | The_selector_passes_over_a_brain_too_slow_to_talk_with_on_this_device |
+| The selector takes the best Bonsai 2 the device can hold, whatever its speed | tested | The_selector_takes_the_best_Bonsai_the_device_can_hold_whatever_its_speed |
 | A brain never run here is estimated from a measured one on the same engine, by its weight | tested | An_unmeasured_brain_is_estimated_from_a_measured_one_on_the_same_engine_by_its_weight |
-| Another engine's speed says nothing, and an unknown speed is never too slow | tested | Another_engine_says_nothing_about_this_one_and_unknown_is_never_too_slow |
-| The pick is the best quick brain, and the fastest when none is quick | tested | The_pick_is_the_best_quick_brain_and_the_fastest_when_none_is_quick |
-| The plan names the brain and the one it passed over, and why | tested | The_plan_names_the_brain_and_the_one_it_passed_over_for_being_too_slow |
-| A measured speed survives a relaunch | tested | A_speed_measured_before_a_relaunch_still_rules_the_choice_after_it |
+| Another engine's speed says nothing about this one's | tested | Another_engine_says_nothing_about_this_ones_speed |
+| The pick is the Bonsai 2 fleet first, then rank, whatever the speed | tested | The_pick_is_the_Bonsai_2_fleet_first_then_rank_whatever_the_speed |
+| The plan names the brain, its engine and how fast it answers here | tested | The_plan_names_the_brain_its_engine_and_how_fast_it_answers_here |
+| A measured speed survives a relaunch | tested | A_speed_measured_before_a_relaunch_is_still_known_after_it |
 | A brain on the C# engine gets the fast cores less one, read from the kernel | tested | A_brain_gets_the_fast_cores_less_one_and_never_none |
 | Every site that builds a brain asks one factory | tested | Every_site_that_builds_a_brain_asks_the_one_factory |
 | A file with no catalogue row opens on the engine its contents need | tested | A_file_with_no_row_is_opened_by_the_engine_its_contents_need |
@@ -250,7 +250,7 @@ catalogued and gated, and drafting with the MTP head that changes no token.
 | The 2B in PQ2_0 predicts within the fork's own spread | unproven | fails at full length: 5 of 6,340 top-20 logits beyond the fork's 0.3096 (OPEN-GAPS C5) |
 | On the P30, PQ2_0's lookup kernel is slower than PTQ1_0's: 8.2 ms at best against 7.3 ms for one 6144×2048 product | measured | P30 Lite MAR-LX1M, 2026-11-02 (the kernel bench in the Release service, S9) |
 | A brain's speed is estimated from one in its own packing before one in another | tested | A_brain_is_estimated_from_its_own_packing_before_another |
-| Across packings, the device's own kernels scale the estimate - the PQ2_0 2B is quick on a PC whose kernels read PQ2_0 4x faster, and still too slow on the P30 | tested | Across_packings_the_devices_own_kernels_scale_the_estimate |
+| Across packings, the device's own kernels scale the estimate - the PQ2_0 2B is estimated 4.3 times faster on a PC whose kernels read PQ2_0 that much faster, and about as fast on the P30 | tested | Across_packings_the_devices_own_kernels_scale_the_estimate |
 | Both packings' kernels are measured once per device and read back by the process that plans | tested | Both_packings_are_measured_once_and_read_back_by_the_planner |
 | MTP drafting is off unless a host asks for it | tested | Drafting_is_off_unless_a_host_asks_for_it |
 | MTP drafting makes the 4B faster | unproven | slower in S5's run on this PC; on the P30 the check pass alone is 2.4 times slower than single passes (OPEN-GAPS C7) |
@@ -312,8 +312,9 @@ reports upstream with nothing a person said.
 
 The supervisor's watchdog against a slow phone, and the supervisor's reports naming the brain that was
 working (OPEN-GAPS E33) - and what its run on the P30 found: the ask naming the brain working on it, the
-validation's known questions asked plain, and the brain kept answering chosen by speed first - as are the
-brain standing in for a missing one and the smaller brain under pressure, and a sum offered one tool.
+validation's known questions asked plain, and a sum offered one tool - and every brain pick, the one kept
+answering, the one standing in for a missing one and the smaller one under pressure among them, by the one
+rule: the Bonsai 2 fleet first, then rank, whatever the speed (the owner, 2026-11-04).
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -334,9 +335,10 @@ brain standing in for a missing one and the smaller brain under pressure, and a 
 | An ask a specialist fails on, or runs out of time on, stays named for the specialist | tested | A_picture_the_brain_that_sees_fails_on_or_runs_out_of_time_on_stays_named_for_it |
 | A known question the supervisor asks reaches the brain as written, and latches no tools into the turns after it | tested | A_known_question_reaches_the_brain_as_written_and_latches_no_tools_into_the_turns_after_it |
 | The supervisor asks its known questions plain | tested | The_supervisor_asks_its_known_questions_plain |
-| While a candidate waits, the brain kept answering is the quick one, not the best-ranked | tested | While_a_candidate_waits_the_quick_brain_answers_not_the_best_ranked |
-| The brain on the phone that stands in for one missing, refused or stepped down from is the quick one, not the best-ranked | tested | Standing_in_for_a_missing_brain_the_phone_answers_with_the_quick_one |
-| Under pressure, a smaller brain too slow to talk with does not stand in for a quick one | tested | Under_pressure_a_slow_smaller_brain_does_not_stand_in_for_a_quick_one |
+| While a candidate waits, the Bonsai brain keeps answering | tested | While_a_candidate_waits_the_Bonsai_brain_keeps_answering |
+| The brain on the phone that stands in for one missing, refused or stepped down from is the Bonsai 2 one; MNN only where no fleet brain can run | tested | Standing_in_for_a_missing_brain_the_phone_answers_with_the_Bonsai_one |
+| Under pressure, a Bonsai brain steps down only to a smaller Bonsai | tested | Under_pressure_a_Bonsai_brain_steps_down_only_to_a_smaller_Bonsai |
+| Nothing in the source chooses a brain by speed | tested | Nothing_in_the_source_chooses_a_brain_by_speed |
 | Under pressure, the smaller brain is never one Wolverine is stepping down from, or one killed here at more free memory than there is now | tested | Under_pressure_the_smaller_brain_is_never_one_this_phone_has_learned_not_to_use |
 | Every brain pick in the supervisor asks one check of what this phone may use, and of what it may use now | tested | Every_brain_pick_in_Choose_asks_one_check_of_what_this_phone_may_use |
 | A sum is offered the calculator alone - a tool's own "do not use it for" is not a cue - and a live question still the search | tested | A_sum_is_offered_the_calculator_alone_and_a_live_question_still_the_search |

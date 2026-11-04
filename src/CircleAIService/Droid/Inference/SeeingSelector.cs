@@ -51,26 +51,14 @@ internal sealed class SeeingSelector : IModelSelector
     /// <inheritdoc />
     public IReadOnlyList<string> ChainFor(string headModelId) => _inner.ChainFor(headModelId);
 
-    // The smallest C# brain in the store whose vision tower is in the store too; null when there is none,
-    // or when this device's C# kernels are too slow for a picture turn to finish.
+    // The smallest C# brain in the store whose vision tower is in the store too; null when there is none.
+    // NO SPEED GATE (the owner, 2026-11-04): a picture went elsewhere when this device's C# kernels read
+    // below four tokens a second, and the C# pair is the Bonsai 2 standard's own way to see. The watchdog
+    // counts a slow prefill's work as progress (OPEN-GAPS E33), so a slow phone is slow, not stuck.
     private ModelSelection? SeeingPair(DeviceProbe probe)
     {
         try
         {
-            // TOO SLOW HERE TO ANSWER A PICTURE THROUGH THE QUEUE (S9, 2026-11-02). On the P30 the pair
-            // took the tower's 25 s and then read the turn at about two tokens a second with nothing
-            // written, so the supervisor's 90 s watchdog ended it twice - and Wolverine, reading a
-            // timeout, shortened every answer's context for hours. The rule chat already keeps
-            // (BrainSpeed: below four tokens a second is too slow to talk with) holds for a picture
-            // too; the kernels' own rate here says it before anything is loaded.
-            if (CircleAI.Inference.Managed.Kernels.KernelThreads.Remembered() is { TokensPerSecond: > 0 } kernels
-                && kernels.TokensPerSecond < BrainSpeed.InteractiveTokensPerSecond)
-            {
-                global::Android.Util.Log.Info("CircleAI.Supervisor", string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                    $"a picture does not go to a C# brain here: its kernels run at {kernels.TokensPerSecond:F2} tokens a second, below the {BrainSpeed.InteractiveTokensPerSecond:F0} a turn needs"));
-                return null;
-            }
-
             var towers = _registry.AllModels.Where(m => BrainCompanions.IsTower(m) && _store.ModelPresent(m.Name)).ToList();
             var pair = _registry.AllModels
                 .Where(b => b.Modality == ModelModality.Chat && !b.Retired && b.Engine == ModelEngine.Managed && _store.ModelPresent(b.Name))

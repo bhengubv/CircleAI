@@ -1,7 +1,8 @@
 // BrainPlanTests.cs
 //
-// S4, STEP 1 IN THE APP: read the device, then choose the best brain for it - quick enough to
-// talk with, not only the highest ranked - build it through the one factory, and say why.
+// S4, STEP 1 IN THE APP: read the device, then choose the best brain for it - the Bonsai 2 fleet
+// first, then rank, with no speed gate (the owner, 2026-11-04) - build it through the one factory,
+// and say what it is and how fast it answers here.
 
 using System;
 using System.Collections.Generic;
@@ -84,7 +85,6 @@ public sealed class BrainPlanTests : IDisposable
         var speed = BrainSpeed.Of(Bonsai4B, [SmallMnn, Bonsai2B, Bonsai4B]);
         Assert.Equal(1.47 * 429.0 / 950.0, speed!.TokensPerSecond, 3);
         Assert.Equal("Ternary-Bonsai-2-2B", speed.From);
-        Assert.True(BrainSpeed.TooSlow(Bonsai4B, [SmallMnn, Bonsai2B, Bonsai4B]));
     }
 
     // ── packings (OPEN-GAPS C8): the same weights read at different speeds ─────────
@@ -119,21 +119,19 @@ public sealed class BrainPlanTests : IDisposable
     [Fact]
     public void Across_packings_the_devices_own_kernels_scale_the_estimate()
     {
-        // ON THIS PC THE PQ2_0 2B WAS RULED TOO SLOW from its PTQ1_0 twin by size (2.9 x 429/517 =
-        // 2.4) and ran at 10.5. With the kernels' rates - PQ2_0 read 4.3 times faster here - it is
-        // estimated quick enough to talk with, before anything is fetched.
+        // ON THIS PC THE PQ2_0 2B WAS ESTIMATED from its PTQ1_0 twin by size (2.9 x 429/517 = 2.4)
+        // and ran at 10.5. With the kernels' rates - PQ2_0 read 4.3 times faster here - the estimate
+        // says so before anything is fetched.
         _measured["Ternary-Bonsai-2-2B"] = 2.9;
         _kernels = new(4, 2.4, "pc") { Ptq1GigabytesPerSecond = 0.10, Pq2GigabytesPerSecond = 0.43 };
         var pc = BrainSpeed.Of(TwoBPq2, [TwoBPtq1, TwoBPq2]);
         Assert.Equal(2.9 * 429.0 / 517.0 * 4.3, pc!.TokensPerSecond, 3);
-        Assert.False(BrainSpeed.TooSlow(TwoBPq2, [TwoBPtq1, TwoBPq2]));
 
-        // The P30 (S9, 2026-11-02): PTQ1_0 read at 0.377 GB/s, PQ2_0 at 0.408 - still too slow.
+        // The P30 (S9, 2026-11-02): PTQ1_0 read at 0.377 GB/s, PQ2_0 at 0.408 - about the same.
         _measured["Ternary-Bonsai-2-2B"] = 1.66;
         _kernels = new(1, 0.88, "p30") { Ptq1GigabytesPerSecond = 0.377, Pq2GigabytesPerSecond = 0.408 };
         var p30 = BrainSpeed.Of(TwoBPq2, [TwoBPtq1, TwoBPq2]);
         Assert.Equal(1.66 * 429.0 / 517.0 * (0.408 / 0.377), p30!.TokensPerSecond, 3);
-        Assert.True(BrainSpeed.TooSlow(TwoBPq2, [TwoBPtq1, TwoBPq2]));
     }
 
     [Fact]
@@ -145,34 +143,38 @@ public sealed class BrainPlanTests : IDisposable
     }
 
     [Fact]
-    public void Another_engine_says_nothing_about_this_one_and_unknown_is_never_too_slow()
+    public void Another_engine_says_nothing_about_this_ones_speed()
     {
         _measured["Qwen3.5-0.8B-MNN"] = 12.5;
         Assert.Null(BrainSpeed.Of(Bonsai4B, [SmallMnn, Bonsai4B]));
-        Assert.False(BrainSpeed.TooSlow(Bonsai4B, [SmallMnn, Bonsai4B]));
     }
 
+    // ── the pick: the Bonsai 2 fleet first, then rank, and no speed gate ──────
+
     [Fact]
-    public void The_pick_is_the_best_quick_brain_and_the_fastest_when_none_is_quick()
+    public void The_pick_is_the_Bonsai_2_fleet_first_then_rank_whatever_the_speed()
     {
         var all = new[] { SmallMnn, Bonsai2B, Bonsai4B };
+        Assert.Equal(Bonsai4B.Name, ModelChoice.Best(all)!.Name);
 
-        // Nothing measured: rank decides, as it always did.
-        Assert.Equal(Bonsai4B.Name, BrainSpeed.Pick(all, all)!.Name);
-
-        // The C# engine measured slow here: both Bonsai rows are passed over for the quick one.
+        // Measured slow here - the C# 2B at 1.47, the MNN brain at 12.5 - the fleet still comes first: how
+        // fast a brain answers is the engine's to make the most of, not a reason to choose another.
         _measured["Ternary-Bonsai-2-2B"] = 1.47;
         _measured["Qwen3.5-0.8B-MNN"] = 12.5;
-        Assert.Equal(SmallMnn.Name, BrainSpeed.Pick(all, all)!.Name);
+        Assert.Equal(Bonsai4B.Name, ModelChoice.Best(all)!.Name);
 
-        // Every one too slow: speed is what decides.
-        _measured["Qwen3.5-0.8B-MNN"] = 2.0;
-        Assert.Equal(SmallMnn.Name, BrainSpeed.Pick(all, all)!.Name);
-        Assert.Null(BrainSpeed.Pick([], all));
+        // A brain outside the fleet ranked above every fleet brain still comes after them; with no fleet
+        // brain, the best of the rest; with nothing, nothing.
+        var bigMnn = Chat("Qwen3.5-4B-MNN", ModelEngine.Mnn, 2_500_000_000, rank: 11);
+        Assert.Equal(Bonsai2B.Name, ModelChoice.Best([SmallMnn, bigMnn, Bonsai2B])!.Name);
+        Assert.Equal(bigMnn.Name, ModelChoice.Best([SmallMnn, bigMnn])!.Name);
+        Assert.Null(ModelChoice.Best([]));
+        Assert.True(ModelChoice.Better(Bonsai2B, bigMnn));
+        Assert.False(ModelChoice.Better(Bonsai2B, Bonsai4B));
     }
 
     [Fact]
-    public void The_selector_passes_over_a_brain_too_slow_to_talk_with_on_this_device()
+    public void The_selector_takes_the_best_Bonsai_the_device_can_hold_whatever_its_speed()
     {
         using var registry = new Rows([SmallMnn, Bonsai2B, Bonsai4B]);
         var selector = new DeviceAwareModelSelector(registry, engines: [ModelEngine.Mnn, ModelEngine.Managed]);
@@ -181,26 +183,23 @@ public sealed class BrainPlanTests : IDisposable
 
         _measured["Ternary-Bonsai-2-2B"] = 1.47;
         _measured["Qwen3.5-0.8B-MNN"] = 12.5;
-        Assert.Equal(SmallMnn.Name, selector.BestFit(P30(), ChatCapability.Default).ModelId);
-        Assert.Equal(SmallMnn.Name, selector.LoadableNow(P30(), ChatCapability.Default)!.ModelId);
+        Assert.Equal(Bonsai4B.Name, selector.BestFit(P30(), ChatCapability.Default).ModelId);
+        Assert.Equal(Bonsai4B.Name, selector.LoadableNow(P30(), ChatCapability.Default)!.ModelId);
     }
 
     // ── the plan, said out loud ───────────────────────────────────────────────
 
     [Fact]
-    public void The_plan_names_the_brain_and_the_one_it_passed_over_for_being_too_slow()
+    public void The_plan_names_the_brain_its_engine_and_how_fast_it_answers_here()
     {
         _measured["Ternary-Bonsai-2-2B"] = 1.47;
-        _measured["Qwen3.5-0.8B-MNN"] = 12.5;
         var context = new DeviceContext(P30(), CpuFeatures.Read(), 4, 4, PowerState.Unknown, FormFactor.Phone);
 
-        var said = BrainPlan.Explain(context, SmallMnn, [SmallMnn, Bonsai2B, Bonsai4B]);
+        var said = BrainPlan.Explain(context, Bonsai4B, [SmallMnn, Bonsai2B, Bonsai4B]);
 
-        Assert.StartsWith("Qwen3.5-0.8B-MNN on MNN", said, StringComparison.Ordinal);
-        Assert.Contains("about 12.5 tokens a second", said, StringComparison.Ordinal);
-        Assert.Contains("not Ternary-Bonsai-2-4B", said, StringComparison.Ordinal);
-        Assert.Contains("estimated from Ternary-Bonsai-2-2B", said, StringComparison.Ordinal);
-        Assert.Contains("below the 4 a conversation needs", said, StringComparison.Ordinal);
+        Assert.StartsWith("Ternary-Bonsai-2-4B on the C# engine, 3 threads", said, StringComparison.Ordinal);
+        Assert.Contains("about 0.7 tokens a second (estimated from Ternary-Bonsai-2-2B)", said, StringComparison.Ordinal);
+        Assert.DoesNotContain(" - not ", said, StringComparison.Ordinal);   // speed passes nothing over
     }
 
     [Fact]
@@ -358,11 +357,11 @@ public sealed class BrainPlanTests : IDisposable
     // ── what a relaunch keeps ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task A_speed_measured_before_a_relaunch_still_rules_the_choice_after_it()
+    public async Task A_speed_measured_before_a_relaunch_is_still_known_after_it()
     {
-        // FOUND ON THE P30, 2026-11-02: the plan passed over the 4B once the 2B had been measured
-        // at 1.66 - and a relaunch forgot it, because only load outcomes were read back. The
-        // selector wanted the 4B again, and the upgrade path would have fetched it.
+        // FOUND ON THE P30, 2026-11-02: the 2B had been measured at 1.66 - and a relaunch forgot it,
+        // because only load outcomes were read back. The speed is what the plan says about a brain, so
+        // it is read back; it no longer chooses one (the owner, 2026-11-04).
         var dir = Path.Combine(Path.GetTempPath(), "circleai-self-" + Guid.NewGuid().ToString("N")[..8]);
         var was = SelfModel.Current;
         try
@@ -384,8 +383,9 @@ public sealed class BrainPlanTests : IDisposable
                 SelfModel.Current = relaunched;
                 using var registry = new Rows([SmallMnn, Bonsai2B, Bonsai4B]);
                 var selector = new DeviceAwareModelSelector(registry, engines: [ModelEngine.Mnn, ModelEngine.Managed]);
-                Assert.True(BrainSpeed.TooSlow(Bonsai4B, registry.AllModels));
-                Assert.Equal(SmallMnn.Name, selector.BestFit(P30(), ChatCapability.Default).ModelId);
+                BrainSpeed.Measured = null;   // what the relaunched device remembers, not this test's table
+                Assert.Equal(1.66 * 429.0 / 950.0, BrainSpeed.Of(Bonsai4B, registry.AllModels)!.TokensPerSecond, 2);
+                Assert.Equal(Bonsai4B.Name, selector.BestFit(P30(), ChatCapability.Default).ModelId);
             }
 
             Assert.Null(SelfModel.SpeedIn("Ternary-Bonsai-2-2B loaded and answered here"));

@@ -354,19 +354,16 @@ public sealed class ModelFetchService : Service
             .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired && !CrashVerdict.IsRefused(catalogue, e.Name)
                         && !BrainCompanions.IsCompanion(e) && !declined(e.Name))
             .ToList();
-        var bestHere = chat.Where(e => loader.ModelPresent(e.Name)).Select(e => e.QualityRank).DefaultIfEmpty(-1).Max();
-        if (bestHere < 0) return null;   // no brain yet: that is the first-run plan's job
+        var bestHere = ModelChoice.Best(chat.Where(e => loader.ModelPresent(e.Name)));
+        if (bestHere is null) return null;   // no brain yet: that is the first-run plan's job
 
-        // AN UPGRADE THIS PHONE CAN OPEN, AND TALK WITH. The engine was never asked here, and a
-        // brain measured or estimated as too slow is not better whatever its rank: on the P30
-        // this offered Bonsai 2 4B, which the C# engine there would run at about 0.7 tokens a
-        // second (BrainSpeed) - a gigabyte fetched to be rejected.
-        return chat
-            .Where(e => e.QualityRank > bestHere && !loader.ModelPresent(e.Name)
+        // AN UPGRADE THIS PHONE CAN OPEN, better by the rule every pick uses (ModelChoice): the
+        // Bonsai 2 fleet first, then rank. No speed gate (the owner, 2026-11-04) - a brain this phone
+        // can hold is the engine's to run as well as the hardware lets it.
+        return ModelChoice.Best(chat
+            .Where(e => ModelChoice.Better(e, bestHere) && !loader.ModelPresent(e.Name)
                         && ModelFit.CouldEverHold(e, probe) && ModelFit.FitsStorage(e, probe.StorageFreeGb)
-                        && EngineChoice.CanRun(e) && !BrainSpeed.TooSlow(e, registry.AllModels))
-            .OrderByDescending(e => e.QualityRank)
-            .FirstOrDefault();
+                        && EngineChoice.CanRun(e)));
     }
 
     private bool Unmetered()

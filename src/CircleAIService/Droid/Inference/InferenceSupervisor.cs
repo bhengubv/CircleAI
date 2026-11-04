@@ -884,16 +884,14 @@ public sealed class InferenceSupervisor : IBrainWorker
         // has never loaded on this phone is a candidate; the proven one keeps answering.
         if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false })
         {
-            // OF THE PROVEN BRAINS THIS PHONE MAY USE NOW (UsableNow), QUICK ENOUGH TO TALK WITH FIRST, THEN
-            // BY RANK (BrainSpeed.Pick), as the plan chose it (OPEN-GAPS E33). By rank alone this is the C# 2B
-            // on the P30 since its validation loaded it there on 2026-11-03: rank 9 at 1.7 tokens a second,
-            // ahead of the 0.8B the plan wants. With no proven brain it may use now, the candidate answers.
-            var proven = CircleAI.Inference.BrainSpeed.Pick(loader.InstalledIds()
+            // OF THE PROVEN BRAINS THIS PHONE MAY USE NOW (UsableNow), THE BONSAI 2 FLEET FIRST, THEN BY RANK
+            // (ModelChoice.Best) - the rule every pick uses, with no speed gate (the owner, 2026-11-04). With
+            // no proven brain it may use now, the candidate answers.
+            var proven = CircleAI.Inference.ModelChoice.Best(loader.InstalledIds()
                 .Where(UsableNow)
                 .Select(id => catalogue.Assessment(id))
                 .Where(a => a is { Proven: true, Refused: false })
-                .Select(a => a!.Entry)
-                .ToList(), registry.AllModels);
+                .Select(a => a!.Entry));
             if (proven is not null && proven.Name != wanted && !Rejected(wanted!))
             {
                 lock (_gate) _pendingCandidate = wanted;
@@ -902,13 +900,10 @@ public sealed class InferenceSupervisor : IBrainWorker
             }
         }
 
-        // A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE (Step 4's balance), when one is here:
-        // of the brains on the device smaller than this one that run here, the one BrainSpeed.StepDown
-        // takes - quick enough to talk with first, then by rank, and never a slow one in place of a
-        // quick one (OPEN-GAPS E33). By rank alone it was the C# 2B on the P30, smaller than the 0.8B
-        // and at 1.7 tokens a second. And only a brain this phone may use now (UsableNow, above) - never
-        // one Wolverine is stepping down from, or one killed here at more free memory than there is now.
-        // None smaller, or none quick enough, is not a reason to have no brain; the chosen one stays, lean.
+        // A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE (Step 4's balance), when one is here: of the
+        // brains on the device smaller than this one that it may use now (UsableNow, above), the one
+        // ModelChoice.StepDown takes - the Bonsai 2 fleet first, then rank, and never a brain outside the
+        // fleet in place of one in it. None is not a reason to have no brain; the chosen one stays, lean.
         if (Shape.SmallerBrain && registry.GetLatestModel(wanted!) is { } current)
         {
             var smaller = loader.InstalledIds()
@@ -916,12 +911,10 @@ public sealed class InferenceSupervisor : IBrainWorker
                 .Select(id => registry.GetLatestModel(id)!)
                 .Where(e => e.TotalBytes > 0 && e.TotalBytes < current.TotalBytes)
                 .ToList();
-            var instead = CircleAI.Inference.BrainSpeed.StepDown(current, smaller, registry.AllModels);
-            _log(smaller.Count == 0
-                ? $"balance: no brain smaller than {wanted} is on this phone; it stays, lean"
-                : instead is null
-                    ? $"balance: {CircleAI.Inference.BrainSpeed.WhyTooSlow(CircleAI.Inference.BrainSpeed.Pick(smaller, registry.AllModels)!, registry.AllModels)}, so {wanted} stays, lean"
-                    : $"balance: {instead.Name} answers instead of {wanted} while the phone is under pressure");
+            var instead = CircleAI.Inference.ModelChoice.StepDown(current, smaller);
+            _log(instead is null
+                ? $"balance: no brain smaller than {wanted} that may stand in for it is on this phone; it stays, lean"
+                : $"balance: {instead.Name} answers instead of {wanted} while the phone is under pressure");
             if (instead is not null) wanted = instead.Name;
         }
 
@@ -983,17 +976,11 @@ public sealed class InferenceSupervisor : IBrainWorker
             passed = right == golden.Length;
             _log($"validation of {candidate}: {right}/{golden.Length}");
 
-            // RIGHT IS NOT ENOUGH; IT HAS TO BE QUICK ENOUGH TO TALK WITH. The three answers
-            // together are the measurement - one short answer is mostly start-up - and it is
-            // recorded, so the selector passes this model over from now on instead of offering
-            // it again next week.
+            // THE THREE ANSWERS TOGETHER ARE A MEASUREMENT - one short answer is mostly start-up - and it
+            // is recorded, so the plan can say how fast this brain answers here. Right is what passes it:
+            // speed is no gate (the owner, 2026-11-04), and a brain this phone runs slowly is the engine's
+            // to make faster, not a reason to keep another.
             LearnSpeed(candidate, new TurnTiming(DecodeMs: decodeMs, OutputTokens: tokens));
-            if (passed && tokens >= TokensForASpeed && decodeMs > 0
-                && tokens * 1000.0 / decodeMs < CircleAI.Inference.BrainSpeed.InteractiveTokensPerSecond)
-            {
-                passed = false;
-                _log($"validation of {candidate}: right, but {tokens * 1000.0 / decodeMs:0.0} tokens a second is too slow to talk with; keeping {active}");
-            }
         }
         catch (Exception ex)
         {

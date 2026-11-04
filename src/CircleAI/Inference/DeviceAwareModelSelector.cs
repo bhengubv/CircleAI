@@ -214,7 +214,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         var loadable = Candidates(required)
             .Where(e => ModelFit.Fits(e, probe))
             .ToList();
-        var winner = loadable.Count == 0 ? null : Best(loadable, Rows().ToList());
+        var winner = loadable.Count == 0 ? null : Best(loadable);
 
         return winner is null
             ? null
@@ -297,7 +297,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         // turns it into null for a screen. A selector that threw instead would make every
         // caller handle an exception to learn what a field already says.
         var winner = durableOk.Count > 0
-            ? Best(durableOk, Rows().ToList())
+            ? Best(durableOk)
             : capabilityOk.OrderBy(e => e.MinRamGb).ThenBy(e => e.TotalBytes).First();
 
         // THE FLAG IS ABOUT THE DEVICE, NOT ABOUT THIS MINUTE - and making it momentary
@@ -490,17 +490,14 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         if (_ownsRegistry) _registry.Dispose();
     }
 
-    /// <summary>The best of a set this device can hold: quick enough to talk with first, then by rank.</summary>
+    /// <summary>The best of a set this device can hold: the Bonsai 2 fleet first, then by rank (ModelChoice.Best).</summary>
     /// <remarks>
-    /// RANK ALONE CHOSE A BRAIN TOO SLOW TO TALK WITH. On the P30 it named Bonsai 2 4B, which
-    /// the C# engine there would run at about 0.7 tokens a second (BrainSpeed). So a brain this
-    /// device has measured - or can estimate from one it has measured on the same engine - as
-    /// too slow is passed over for a quick one, and rank decides among the quick ones. A model
-    /// nothing has measured is not too slow; it is tried. When every one is too slow, speed is
-    /// the binding constraint and the fastest wins.
+    /// NO SPEED GATE (the owner, 2026-11-04). This passed over a brain measured or estimated below
+    /// four tokens a second, which on the P30 - the C# 2B at 1.7 - handed the phone back to MNN. Each
+    /// device runs the best brain it can hold and the engine makes the most of the hardware it has.
     /// </remarks>
-    private static ModelEntry Best(IReadOnlyList<ModelEntry> set, IReadOnlyList<ModelEntry> rows)
-        => BrainSpeed.Pick(set, rows)!;
+    private static ModelEntry Best(IReadOnlyList<ModelEntry> set)
+        => ModelChoice.Best(set)!;
 
     private static bool SatisfiesCapability(ModelEntry entry, ChatCapability required)
     {
