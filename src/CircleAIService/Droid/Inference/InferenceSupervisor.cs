@@ -792,6 +792,27 @@ public sealed class InferenceSupervisor : IBrainWorker
         using var loader = new BundleModelLoader(_store, registry);
         var selector = DeviceAwareModelSelector.Preferring(catalogue, registry);
 
+        // ONE CHECK OF WHAT THIS PHONE MAY USE, ASKED BY EVERY PICK BELOW (OPEN-GAPS E33). Each pick wrote
+        // its own filter and they drifted apart: the balance stepped down to brains Wolverine was avoiding;
+        // the stand-in for an avoided brain and the brain kept while a candidate waits never asked whether a
+        // brain had been killed here at more free memory than there is now; and the replacement after a kill
+        // never asked whether its files were all on disk - InstalledIds lists a half-fetched folder too.
+        // Two tiers, as the picks meant them: what is never used here - retired, not a chat brain, a
+        // companion, nothing in this build opens it, not all on disk, refused - and what is not used NOW:
+        // a brain Wolverine is stepping down from, or one killed here at more free memory than there is now.
+        // A pick that must name a brain takes one of the second kind only when there is nothing else; a
+        // pick that would replace the chosen brain keeps the chosen one rather than take one of them.
+        var tuning = BrainTuning.Current();
+        bool Usable(string id) => registry.GetLatestModel(id) is { Retired: false, Modality: ModelModality.Chat } e
+                                  && !BrainCompanions.IsCompanion(e) && EngineChoice.CanRun(e) && loader.ModelPresent(id)
+                                  && !CrashVerdict.IsRefused(catalogue, id);
+        bool NotNow(string id) => tuning.Avoids(id) || (KilledAt(id) is { } killed && probe.UsableRamGb < killed);
+        bool UsableNow(string id) => Usable(id) && !NotNow(id);
+
+        // The best brain on the phone for a pick that must name one: one it may use now, else one it may use.
+        string? StandIn() => loader.BestInstalledChatModel(probe, refused: id => !UsableNow(id))
+                             ?? loader.BestInstalledChatModel(probe, refused: id => !Usable(id));
+
         // A BRAIN PINNED FOR A TEST (S9) before the plan, and still under every rule below it.
         string? wanted = Pinned() ?? options.ModelId;
         if (!string.IsNullOrWhiteSpace(wanted) && registry.GetLatestModel(wanted!) is { Retired: true }) wanted = null;
@@ -810,7 +831,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         // OnTheSmallerBrain here; the preferred model was simply not on the phone.
         if (!string.IsNullOrWhiteSpace(wanted) && !loader.ModelPresent(wanted!))
         {
-            var here = loader.BestInstalledChatModel(probe, refused: id => CrashVerdict.IsRefused(catalogue, id));
+            var here = StandIn();
             _log($"the selector wanted {wanted}, which is not on this phone; {(here is null ? "nothing else is" : "using " + here)}");
             wanted = here;
         }
@@ -819,7 +840,7 @@ public sealed class InferenceSupervisor : IBrainWorker
 
         if (CrashVerdict.IsRefused(catalogue, wanted))
         {
-            var instead = loader.BestInstalledChatModel(probe, refused: id => CrashVerdict.IsRefused(catalogue, id));
+            var instead = StandIn();
             if (string.IsNullOrWhiteSpace(instead))
             {
                 _announce(CircleAI.Assistant.AssistantPersona.NothingItCanRun, false);
@@ -835,8 +856,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         if (KilledAt(wanted!) is { } killedAt && probe.UsableRamGb < killedAt)
         {
             var other = loader.InstalledIds()
-                .Where(id => id != wanted && registry.GetLatestModel(id) is { Retired: false, Modality: ModelModality.Chat }
-                             && !CrashVerdict.IsRefused(catalogue, id) && !(KilledAt(id) is { } k && probe.UsableRamGb < k))
+                .Where(id => id != wanted && UsableNow(id))
                 .OrderBy(id => registry.GetLatestModel(id)?.MinRamGb ?? double.MaxValue)
                 .FirstOrDefault();
             if (other is not null)
@@ -849,11 +869,9 @@ public sealed class InferenceSupervisor : IBrainWorker
         // WOLVERINE STEPPED DOWN FROM IT (S6): this brain ran out of memory or crashed here, and
         // for SelfHeal's window the next brain this phone holds answers instead - "not now", not
         // "defective", and the floor still holds: nothing retired is ever the replacement.
-        var tuning = BrainTuning.Current();
         if (tuning.Avoids(wanted))
         {
-            var instead = loader.BestInstalledChatModel(probe,
-                refused: id => CrashVerdict.IsRefused(catalogue, id) || tuning.Avoids(id));
+            var instead = loader.BestInstalledChatModel(probe, refused: id => !UsableNow(id));
             if (!string.IsNullOrWhiteSpace(instead))
             {
                 _log($"{wanted} is stepped down from for now (Wolverine: {tuning.Describe()}); using {instead}");
@@ -866,13 +884,14 @@ public sealed class InferenceSupervisor : IBrainWorker
         // has never loaded on this phone is a candidate; the proven one keeps answering.
         if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false })
         {
-            // QUICK ENOUGH TO TALK WITH FIRST, THEN BY RANK (BrainSpeed.Pick), as the plan chose it (OPEN-GAPS
-            // E33). By rank alone this is the C# 2B on the P30 since its validation loaded it there on
-            // 2026-11-03: rank 9 at 1.7 tokens a second, ahead of the 0.8B the plan wants.
+            // OF THE PROVEN BRAINS THIS PHONE MAY USE NOW (UsableNow), QUICK ENOUGH TO TALK WITH FIRST, THEN
+            // BY RANK (BrainSpeed.Pick), as the plan chose it (OPEN-GAPS E33). By rank alone this is the C# 2B
+            // on the P30 since its validation loaded it there on 2026-11-03: rank 9 at 1.7 tokens a second,
+            // ahead of the 0.8B the plan wants. With no proven brain it may use now, the candidate answers.
             var proven = CircleAI.Inference.BrainSpeed.Pick(loader.InstalledIds()
+                .Where(UsableNow)
                 .Select(id => catalogue.Assessment(id))
-                .Where(a => a is { Proven: true, Refused: false } && !a.Entry.Retired && a.Entry.Modality == ModelModality.Chat
-                            && !tuning.Avoids(a.Entry.Name))
+                .Where(a => a is { Proven: true, Refused: false })
                 .Select(a => a!.Entry)
                 .ToList(), registry.AllModels);
             if (proven is not null && proven.Name != wanted && !Rejected(wanted!))
@@ -887,21 +906,15 @@ public sealed class InferenceSupervisor : IBrainWorker
         // of the brains on the device smaller than this one that run here, the one BrainSpeed.StepDown
         // takes - quick enough to talk with first, then by rank, and never a slow one in place of a
         // quick one (OPEN-GAPS E33). By rank alone it was the C# 2B on the P30, smaller than the 0.8B
-        // and at 1.7 tokens a second. And never one this phone has learned not to use for now - a brain
-        // Wolverine is stepping down from, or one killed here at more free memory than there is now -
-        // the two checks the chosen brain passed above. None smaller, or none quick enough, is not a
-        // reason to have no brain; the chosen one stays, lean.
+        // and at 1.7 tokens a second. And only a brain this phone may use now (UsableNow, above) - never
+        // one Wolverine is stepping down from, or one killed here at more free memory than there is now.
+        // None smaller, or none quick enough, is not a reason to have no brain; the chosen one stays, lean.
         if (Shape.SmallerBrain && registry.GetLatestModel(wanted!) is { } current)
         {
             var smaller = loader.InstalledIds()
-                .Select(id => registry.GetLatestModel(id))
-                .Where(e => e is { Retired: false, Modality: ModelModality.Chat } && e.TotalBytes > 0
-                            && e.TotalBytes < current.TotalBytes && !BrainCompanions.IsCompanion(e)
-                            && EngineChoice.CanRun(e) && loader.ModelPresent(e.Name)
-                            && !CrashVerdict.IsRefused(catalogue, e.Name)
-                            && !tuning.Avoids(e.Name)
-                            && !(KilledAt(e.Name) is { } killed && probe.UsableRamGb < killed))
-                .Select(e => e!)
+                .Where(UsableNow)
+                .Select(id => registry.GetLatestModel(id)!)
+                .Where(e => e.TotalBytes > 0 && e.TotalBytes < current.TotalBytes)
                 .ToList();
             var instead = CircleAI.Inference.BrainSpeed.StepDown(current, smaller, registry.AllModels);
             _log(smaller.Count == 0

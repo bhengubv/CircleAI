@@ -833,7 +833,61 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         Assert.True(balance >= 0 && stepDown > balance, "the balance's step down was not found");
 
         var smaller = supervisor[balance..stepDown];
-        Assert.Contains("&& !tuning.Avoids(e.Name)", smaller, StringComparison.Ordinal);
-        Assert.Contains("&& !(KilledAt(e.Name) is { } killed && probe.UsableRamGb < killed)", smaller, StringComparison.Ordinal);
+        Assert.Contains(".Where(UsableNow)", smaller, StringComparison.Ordinal);
+        Assert.Contains("bool NotNow(string id) => tuning.Avoids(id) || (KilledAt(id) is { } killed && probe.UsableRamGb < killed);",
+                        supervisor, StringComparison.Ordinal);
+        Assert.Contains("bool UsableNow(string id) => Usable(id) && !NotNow(id);", supervisor, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_brain_pick_in_Choose_asks_one_check_of_what_this_phone_may_use()
+    {
+        // ANDROID CODE THE TEST LEGS DO NOT COMPILE, read rather than run. Six picks each wrote a filter of their
+        // own and they drifted: two never asked about a kill for memory, one never asked whether a brain's files
+        // were all on disk, and the balance stepped down to brains Wolverine was avoiding.
+        var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var start = supervisor.IndexOf("private string? Choose()", StringComparison.Ordinal);
+        var end = supervisor.IndexOf("// ── validation of a better model", start, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, "Choose was not found");
+        var choose = supervisor[start..end];
+
+        // The one check: what is never used here, and what is not used now.
+        Assert.Contains("bool Usable(string id) => registry.GetLatestModel(id) is { Retired: false, Modality: ModelModality.Chat } e",
+                        choose, StringComparison.Ordinal);
+        foreach (var rule in new[] { "!BrainCompanions.IsCompanion(e)", "EngineChoice.CanRun(e)", "loader.ModelPresent(id)",
+                                     "!CrashVerdict.IsRefused(catalogue, id)" })
+            Assert.Contains(rule, choose, StringComparison.Ordinal);
+        Assert.Contains("bool NotNow(string id) => tuning.Avoids(id) || (KilledAt(id) is { } killed && probe.UsableRamGb < killed);",
+                        choose, StringComparison.Ordinal);
+
+        // Asked by every pick: the stand-ins for a brain missing or refused, the replacement after a kill, the
+        // stand-in for a brain Wolverine is avoiding, the brain kept while a candidate waits, the smaller brain.
+        Assert.Equal(2, Count(choose, "var here = StandIn();") + Count(choose, "var instead = StandIn();"));
+        Assert.Contains(".Where(id => id != wanted && UsableNow(id))", choose, StringComparison.Ordinal);
+        Assert.Contains("loader.BestInstalledChatModel(probe, refused: id => !UsableNow(id));",
+                        Between(choose, "if (tuning.Avoids(wanted))", "KEEP THE WORKING MODEL"), StringComparison.Ordinal);
+        Assert.Contains(".Where(UsableNow)", Between(choose, "var proven =", "registry.AllModels);"), StringComparison.Ordinal);
+        Assert.Contains(".Where(UsableNow)", Between(choose, "var smaller =", ".ToList();"), StringComparison.Ordinal);
+
+        // And no pick keeps a filter of its own.
+        Assert.Equal(1, Count(choose, "ModelModality.Chat"));
+        Assert.Equal(1, Count(choose, "tuning.Avoids(id)"));
+        Assert.Equal(2, Count(choose, "KilledAt("));   // the chosen brain's own check, and the shared one
+        Assert.DoesNotContain("refused: id => CrashVerdict.IsRefused", choose, StringComparison.Ordinal);
+    }
+
+    private static int Count(string text, string what)
+    {
+        var n = 0;
+        for (var at = text.IndexOf(what, StringComparison.Ordinal); at >= 0; at = text.IndexOf(what, at + what.Length, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    private static string Between(string text, string from, string to)
+    {
+        var a = text.IndexOf(from, StringComparison.Ordinal);
+        var b = a < 0 ? -1 : text.IndexOf(to, a, StringComparison.Ordinal);
+        Assert.True(a >= 0 && b > a, $"'{from}' ... '{to}' was not found");
+        return text[a..b];
     }
 }
