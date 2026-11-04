@@ -820,4 +820,20 @@ public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
         Assert.True(balance >= 0 && stepDown > balance && taken > stepDown, "the balance's smaller brain is not chosen by BrainSpeed.StepDown");
         Assert.DoesNotContain(".OrderByDescending(e => e!.QualityRank)", supervisor, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Under_pressure_the_smaller_brain_is_never_one_this_phone_has_learned_not_to_use()
+    {
+        // ANDROID CODE THE TEST LEGS DO NOT COMPILE, read rather than run. The brain chosen above the balance
+        // is checked against the brains Wolverine is stepping down from and the free memory a brain was killed
+        // at; the smaller brains it may step down to were checked against neither.
+        var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var balance = supervisor.IndexOf("A SMALLER BRAIN WHILE THE PHONE IS UNDER PRESSURE", StringComparison.Ordinal);
+        var stepDown = supervisor.IndexOf("BrainSpeed.StepDown(current, smaller, registry.AllModels)", balance, StringComparison.Ordinal);
+        Assert.True(balance >= 0 && stepDown > balance, "the balance's step down was not found");
+
+        var smaller = supervisor[balance..stepDown];
+        Assert.Contains("&& !tuning.Avoids(e.Name)", smaller, StringComparison.Ordinal);
+        Assert.Contains("&& !(KilledAt(e.Name) is { } killed && probe.UsableRamGb < killed)", smaller, StringComparison.Ordinal);
+    }
 }
