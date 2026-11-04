@@ -120,6 +120,10 @@ Where a held turn's time went, the long question: the prompt's 93 tokens in 43 s
 their tables 9.2 s, the linear-attention recurrence 5.9 s, attention 3.6 s - and the answer's 46 in 26 s, the
 output head 3.8 s of it. The A73s stayed at 1.82 GHz throughout.
 
+**And half that prompt was a stray skill (OPEN-GAPS E36).** Its 93 tokens past the primed start held
+210 characters of a business skill, `find-and-keep-customers`, matched on one word of its tag
+"word-of-mouth". With the match fixed the same question read 21 tokens in 9.5 s, against 43-50 s.
+
 ## Bugs this testing found (and fixed)
 
 1. **GC-heap-limit misread.** `DeviceProbe.Snapshot()` read RAM from `GC.GetGCMemoryInfo()` — the per-app **GC heap limit (~100 MB)** in an Android sandbox, not physical RAM. The phone classified as a **Wearable** and *every* model came back `NothingFits`. Chat hid it (silent fallback to the smallest model); the per-modality capability sweep surfaced it. **Fix:** a `PlatformMemoryProbe` hook the Android head sets from `ActivityManager` + `StatFs`.

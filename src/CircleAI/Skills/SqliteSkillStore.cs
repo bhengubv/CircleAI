@@ -319,15 +319,26 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
             try
             {
                 using var cmd = _conn.CreateCommand();
-                cmd.CommandText = """
-                    SELECT s.id, s.name, s.description, s.tags, s.source
-                    FROM   skills_fts f
-                    JOIN   skills s ON s.id = f.skill_id
-                    WHERE  skills_fts MATCH $q
-                    ORDER  BY bm25(skills_fts) ASC;
-                    """;
+                // In identifying mode the index also says WHICH of a hit's name and tag words the
+                // question matched (highlight), with its own stemming - see Named.
+                cmd.CommandText = _identifyingOnly
+                    ? """
+                      SELECT s.id, s.name, s.description, s.tags, s.source,
+                             highlight(skills_fts, 1, char(1), char(2)), highlight(skills_fts, 3, char(1), char(2))
+                      FROM   skills_fts f
+                      JOIN   skills s ON s.id = f.skill_id
+                      WHERE  skills_fts MATCH $q
+                      ORDER  BY bm25(skills_fts) ASC;
+                      """
+                    : """
+                      SELECT s.id, s.name, s.description, s.tags, s.source
+                      FROM   skills_fts f
+                      JOIN   skills s ON s.id = f.skill_id
+                      WHERE  skills_fts MATCH $q
+                      ORDER  BY bm25(skills_fts) ASC;
+                      """;
                 cmd.Parameters.AddWithValue("$q", SafeMatch(terms));
-                var hits = ReadSummaries(cmd, cancellationToken);
+                var hits = _identifyingOnly ? ReadNamed(cmd, cancellationToken) : ReadSummaries(cmd, cancellationToken);
 
                 // AND IN IDENTIFYING MODE A SKILL MUST COVER MORE THAN ONE WORD.
                 // See Covering for the measurement - twelve skills, 1,609
@@ -704,6 +715,87 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         => Identifying + " : ("
          + string.Join(" OR ", terms.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""))
          + ")";
+
+    /// <summary>The hits of an identifying search the question names: see <see cref="Named"/>.</summary>
+    private static IReadOnlyList<SkillSummary> ReadNamed(SqliteCommand cmd, CancellationToken ct)
+    {
+        var list = new List<SkillSummary>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!Named(r.IsDBNull(5) ? string.Empty : r.GetString(5), r.IsDBNull(6) ? string.Empty : r.GetString(6))) continue;
+            list.Add(new SkillSummary(
+                r.GetString(0), r.GetString(1), r.GetString(2),
+                SplitTags(r.GetString(3)),
+                (SkillSource)r.GetInt32(4)));
+        }
+        return list;
+    }
+
+    // How the index marks the words a question matched, in Named's highlights.
+    private const char MatchOpen = '\u0001';
+    private const char MatchClose = '\u0002';
+
+    /// <summary>
+    /// Whether the question names a skill, from the index's own marks on its name and tags: a word
+    /// of its name, or a whole tag - every word of a tag of several, its small words aside - and not
+    /// one word inside a phrase.
+    /// </summary>
+    /// <remarks>
+    /// ONE WORD OF A PHRASE IS NOT THE PHRASE (OPEN-GAPS E36). On the P30 on 2026-11-04 "Count from one
+    /// to twenty, in words." was handed find-and-keep-customers - 210 characters, about half the 43 s
+    /// its prompt took to read - because the porter tokeniser splits the tag "word-of-mouth" into
+    /// "word", "of" and "mouth", and "words" is "word". The question is four words, under
+    /// <see cref="LongQuestion"/>, so one in common was enough, and the skill's name ("Find and keep
+    /// customers") says nothing of counting. The marks are the index's, so "meals" still names "meal"
+    /// and "planting" still names "plant" exactly as the search found them; only where they fall is
+    /// read here.
+    /// </remarks>
+    internal static bool Named(string highlightedName, string highlightedTags)
+    {
+        if (highlightedName.Contains(MatchOpen)) return true;
+        foreach (var tag in highlightedTags.Split(','))
+            if (WholeTag(tag)) return true;
+        return false;
+    }
+
+    // Whether every word of a highlighted tag was matched - a word inside or touching a mark counts as
+    // matched, and a small word left unmarked ("of", "at") does not count against it.
+    private static bool WholeTag(string tag)
+    {
+        var inside = false;
+        var marked = false;
+        var words = 0;
+        var whole = true;
+        var current = new System.Text.StringBuilder();
+
+        void End()
+        {
+            if (current.Length == 0) return;
+            if (marked || !CircleAI.Core.SearchTerms.Stopwords.Contains(current.ToString()))
+            {
+                words++;
+                if (!marked) whole = false;
+            }
+            current.Clear();
+            marked = false;
+        }
+
+        foreach (var ch in tag)
+        {
+            if (ch == MatchOpen) { inside = true; continue; }
+            if (ch == MatchClose) { inside = false; continue; }
+            if (char.IsLetterOrDigit(ch))
+            {
+                current.Append(ch);
+                if (inside) marked = true;
+            }
+            else End();
+        }
+        End();
+        return words > 0 && whole;
+    }
 
     private static IReadOnlyList<SkillSummary> ReadSummaries(SqliteCommand cmd, CancellationToken ct)
     {

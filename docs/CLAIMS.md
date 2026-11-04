@@ -213,6 +213,9 @@ against the pinned llama.cpp fork the repo already ships.
 | A call to the inference process gives its parcels back and never disposes them | tested | A_call_to_the_inference_process_gives_its_parcels_back_and_never_disposes_them |
 | Each turn logs its notes by source and length, and never their words | tested | Each_turn_logs_its_notes_by_source_and_length_and_never_their_words |
 | The notes line names every source in order | tested | The_notes_line_names_every_source_in_order |
+| One word of a phrase tag does not hand a question a skill; the whole phrase still does | tested | One_word_of_a_phrase_tag_does_not_hand_a_question_a_skill |
+| A skill is named by a word of its name or a whole tag, read off the index's own marks | tested | A_skill_is_named_by_a_word_of_its_name_or_a_whole_tag |
+| Without the stray skill, the counting question's prompt reads in 9.5 s on the P30, down from 43-50 s | measured | P30 Lite MAR-LX1M, 2026-11-04 (the engine check, 21 tokens read past the primed start instead of 93; OPEN-GAPS E36) |
 
 ## Choosing the brain
 

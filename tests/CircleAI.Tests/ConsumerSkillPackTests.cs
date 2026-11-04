@@ -111,6 +111,32 @@ public sealed class ConsumerSkillPackTests
     }
 
     [Fact]
+    public async Task One_word_of_a_phrase_tag_does_not_hand_a_question_a_skill()
+    {
+        // OPEN-GAPS E36. On the P30 on 2026-11-04 this question was handed find-and-keep-customers - 210
+        // characters, about half the 43 s its prompt took to read - because "words" is the porter "word"
+        // of its tag "word-of-mouth". Nothing in the pack is about counting.
+        var hits = await ConsumerSkillPack.Shared.SearchAsync("Count from one to twenty, in words.");
+        Assert.DoesNotContain(hits, h => h.Id == "find-and-keep-customers");
+        Assert.Empty(hits);
+
+        // The whole phrase still names it.
+        Assert.Contains(await ConsumerSkillPack.Shared.SearchAsync("How do I get word of mouth going for my shop?"),
+                        h => h.Id == "find-and-keep-customers");
+    }
+
+    [Theory]
+    [InlineData("Find and keep \u0001customers\u0002", "customers,clients", true)]               // a word of its name
+    [InlineData("Find and keep customers", "\u0001customers\u0002,clients", true)]               // a whole tag
+    [InlineData("Electricity", "\u0001load\u0002-\u0001shedding\u0002,power", true)]             // every word of a phrase tag
+    [InlineData("Electricity", "\u0001load-shedding\u0002,power", true)]                         // ... marked as one span
+    [InlineData("Find and keep customers", "customers,\u0001word\u0002-of-mouth,referrals", false)] // one word of a phrase
+    [InlineData("Renting a home", "renting-a-\u0001home\u0002", false)]                          // the small word aside, still one of two
+    [InlineData("Find and keep customers", "customers,pack:consumer-sa", false)]                 // nothing matched
+    public void A_skill_is_named_by_a_word_of_its_name_or_a_whole_tag(string name, string tags, bool named) =>
+        Assert.Equal(named, SqliteSkillStore.Named(name, tags));
+
+    [Fact]
     public async Task No_significant_terms_means_no_match_not_everything()
     {
         // A query of only function words matches nothing, deliberately — the
