@@ -8,6 +8,11 @@
 // brain's context for seven hours. These pin the fix: the worker's CPU time counts as progress, a
 // job a minute past its own deadline is ended however busy it is, every report names the brain that
 // was working, and a picture turn carries no history.
+//
+// AND WHAT THE FIX'S OWN RUN ON THE P30 FOUND, 2026-11-03: the ask - and the link's row for it - still
+// named the main brain; the supervisor's known questions reached the 2B as turns, one with two tool
+// definitions, and it was rejected by its deadline instead of its speed; and the brain kept answering
+// while a candidate waits was chosen by rank alone, which made it the C# 2B at 1.7 tokens a second.
 
 using System.Runtime.CompilerServices;
 using CircleAI.Assistant;
@@ -278,6 +283,8 @@ public sealed class TheBrainThatWasWorkingTests : IDisposable
             return new InProcessBrain(service, Main);
         });
         options.Answering = worker.ReportAnswering;   // as both hosts wire it
+        var named = new List<AnsweringBrain>();
+        worker.AnsweringChanged += (_, brain) => named.Add(brain);
 
         RiskySteps.Directory = RiskySteps.For(_dir, "inference");
         string? marker = null;
@@ -308,6 +315,13 @@ public sealed class TheBrainThatWasWorkingTests : IDisposable
         // Outside a turn, a report is nobody's.
         worker.ReportAnswering(new AnsweringBrain("stray", "Vision specialist"));
         Assert.Null(worker.Answering);
+
+        // AND EACH TURN SAID SO TO WHOEVER KEEPS ITS ASK (P30, 2026-11-03): once per turn, the stray never.
+        Assert.Equal(new[]
+        {
+            new AnsweringBrain(Eyes, "Vision specialist"), new AnsweringBrain(Eyes, "Vision specialist"),
+            new AnsweringBrain(Main, AnsweringBrain.Main),
+        }, named);
     }
 
     [Fact]
@@ -348,8 +362,20 @@ public sealed class TheBrainThatWasWorkingTests : IDisposable
 
         // The connection keeps what the worker said, and a death inside an ask carries it.
         var connection = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "WorkerConnection.cs");
-        Assert.Contains("if (WorkerWire.GetAnswering(poll) is { } working) lock (_gate) _working = working;", connection, StringComparison.Ordinal);
+        Assert.Contains("if (WorkerWire.GetAnswering(poll) is { } working) Name(working);", connection, StringComparison.Ordinal);
         Assert.Contains("_ask is null ? null : _working", connection, StringComparison.Ordinal);
+
+        // And says it on, as the poll brings it, through the supervisor to the queue (P30, 2026-11-03).
+        Assert.Contains("try { WorkingChanged?.Invoke(this, working); }", connection, StringComparison.Ordinal);
+        Assert.Contains("_connection.WorkingChanged += OnWorking;", supervisor, StringComparison.Ordinal);
+        Assert.Contains("_connection.WorkingChanged -= OnWorking;", supervisor, StringComparison.Ordinal);
+        Assert.Contains("try { AnsweringChanged?.Invoke(this, brain); }", supervisor, StringComparison.Ordinal);
+
+        // The queue on the phone is handed the supervisor behind its catalogue gate: the gate says it on too.
+        var service = SlowIsNotStuckTests.Source("src", "CircleAIService", "ServiceApplication.cs");
+        Assert.Contains("var brain = new CatalogueGatedBrain(supervisor,", service, StringComparison.Ordinal);
+        Assert.Contains("add => inner.AnsweringChanged += value;", service, StringComparison.Ordinal);
+        Assert.Contains("remove => inner.AnsweringChanged -= value;", service, StringComparison.Ordinal);
 
         // Both hosts wire the service's word to their worker.
         var worker = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceWorkerService.cs");
@@ -376,6 +402,7 @@ public sealed class APictureTurnCarriesNoHistoryTests : IDisposable
     {
         public BrainWorkerStatus Status { get; private set; } = BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow);
         public event EventHandler<BrainWorkerStatus>? StatusChanged;
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public readonly List<BrainJob> Jobs = new();
 
         public Task EnsureReadyAsync(CancellationToken ct)
@@ -436,5 +463,262 @@ public sealed class APictureTurnCarriesNoHistoryTests : IDisposable
         Assert.True(after.Count > 3, "the history did not come back after a picture");
         Assert.Contains(after, m => m.Content == "What is 17 times 4?");
         Assert.All(after, m => Assert.Null(m.ImageBytes));
+    }
+}
+
+/// <summary>
+/// The P30, 2026-11-03: a picture went to SmolVLM, and the ask - and the link's row an app reads, "the model
+/// working on it" - named Qwen3.5-0.8B-MNN, idle in the main slot, from start to finish.
+/// </summary>
+public sealed class TheAskNamesTheBrainWorkingOnItTests : IDisposable
+{
+    private const string Main = "Qwen3.5-0.8B-MNN";
+    private const string Eyes = "SmolVLM-256M-Instruct-MNN";
+    private readonly string _dir = Directory.CreateTempSubdirectory("circleai-e33-ask-").FullName;
+
+    public void Dispose()
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, recursive: true); } catch { /* temp */ }
+    }
+
+    /// <summary>The main slot holds the 0.8B; the worker names SmolVLM for the turn, then answers, fails, or reads on.</summary>
+    private sealed class SeeingWorker : IBrainWorker
+    {
+        public BrainWorkerStatus Status { get; } =
+            BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow) with { Phase = BrainPhase.Ready, ModelId = Main };
+        public event EventHandler<BrainWorkerStatus>? StatusChanged { add { } remove { } }
+        public event EventHandler<AnsweringBrain>? AnsweringChanged;
+        public readonly TaskCompletionSource Named = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Failure? Fail;
+        public bool ReadsOn;
+
+        public bool Listened => AnsweringChanged is not null;
+
+        public Task EnsureReadyAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            AnsweringChanged?.Invoke(this, new AnsweringBrain(Eyes, "Vision specialist"));
+            Named.TrySetResult();
+            if (ReadsOn) await Task.Delay(Timeout.Infinite, ct);   // a prefill longer than the deadline
+            await Go.Task.WaitAsync(ct);
+            if (Fail is { } failure) throw new BrainWorkerException(failure);
+            yield return new BrainChunk("A red circle beside a blue square.");
+            yield return new BrainChunk(string.Empty, Final: true,
+                Timing: new TurnTiming(PrefillMs: 9, PromptTokens: 9, DecodeMs: 9, OutputTokens: 9, ModelId: Eyes));
+        }
+
+        public Task ReleaseAsync(CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private static string Submit(RequestCoordinator front, string requestId) =>
+        front.Submit(new AskSubmission("internal:adb", requestId, "adb", AskLane.Foreground, "What shapes are in this picture?"))
+             .Record!.Id;
+
+    private static async Task<AskRecord> Final(RequestCoordinator front, string id)
+    {
+        var done = await front.WaitAsync("internal:adb", id, TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.True(done!.IsFinal, "the ask did not finish: " + done.State);
+        return done;
+    }
+
+    [Fact]
+    public async Task The_brain_that_sees_is_named_on_the_ask_while_it_reads_and_once_it_has_answered()
+    {
+        using var asks = new SqliteAskStore(Path.Combine(_dir, "asks.db"));
+        var brain = new SeeingWorker();
+        await using var front = new RequestCoordinator(asks, brain, ServiceLimits.Default with { TextWriteInterval = TimeSpan.Zero });
+        front.Start();
+
+        var id = Submit(front, "pic");
+        await brain.Named.Task.WaitAsync(TimeSpan.FromMinutes(2));
+
+        // WHILE IT READS: the record, and the row an app polls, name the brain reading it.
+        var running = asks.Get(id)!;
+        Assert.Equal(AskState.Running, running.State);
+        Assert.Equal(Eyes, running.ModelId);
+        Assert.Equal(Eyes, LinkAskRows.ReadAsk(LinkAskRows.Ask(running, -1))!.ModelId);
+
+        brain.Go.SetResult();
+        var done = await Final(front, id);
+        Assert.Equal(AskState.Succeeded, done.State);
+        var row = LinkAskRows.ReadAsk(LinkAskRows.Ask(done, -1))!;
+        Assert.Equal((Eyes, Eyes), (row.ModelId, row.Timing!.ModelId));
+
+        // The queue listens for its own turn only.
+        Assert.True(SpinWait.SpinUntil(() => !brain.Listened, TimeSpan.FromSeconds(30)), "the queue still listens after the turn");
+    }
+
+    [Fact]
+    public async Task A_picture_the_brain_that_sees_fails_on_or_runs_out_of_time_on_stays_named_for_it()
+    {
+        // SmolVLM's -6, as the P30 raised it.
+        using var asks = new SqliteAskStore(Path.Combine(_dir, "asks.db"));
+        var failing = new SeeingWorker
+        {
+            Fail = new Failure(FailureKind.ManagedError, Certainty.Certain, WorkPhase.Prefill, Eyes,
+                               "exception=InvalidOperationException", "an error in Circle AI's own code", DateTimeOffset.UtcNow),
+        };
+        failing.Go.SetResult();
+        await using (var front = new RequestCoordinator(asks, failing, ServiceLimits.Default with { TextWriteInterval = TimeSpan.Zero }))
+        {
+            front.Start();
+            var failed = await Final(front, Submit(front, "pic"));
+            Assert.Equal((AskState.Failed, Eyes), (failed.State, failed.ModelId));
+        }
+
+        // A prefill that outlasts the turn's deadline, as both of the 2B's did on the P30.
+        using var later = new SqliteAskStore(Path.Combine(_dir, "later.db"));
+        await using (var front = new RequestCoordinator(later, new SeeingWorker { ReadsOn = true },
+                         ServiceLimits.Default with { TextWriteInterval = TimeSpan.Zero, GenerationDeadline = TimeSpan.FromMilliseconds(500) }))
+        {
+            front.Start();
+            var timedOut = await Final(front, Submit(front, "late"));
+            Assert.Equal((AskState.Failed, FailureKind.TimedOut, Eyes), (timedOut.State, timedOut.Kind, timedOut.ModelId));
+        }
+    }
+}
+
+/// <summary>
+/// The P30, 2026-11-03: the supervisor validated the C# 2B with known questions asked as turns. "What is 17
+/// times 4?" is a tool cue there, it reached the 2B with two tool definitions (templateTools=2), outran its
+/// two minutes before a word, and the 2B was rejected for a week by its deadline, not by its speed.
+/// </summary>
+public sealed class AKnownAnswerIsTheBrainsOwnTests : IDisposable
+{
+    private const string Q = "What is 17 times 4?";
+    private readonly string _placeholder = Path.Combine(Path.GetTempPath(), $"circleai-e33-known-{Guid.NewGuid():N}.model");
+
+    public AKnownAnswerIsTheBrainsOwnTests() => File.WriteAllText(_placeholder, "placeholder");
+
+    public void Dispose()
+    {
+        try { File.Delete(_placeholder); } catch { /* best effort */ }
+    }
+
+    /// <summary>A brain that takes tools in its own template, as the C# engine does, and keeps what each call was handed.</summary>
+    private sealed class TemplateBrain : IToolCallingGenerator
+    {
+        public readonly List<(List<ChatMessage> Messages, GenerationOptions? Options)> Calls = [];
+
+        public Task<string> GenerateAsync(IReadOnlyList<ChatMessage> messages, GenerationOptions? options = null, CancellationToken ct = default)
+        {
+            lock (Calls) Calls.Add((messages.ToList(), options));
+            return Task.FromResult("68");
+        }
+
+        public async IAsyncEnumerable<string> StreamAsync(IReadOnlyList<ChatMessage> messages, GenerationOptions? options = null,
+                                                         [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            yield return await GenerateAsync(messages, options, ct);
+        }
+
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task A_known_question_reaches_the_brain_as_written_and_latches_no_tools_into_the_turns_after_it()
+    {
+        // The inference process's own tools: the battery, the calculator and the search.
+        var brain = new TemplateBrain();
+        var service = new AIService(new AIOptions
+        {
+            ModelPath = _placeholder,
+            WarmOnStart = false,
+            SystemPrompt = AssistantPersona.Prompt,
+            ToolBridge = new CircleAIToolBridge(() => 64),
+        }, generatorFactory: _ => brain);
+        await using var worker = new InProcessBrainWorker(async ct =>
+        {
+            await service.StartAsync(ct);
+            return new InProcessBrain(service, "Ternary-Bonsai-2-2B");
+        });
+
+        async Task Ask(BrainJob job)
+        {
+            await foreach (var _ in worker.GenerateAsync(job, CancellationToken.None)) { }
+        }
+
+        // AS THE SUPERVISOR ASKS IT NOW: plain - the question alone, no persona, no tools.
+        await Ask(new BrainJob("validate-1", [new ChatMessage("user", Q)], Q, 64, false, DateTimeOffset.UtcNow.AddMinutes(2), Plain: true));
+        var (known, knownOptions) = brain.Calls[0];
+        Assert.Equal(Q, Assert.Single(known).Content);
+        Assert.Null(knownOptions!.Tools);
+
+        // A turn after it is not handed tools the check would have latched.
+        const string Fruit = "Name one fruit that is yellow.";
+        await Ask(new BrainJob("ask-1", [new ChatMessage("user", Fruit)], Fruit, 64, false, DateTimeOffset.UtcNow.AddMinutes(2)));
+        Assert.Null(brain.Calls[1].Options!.Tools);
+
+        // AS A TURN, THE SAME QUESTION IS A TOOL CUE - what the P30's validation sent the 2B.
+        await Ask(new BrainJob("ask-2", [new ChatMessage("user", Q)], Q, 64, false, DateTimeOffset.UtcNow.AddMinutes(2)));
+        Assert.Contains("calculate", brain.Calls[2].Options!.Tools!.Select(t => t.Name));
+    }
+
+    [Fact]
+    public void The_supervisor_asks_its_known_questions_plain()
+    {
+        // ANDROID CODE THE TEST LEGS DO NOT COMPILE, read rather than run.
+        var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var validate = supervisor.IndexOf("public async Task<bool> ValidateCandidateIfDueAsync(", StringComparison.Ordinal);
+        var job = supervisor.IndexOf("var job = new BrainJob(\"validate-\"", validate, StringComparison.Ordinal);
+        var plain = supervisor.IndexOf("DateTimeOffset.UtcNow.AddMinutes(2), Plain: true);", job, StringComparison.Ordinal);
+        var asked = supervisor.IndexOf("await foreach (var chunk in GenerateAsync(job, ct)", job, StringComparison.Ordinal);
+        Assert.True(validate >= 0 && job > validate && plain > job && asked > plain, "the validation's known questions are not asked plain");
+    }
+}
+
+/// <summary>
+/// The P30, 2026-11-03: the validation loaded the C# 2B there, so it counts as loaded - and while a candidate
+/// waits, the brain kept answering was the best-ranked loaded one: the 2B, rank 9 at 1.7 tokens a second,
+/// ahead of the 0.8B the plan wants.
+/// </summary>
+[Collection(nameof(BrainSpeedCollection))]
+public sealed class TheBrainKeptAnsweringIsQuickEnoughTests : IDisposable
+{
+    public TheBrainKeptAnsweringIsQuickEnoughTests()
+    {
+        // The 2B's speed is the P30's; the 0.8B's is any speed a conversation can bear.
+        BrainSpeed.Measured = id => id switch
+        {
+            "Ternary-Bonsai-2-2B" => 1.7,
+            "Qwen3.5-0.8B-MNN" => 9.0,
+            _ => null,
+        };
+        BrainSpeed.Kernels = () => null;
+    }
+
+    public void Dispose()
+    {
+        BrainSpeed.Measured = null;
+        BrainSpeed.Kernels = null;
+    }
+
+    private static ModelEntry Chat(string name, ModelEngine engine, string packing, long bytes, int rank) =>
+        new(name, "1.0", packing)
+        {
+            Engine = engine, Modality = ModelModality.Chat, TotalBytes = bytes,
+            MinRamGb = bytes / 1e9 + 0.1, MinStorageGb = bytes / 1e9 + 0.1, QualityRank = rank,
+        };
+
+    [Fact]
+    public void While_a_candidate_waits_the_quick_brain_answers_not_the_best_ranked()
+    {
+        // The two the P30 has loaded, as the catalogue sizes and ranks them.
+        var mnn = Chat("Qwen3.5-0.8B-MNN", ModelEngine.Mnn, "MNN-Q4", 547_645_481, rank: 8);
+        var bonsai = Chat("Ternary-Bonsai-2-2B", ModelEngine.Managed, "PTQ1_0", 429_183_456, rank: 9);
+        Assert.Equal(mnn.Name, BrainSpeed.Pick([bonsai, mnn], [mnn, bonsai])!.Name);
+
+        // And it is the rule the supervisor keeps the working brain by.
+        var supervisor = SlowIsNotStuckTests.Source("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs");
+        var keep = supervisor.IndexOf("KEEP THE WORKING MODEL UNTIL ITS REPLACEMENT IS VALIDATED", StringComparison.Ordinal);
+        var pick = supervisor.IndexOf("var proven = CircleAI.Inference.BrainSpeed.Pick(loader.InstalledIds()", keep, StringComparison.Ordinal);
+        var waits = supervisor.IndexOf("_pendingCandidate = wanted;", pick, StringComparison.Ordinal);
+        Assert.True(keep >= 0 && pick > keep && waits > pick, "the brain kept answering is not chosen by BrainSpeed.Pick");
+        Assert.DoesNotContain(".OrderByDescending(a => a!.Entry.QualityRank)", supervisor, StringComparison.Ordinal);
     }
 }

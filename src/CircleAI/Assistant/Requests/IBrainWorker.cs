@@ -114,6 +114,18 @@ public interface IBrainWorker : IAsyncDisposable
     event EventHandler<BrainWorkerStatus>? StatusChanged;
 
     /// <summary>
+    /// Raised when the worker learns which brain answers the job in flight - the main brain, or a
+    /// specialist a router brought in beside it - and again whenever that changes. Handlers must not
+    /// throw or block.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="BrainWorkerStatus.ModelId"/> IS THE MAIN SLOT'S, NOT THE ASK'S (OPEN-GAPS E33). On the P30
+    /// on 2026-11-03 a picture went to SmolVLM, and the ask - and the link's row for it, "the model working
+    /// on it" - named Qwen3.5-0.8B-MNN, idle in the main slot, from start to finish.
+    /// </remarks>
+    event EventHandler<AnsweringBrain>? AnsweringChanged;
+
+    /// <summary>
     /// Make sure a model is loaded and warm, starting the worker if needed. Completes
     /// when the brain is Ready; throws <see cref="BrainWorkerException"/> when it cannot
     /// be (no model, a classified failure). Safe to call concurrently: every caller

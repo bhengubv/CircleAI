@@ -585,10 +585,25 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         cts.CancelAfter(_limits.GenerationDeadline);
         lock (_gate) { _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; _runningChoice = choice; }
 
+        // THE BRAIN WORKING ON IT, AS THE WORKER NAMES IT (OPEN-GAPS E33). The main slot's brain is where a
+        // turn starts, not always the one answering it: on the P30 on 2026-11-03 a picture went to SmolVLM,
+        // and the ask - and the link's row for it, "the model working on it" - named Qwen3.5-0.8B-MNN from
+        // start to finish. Named on the record as soon as the worker says, so a caller polling a prefill that
+        // takes two minutes sees the brain that is reading it - and a failure or the deadline leaves it named.
+        var id = ask.Id;
+        var working = ask.ModelId;
+        void Named(object? sender, AnsweringBrain brain)
+        {
+            if (string.Equals(brain.ModelId, working, StringComparison.Ordinal)) return;
+            working = brain.ModelId;
+            Save(id, r => r.State == AskState.Running ? r with { ModelId = brain.ModelId, UpdatedAt = _clock.GetUtcNow() } : r);
+        }
+
         var text = new StringBuilder();
         TurnTiming? workerTiming = null;
         long ttftMs = -1;
         var lastWrite = started;
+        _worker.AnsweringChanged += Named;
         try
         {
             await foreach (var chunk in _worker.GenerateAsync(job, cts.Token).ConfigureAwait(false))
@@ -623,7 +638,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                     CircleAI.Core.Logging.HealthEvents.Raise(CircleAI.Core.Logging.HealthEvents.Of(
                         "Engine", "answer", "NoAnswer", "Reply.Length",
                         "the reply ran to its length limit and said nothing",
-                        subject: workerTiming.ModelId ?? ask.ModelId));
+                        subject: workerTiming.ModelId ?? working));
                 return;
             }
 
@@ -633,7 +648,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             if (choice is not null && Teaches(ask.CallerKey))
                 lock (_gate)
                     if (!_runningCancelledByCaller) _lastAnswered[ask.CallerKey] = (ask.Asked, finished, choice);
-            Complete(ask, answer, Merge(workerTiming, ask, started, loadWaitMs, ttftMs, finished), finished);
+            Complete(ask, answer, Merge(workerTiming, ask, working, started, loadWaitMs, ttftMs, finished), finished);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
@@ -649,7 +664,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             var finished = _clock.GetUtcNow();
             var partial = Final(ask, text.ToString(), cutShort: true);
             if (!string.IsNullOrWhiteSpace(partial))
-                Complete(ask, partial, Merge(workerTiming, ask, started, loadWaitMs, ttftMs, finished) with { Finish = "deadline" }, finished);
+                Complete(ask, partial, Merge(workerTiming, ask, working, started, loadWaitMs, ttftMs, finished) with { Finish = "deadline" }, finished);
             else
                 Finish(ask.Id, AskState.Failed, FailureKind.TimedOut, AskSentences.TimedOut, keepText: false);
         }
@@ -659,6 +674,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         }
         finally
         {
+            _worker.AnsweringChanged -= Named;
             lock (_gate) { _runningId = null; _runningCts = null; _runningCancelledByCaller = false; _runningChoice = null; }
         }
     }
@@ -884,7 +900,10 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         catch { return null; }
     }
 
-    private static TurnTiming Merge(TurnTiming? worker, AskRecord ask, DateTimeOffset started, long loadWaitMs, long ttftMs, DateTimeOffset finished)
+    // The worker's timing, with what only the queue knows; the model is the one the worker said answered, else
+    // the one it named working on the ask.
+    private static TurnTiming Merge(TurnTiming? worker, AskRecord ask, string? working, DateTimeOffset started, long loadWaitMs,
+                                    long ttftMs, DateTimeOffset finished)
     {
         var w = worker ?? TurnTiming.None;
         var firstStart = ask.StartedAt ?? started;
@@ -894,7 +913,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             LoadWaitMs = loadWaitMs,
             TtftMs = ttftMs,
             TotalMs = Ms(finished - ask.CreatedAt),
-            ModelId = w.ModelId ?? ask.ModelId,
+            ModelId = w.ModelId ?? working,
             Finish = w.Finish ?? "eos",
         };
     }
@@ -907,6 +926,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             Text = answer,
             Kind = null,
             Sentence = null,
+            ModelId = timing.ModelId ?? r.ModelId,   // the brain that answered it (OPEN-GAPS E33)
             Timing = timing,
             UpdatedAt = at,
             FinishedAt = at,

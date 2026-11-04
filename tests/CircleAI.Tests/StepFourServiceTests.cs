@@ -371,6 +371,7 @@ public sealed class PictureAcrossTheLinkTests : IDisposable
     {
         public BrainWorkerStatus Status { get; private set; } = BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow);
         public event EventHandler<BrainWorkerStatus>? StatusChanged;
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public readonly List<BrainJob> Jobs = new();
 
         public Task EnsureReadyAsync(CancellationToken ct)

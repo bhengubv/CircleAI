@@ -673,6 +673,14 @@ public sealed partial class ServiceApplication : Application
             remove => inner.StatusChanged -= value;
         }
 
+        // AND WHICH BRAIN ANSWERS, as the supervisor hears it from the worker (OPEN-GAPS E33): the queue
+        // listens here, so a gate that kept it would leave every ask naming the main brain.
+        public event EventHandler<CircleAI.Assistant.Requests.AnsweringBrain>? AnsweringChanged
+        {
+            add => inner.AnsweringChanged += value;
+            remove => inner.AnsweringChanged -= value;
+        }
+
         public async Task EnsureReadyAsync(CancellationToken ct)
         {
             if (Interlocked.Exchange(ref _waited, 1) == 0 && catalogueReady() is { } ready)

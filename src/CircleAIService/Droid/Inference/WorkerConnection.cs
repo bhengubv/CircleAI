@@ -53,6 +53,12 @@ public sealed class WorkerConnection : IAsyncDisposable
     /// </summary>
     public AnsweringBrain? Working { get { lock (_gate) return _working; } }
 
+    /// <summary>
+    /// The worker named the brain answering the ask in flight, or named another (OPEN-GAPS E33). Raised
+    /// on the poll that carried it; handlers must not throw or block.
+    /// </summary>
+    public event EventHandler<AnsweringBrain>? WorkingChanged;
+
     /// <summary>The worker process died.</summary>
     public event EventHandler<WorkerDeath>? Died;
 
@@ -198,7 +204,7 @@ public sealed class WorkerConnection : IAsyncDisposable
                     [WorkerWire.Since] = WorkerWire.I(since),
                     [WorkerWire.WaitMs] = "250",
                 }, since == 0 ? WorkPhase.Prefill : WorkPhase.Decode, CancellationToken.None).ConfigureAwait(false);
-                if (WorkerWire.GetAnswering(poll) is { } working) lock (_gate) _working = working;
+                if (WorkerWire.GetAnswering(poll) is { } working) Name(working);
                 Check(poll, WorkPhase.Decode);
 
                 poll.TryGetValue(WorkerWire.Text, out var text);
@@ -331,6 +337,17 @@ public sealed class WorkerConnection : IAsyncDisposable
             reply.Recycle();
         }
     }, ct);
+
+    // The brain the worker named for the ask in flight: kept for a death, and said on when it is new.
+    private void Name(AnsweringBrain working)
+    {
+        lock (_gate)
+        {
+            if (working == _working) return;
+            _working = working;
+        }
+        try { WorkingChanged?.Invoke(this, working); } catch { /* a reader must not break the answer */ }
+    }
 
     // What the worker was doing as it died - and, inside an ask, which brain was answering it.
     private WorkerDeath Death(WorkPhase fallback)

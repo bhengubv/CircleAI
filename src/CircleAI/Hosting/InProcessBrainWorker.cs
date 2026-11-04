@@ -61,6 +61,9 @@ public sealed class InProcessBrainWorker : IBrainWorker
     public event EventHandler<BrainWorkerStatus>? StatusChanged;
 
     /// <inheritdoc />
+    public event EventHandler<AnsweringBrain>? AnsweringChanged;
+
+    /// <inheritdoc />
     public async Task EnsureReadyAsync(CancellationToken ct)
     {
         Task<InProcessBrain> loading;
@@ -145,15 +148,21 @@ public sealed class InProcessBrainWorker : IBrainWorker
     {
         ArgumentNullException.ThrowIfNull(brain);
         string knobs;
+        bool changed;
         lock (_gate)
         {
             if (!_inTurn) return;
+            changed = brain != _answering;
             _answering = brain;
             knobs = _knobs;
         }
 
         // THE MARKER SAYS WHO IS WORKING: a process that dies in this turn is read by its marker.
         CircleAI.Assistant.RiskySteps.Restate($"generate {brain.ModelId} | {brain.Slot} | {knobs}");
+
+        // AND THE ASK SAYS IT TOO (OPEN-GAPS E33): the coordinator names the brain on the ask's record.
+        if (!changed) return;
+        try { AnsweringChanged?.Invoke(this, brain); } catch { /* readers must not break the worker */ }
     }
 
     /// <summary>The brain answering the turn in flight, once its slot is chosen; null between turns.</summary>

@@ -208,6 +208,7 @@ public sealed class EffortRouterTests : IDisposable
         public BrainWorkerStatus Status { get; private set; } =
             BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow) with { Phase = BrainPhase.Ready, ModelId = "Ternary-Bonsai-2-2B" };
         public event EventHandler<BrainWorkerStatus>? StatusChanged { add { } remove { } }
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public readonly List<BrainJob> Jobs = [];
         public string Answer = "An answer.";
         public TaskCompletionSource? Hold;

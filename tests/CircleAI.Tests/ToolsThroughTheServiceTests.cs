@@ -46,6 +46,7 @@ public sealed class ToolsThroughTheServiceTests : IDisposable
         public BrainWorkerStatus Status { get; } =
             BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow) with { Phase = BrainPhase.Ready, ModelId = "Qwen3.5-0.8B-MNN" };
         public event EventHandler<BrainWorkerStatus>? StatusChanged { add { } remove { } }
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public readonly List<BrainJob> Jobs = [];
 
         public Task EnsureReadyAsync(CancellationToken ct) => Task.CompletedTask;

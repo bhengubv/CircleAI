@@ -85,6 +85,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         _log = log ?? (line => global::Android.Util.Log.Info(Tag, line));
         _status = BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow);
         _connection.Died += OnWorkerDied;
+        _connection.WorkingChanged += OnWorking;
     }
 
     /// <summary>Whether the queue has nothing to do (set by the composition root).</summary>
@@ -101,6 +102,9 @@ public sealed class InferenceSupervisor : IBrainWorker
 
     /// <inheritdoc />
     public event EventHandler<BrainWorkerStatus>? StatusChanged;
+
+    /// <inheritdoc />
+    public event EventHandler<AnsweringBrain>? AnsweringChanged;
 
     // ── IBrainWorker ─────────────────────────────────────────────────────────
 
@@ -265,8 +269,15 @@ public sealed class InferenceSupervisor : IBrainWorker
     public async ValueTask DisposeAsync()
     {
         _connection.Died -= OnWorkerDied;
+        _connection.WorkingChanged -= OnWorking;
         _beat?.Dispose();
         await _connection.DisposeAsync().ConfigureAwait(false);
+    }
+
+    // THE WORKER NAMED THE BRAIN ANSWERING (OPEN-GAPS E33), said on as it came, so the ask names it too.
+    private void OnWorking(object? sender, AnsweringBrain brain)
+    {
+        try { AnsweringChanged?.Invoke(this, brain); } catch { /* readers must not break the answer */ }
     }
 
     // ── memory ───────────────────────────────────────────────────────────────
@@ -855,17 +866,20 @@ public sealed class InferenceSupervisor : IBrainWorker
         // has never loaded on this phone is a candidate; the proven one keeps answering.
         if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false })
         {
-            var proven = loader.InstalledIds()
+            // QUICK ENOUGH TO TALK WITH FIRST, THEN BY RANK (BrainSpeed.Pick), as the plan chose it (OPEN-GAPS
+            // E33). By rank alone this is the C# 2B on the P30 since its validation loaded it there on
+            // 2026-11-03: rank 9 at 1.7 tokens a second, ahead of the 0.8B the plan wants.
+            var proven = CircleAI.Inference.BrainSpeed.Pick(loader.InstalledIds()
                 .Select(id => catalogue.Assessment(id))
                 .Where(a => a is { Proven: true, Refused: false } && !a.Entry.Retired && a.Entry.Modality == ModelModality.Chat
                             && !tuning.Avoids(a.Entry.Name))
-                .OrderByDescending(a => a!.Entry.QualityRank)
-                .FirstOrDefault();
-            if (proven is not null && proven.Entry.Name != wanted && !Rejected(wanted!))
+                .Select(a => a!.Entry)
+                .ToList(), registry.AllModels);
+            if (proven is not null && proven.Name != wanted && !Rejected(wanted!))
             {
                 lock (_gate) _pendingCandidate = wanted;
-                _log($"{wanted} has not loaded on this phone yet; keeping {proven.Entry.Name} until it is validated");
-                wanted = proven.Entry.Name;
+                _log($"{wanted} has not loaded on this phone yet; keeping {proven.Name} until it is validated");
+                wanted = proven.Name;
             }
         }
 
@@ -928,8 +942,14 @@ public sealed class InferenceSupervisor : IBrainWorker
             foreach (var (q, a) in golden)
             {
                 var text = new System.Text.StringBuilder();
+
+                // THE QUESTION AS WRITTEN, AND NOTHING WITH IT (OPEN-GAPS E33). As a turn "What is 17 times 4?"
+                // is a tool cue: on the P30 on 2026-11-03 it reached the C# 2B with two tool definitions, outran
+                // its two minutes before a word, and the 2B was rejected for a week by its deadline, not by its
+                // speed. A known answer is the brain's own - no persona, no notes, no tools, no shortcut - and a
+                // check the service runs latches no tools into the person's turns after it.
                 var job = new BrainJob("validate-" + Guid.NewGuid().ToString("N"),
-                    new[] { new ChatMessage("user", q) }, q, 64, false, DateTimeOffset.UtcNow.AddMinutes(2));
+                    new[] { new ChatMessage("user", q) }, q, 64, false, DateTimeOffset.UtcNow.AddMinutes(2), Plain: true);
                 await foreach (var chunk in GenerateAsync(job, ct).ConfigureAwait(false))
                 {
                     text.Append(chunk.Text);

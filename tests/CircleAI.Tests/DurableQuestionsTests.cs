@@ -47,6 +47,7 @@ public sealed class DurableQuestionsTests : IDisposable
     {
         public BrainWorkerStatus Status { get; private set; } = BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow);
         public event EventHandler<BrainWorkerStatus>? StatusChanged;
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public TaskCompletionSource? Loading;
         public Func<BrainJob, int, Exception?>? FailOnAttempt;
         public readonly List<BrainJob> Jobs = new();
@@ -611,6 +612,7 @@ public sealed class DurableQuestionsTests : IDisposable
             RetryAfter = retryAfter,
         };
         public event EventHandler<BrainWorkerStatus>? StatusChanged { add { } remove { } }
+        public event EventHandler<AnsweringBrain>? AnsweringChanged { add { } remove { } }
         public Task EnsureReadyAsync(CancellationToken ct) => Task.FromException(new BrainWorkerException(
             new Failure(kind, Certainty.Certain, WorkPhase.Load, null, "none", "none", DateTimeOffset.UtcNow)));
         public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)

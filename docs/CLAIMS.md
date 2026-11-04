@@ -311,7 +311,8 @@ reports upstream with nothing a person said.
 ## Slow is not stuck
 
 The supervisor's watchdog against a slow phone, and the supervisor's reports naming the brain that was
-working (OPEN-GAPS E33).
+working (OPEN-GAPS E33) - and what its run on the P30 found: the ask naming the brain working on it, the
+validation's known questions asked plain, and the brain kept answering chosen by speed first.
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -328,6 +329,11 @@ working (OPEN-GAPS E33).
 | The death line says which brain was doing what, and why | tested | The_death_line_says_which_brain_was_doing_what_and_why |
 | A death, a failure and a speed are set against the brain the worker named | tested | The_supervisor_sets_a_death_a_failure_and_a_speed_against_the_brain_the_worker_named |
 | A picture turn is the picture and its question, with no history | tested | A_picture_turn_is_the_picture_and_its_question_and_the_next_text_turn_has_its_history |
+| An ask names the brain working on it while it reads, and the brain that answered once it has | tested | The_brain_that_sees_is_named_on_the_ask_while_it_reads_and_once_it_has_answered |
+| An ask a specialist fails on, or runs out of time on, stays named for the specialist | tested | A_picture_the_brain_that_sees_fails_on_or_runs_out_of_time_on_stays_named_for_it |
+| A known question the supervisor asks reaches the brain as written, and latches no tools into the turns after it | tested | A_known_question_reaches_the_brain_as_written_and_latches_no_tools_into_the_turns_after_it |
+| The supervisor asks its known questions plain | tested | The_supervisor_asks_its_known_questions_plain |
+| While a candidate waits, the brain kept answering is the quick one, not the best-ranked | tested | While_a_candidate_waits_the_quick_brain_answers_not_the_best_ranked |
 | On the P30 a C# prefill that writes nothing for 90 s while its process works is waited on, not ended | measured | P30 Lite MAR-LX1M, 2026-11-03 (the 2B through the supervisor's validation and through the queue: working on it at 3.2 and 3.1 cores, each turn ended by its own two-minute deadline, the inference process alive, no health event) |
 | On the P30 a picture SmolVLM fails is raised against SmolVLM as the Vision specialist | measured | P30 Lite MAR-LX1M, 2026-11-03 (attempted=Prefill SmolVLM-256M-Instruct-MNN (Vision specialist); S9's named Qwen3.5-0.8B-MNN) |
 | A slow C# prefill the watchdog waits on goes on to answer on the P30 | unproven | both turns the C# 2B read on the P30 on 2026-11-03 outlasted their two-minute deadlines; no turn short enough to answer within one was sent |
