@@ -449,6 +449,60 @@ public sealed class ContextEnrichmentTests : IDisposable
         Assert.Contains("tgn.bidbaas", sys);
     }
 
+    private sealed class LineSink(List<string> lines) : CircleAI.Core.Logging.ICircleLogSink
+    {
+        public void Write(in CircleAI.Core.Logging.CircleLogLine line)
+        {
+            if (line.Area == "Context") lock (lines) lines.Add(line.Message);
+        }
+    }
+
+    [Fact]
+    public async Task Each_turn_logs_its_notes_by_source_and_length_and_never_their_words()
+    {
+        // On the P30 on 2026-11-04 a 35-character question carried 210 characters of notes, and the prompt
+        // line could say only how many. The notes are the person's, so the line says where they came from
+        // and how long each is - never what they say.
+        var ctx = new FakeDeviceContext { BatteryLevel = 0.15f, IsCharging = false, NetworkType = "wifi", ActiveAppId = "tgn.notes.check" };
+        var gen = new CapturingChatGenerator("ok");
+        var lines = new List<string>();
+        using var sink = CircleAI.Core.Logging.CircleLog.AddSink(new LineSink(lines));
+
+        await using var svc = new AIService(
+            new AIOptions { ModelPath = _modelPath, WarmOnStart = false, DeviceContext = ctx },
+            generatorFactory: _ => gen);
+        await svc.AskAsync("what's my battery?");
+
+        // Other tests' turns log their notes too while this one runs; this turn's is the one with device notes.
+        string[] logged;
+        lock (lines) logged = [.. lines];
+        var said = logged
+            .Select(l => System.Text.RegularExpressions.Regex.Match(l,
+                @"^notes for this turn: (\d+) characters - persona (\d+), mood (\d+), device (\d+), past exchanges (\d+), skills (\d+)$"))
+            .FirstOrDefault(m => m.Success && int.Parse(m.Groups[4].Value) > 0);
+        Assert.True(said is not null, "no turn logged its device notes: " + string.Join(" | ", logged));
+        Assert.True(int.Parse(said!.Groups[1].Value) > 0, "the notes' total was not said");
+        Assert.Equal("0", said.Groups[5].Value);   // no memory of past exchanges here
+        Assert.Equal("0", said.Groups[6].Value);   // no skills here
+
+        // The prompt carries the device's words; the log line never does.
+        Assert.Contains("tgn.notes.check", gen.CapturedPrompts[0]!);
+        lock (lines)
+            foreach (var line in lines)
+            {
+                Assert.DoesNotContain("tgn.notes.check", line);
+                Assert.DoesNotContain("Battery", line);
+                Assert.DoesNotContain("wifi", line);
+            }
+    }
+
+    [Fact]
+    public void The_notes_line_names_every_source_in_order()
+    {
+        Assert.Equal("notes for this turn: 210 characters - persona 0, mood 0, device 74, past exchanges 0, skills 140",
+                     AIService.NotesLine(210, [0, 0, 74, 0, 140]));
+    }
+
     [Fact]
     public async Task ChatAsync_NullDeviceContext_NoContextBlock()
     {

@@ -1670,7 +1670,14 @@ public sealed class AIService : IAIService
 
         // Enrichment is computed ONCE and used differently depending on whether
         // the caller owns the system turn.
-        var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery).ConfigureAwait(false);
+        var sources = new int[NoteSources.Length];
+        var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery, sources).ConfigureAwait(false);
+
+        // WHICH NOTES RIDE THIS TURN, BY SOURCE AND LENGTH - NEVER THEIR WORDS, which are the
+        // person's. On the P30 on 2026-11-04 a 35-character question carried 210 characters of
+        // notes, about half of the 43 s the phone took to read its prompt, and CIRCLEAI-PROMPT
+        // below could say only how many there were, not where they came from.
+        CircleAI.Core.Logging.CircleLog.Info("Context", NotesLine(enrichment.Length, sources));
 
         // Tool descriptions are a CAPABILITY CONTRACT. If a ToolBridge is
         // registered and the model is never told the tools exist, tool calling
@@ -2143,10 +2150,26 @@ public sealed class AIService : IAIService
         return Convert.ToHexString(bytes, 0, 4).ToLowerInvariant();
     }
 
+    /// <summary>The sources a turn's notes come from, in the order they are added and logged.</summary>
+    private static readonly string[] NoteSources = ["persona", "mood", "device", "past exchanges", "skills"];
+
+    /// <summary>One line on a turn's notes: how long they are, and how much each source added - no words.</summary>
+    /// <remarks>A source's length counts the line breaks around its block, so the sources add up to a little more than the total.</remarks>
+    internal static string NotesLine(int total, IReadOnlyList<int> sources) =>
+        $"notes for this turn: {total} characters - " +
+        string.Join(", ", NoteSources.Select((source, i) => $"{source} {(i < sources.Count ? sources[i] : 0)}"));
+
     private async Task<string> BuildEnrichmentAsync(
-        string userQuery, CancellationToken ct, string? retrievalQuery = null)
+        string userQuery, CancellationToken ct, string? retrievalQuery = null, int[]? sources = null)
     {
         var sb = new StringBuilder();
+        var mark = 0;
+        // How much the section just written added, into its slot - persona 0, mood 1, device 2, past exchanges 3, skills 4.
+        void Added(int source)
+        {
+            if (sources is not null && source < sources.Length) sources[source] += sb.Length - mark;
+            mark = sb.Length;
+        }
 
         // 1. Persona hints.
         try
@@ -2169,6 +2192,7 @@ public sealed class AIService : IAIService
         // would ever look up. Nothing threw, nothing logged, and the prompt was
         // simply different in a way that cost a full re-prefill.
         catch (Exception ex) { EnrichmentFailed("persona", ex); }
+        Added(0);
 
         // 1b. Affect state.
         if (_options.AffectStore is not null)
@@ -2185,6 +2209,7 @@ public sealed class AIService : IAIService
             }
             catch (Exception ex) { EnrichmentFailed("affect", ex); }
         }
+        Added(1);
 
         // 2. Device context.
         var ctx = _options.DeviceContext;
@@ -2247,6 +2272,7 @@ public sealed class AIService : IAIService
                     sb.AppendLine(line);
             }
         }
+        Added(2);
 
         // WHAT TO SEARCH FOR, AS OPPOSED TO WHAT TO SAY. See
         // AIOptions.RetrievalQuery: a head may compose a prompt that carries
@@ -2283,6 +2309,7 @@ public sealed class AIService : IAIService
             }
             catch (Exception ex) { EnrichmentFailed("rag", ex); }
         }
+        Added(3);
 
         // 4. Skill context (relevant capability definitions).
         if (_options.SkillStore is not null && !string.IsNullOrWhiteSpace(lookFor))
@@ -2300,6 +2327,7 @@ public sealed class AIService : IAIService
             }
             catch (Exception ex) { EnrichmentFailed("skills", ex); }
         }
+        Added(4);
 
         // Each section prefixes a newline, so an empty builder would otherwise
         // hand back leading blank lines.

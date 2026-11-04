@@ -211,6 +211,8 @@ against the pinned llama.cpp fork the repo already ships.
 | A held pool handing out nothing lets its workers sleep | tested | A_held_pool_handing_out_nothing_lets_its_workers_sleep_after_its_held_spin |
 | The engine holds its workers for each turn | tested | The_engine_holds_its_pool_for_each_turn |
 | A call to the inference process gives its parcels back and never disposes them | tested | A_call_to_the_inference_process_gives_its_parcels_back_and_never_disposes_them |
+| Each turn logs its notes by source and length, and never their words | tested | Each_turn_logs_its_notes_by_source_and_length_and_never_their_words |
+| The notes line names every source in order | tested | The_notes_line_names_every_source_in_order |
 
 ## Choosing the brain
 
