@@ -387,6 +387,40 @@ namespace CircleAI.Inference
         /// </remarks>
         public bool Plain { get; init; }
 
+        /// <summary>
+        /// How long this turn may spend reading its prompt; null leaves it to read all of it. A brain
+        /// that measures its reading (<see cref="IReadingGenerator"/>) is handed only what it can read
+        /// in this time: tools the turn did not ask for and the oldest history go first, the question
+        /// never.
+        /// </summary>
+        public TimeSpan? ReadWithin { get; init; }
+
+        /// <summary>
+        /// Read the conversation as far as the last thing said, and stop: no answer, nothing recorded.
+        /// Only a brain that reads (<see cref="IReadingGenerator"/>) is asked.
+        /// </summary>
+        /// <remarks>
+        /// SOMEBODY IS STILL TALKING. A P30 reads ten tokens a second, so every word it has read by the
+        /// time they stop is a tenth of a second off the wait. The state keeps what was read, and the call
+        /// with the whole question goes on from it, token by token, wherever the two still agree.
+        /// </remarks>
+        public bool JustRead { get; init; }
+
+        /// <summary>
+        /// The conversation this turn goes on, for a brain that keeps one; null is a turn that stands alone.
+        /// </summary>
+        /// <remarks>
+        /// A CONVERSATION IS A STATE, NOT A TRANSCRIPT. Rebuilding a prompt from the words of every turn
+        /// and reading it again cost the P30 what it could not afford, so what did not fit was thrown away:
+        /// on 2026-11-07 twelve of the 49 wrong answers in a hundred and twenty-two were the brain having
+        /// lost what it was told a moment earlier. A brain that keeps the conversation reads the new turn
+        /// and nothing else, whatever was said before it and however long that was.
+        /// </remarks>
+        public string? Conversation { get; init; }
+
+        /// <summary>The answer will be heard: somebody is standing there, and what cannot be said or done has no place in the prompt.</summary>
+        public bool Spoken { get; init; }
+
         /// <summary>The same options, with the prefix cache switched on.</summary>
         /// <remarks>
         /// A COPY, BECAUSE THE PROPERTIES ARE INIT-ONLY and this is a class rather
@@ -426,6 +460,10 @@ namespace CircleAI.Inference
             Effort               = Effort,
             ThinkingBudget       = ThinkingBudget,
             Plain                = Plain,
+            ReadWithin           = ReadWithin,
+            JustRead             = JustRead,
+            Conversation         = Conversation,
+            Spoken               = Spoken,
             UsePrefixCache       = usePrefixCache,
             Tools                = tools,
         };

@@ -96,7 +96,9 @@ public sealed class AIService : IAIService
     /// See the note where this is set, in PrepareMessagesAsync. It exists so the
     /// system message stops changing between turns: the tool block is decided per
     /// question but LIVES in the per-conversation prefix, and every flip cost a
-    /// full re-prefill of the whole conversation — 36 seconds, measured.
+    /// full re-prefill of the whole conversation — 36 seconds, measured. A brain
+    /// that keeps its system turns on disk (<see cref="IReadingGenerator"/>) pays
+    /// no such thing, and is never latched.
     /// </remarks>
     private bool _toolsLatched;
 
@@ -327,6 +329,9 @@ public sealed class AIService : IAIService
                 });
             }
 
+            if (_options.WarmOnStart && generator is IToolCallingGenerator && generator is IReadingGenerator reader)
+                _ = Task.Run(() => PrimeToolsAsync(reader));
+
             await FireObserverAsync(o => o.OnStartedAsync(ct), ct).ConfigureAwait(false);
 
             // Opt-in upgrade check. Hosts that want this off explicitly disable
@@ -498,7 +503,8 @@ public sealed class AIService : IAIService
         if (Blind(generator, hasImage)) return CannotSeeIt;
 
         var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
-                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
+                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing, readWithin: callOptions?.ReadWithin,
+                spoken: callOptions?.Spoken == true, conversation: callOptions?.Conversation)
             .ConfigureAwait(false);
         var prepared = turn.Messages;
         var effectiveOptions = callOptions;
@@ -569,8 +575,13 @@ public sealed class AIService : IAIService
             yield break;
         }
 
+        // ONLY A BRAIN THAT READS CAN READ AHEAD: any other would answer half a question.
+        var justRead = callOptions?.JustRead == true;
+        if (justRead && generator is not IReadingGenerator) yield break;
+
         var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct,
-                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
+                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing, readWithin: callOptions?.ReadWithin,
+                justRead: justRead, spoken: callOptions?.Spoken == true, conversation: callOptions?.Conversation)
             .ConfigureAwait(false);
         var prepared = turn.Messages;
         var effectiveOptions = callOptions;
@@ -615,7 +626,9 @@ public sealed class AIService : IAIService
 
         sw.Stop();
 
-        // Store the full streamed response episodically - never a plain call's (see ChatAsync).
+        // Store the full streamed response episodically - never a plain call's (see ChatAsync),
+        // and never half a question.
+        if (justRead) yield break;
         if (!plain) _ = TryStoreEpisodeAsync(userQuery, sb.ToString(), ct);
 
         await FireObserverAsync(o => o.OnStreamCompletedAsync(
@@ -669,7 +682,7 @@ public sealed class AIService : IAIService
             yield return new ChatFragment(ChatFragmentKind.Content, CannotSeeIt);
             yield break;
         }
-        var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct).ConfigureAwait(false);
+        var turn = await PrepareTurnAsync(messages, userQuery, plain, generator, ct, readWithin: effectiveOptions?.ReadWithin).ConfigureAwait(false);
         var prepared = turn.Messages;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
@@ -1604,6 +1617,64 @@ public sealed class AIService : IAIService
         _ = await generator.GenerateAsync(warm.Messages, warmOptions, linked.Token).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Has a brain that takes its tools in its template read them once, where nobody is waiting: the
+    /// persona and every tool, as a tool turn sends them.
+    /// </summary>
+    /// <remarks>
+    /// NOT IN THE WARM-UP, AND NOT THROUGH A TURN. On the P30 on 2026-11-05 a turn with the phone's three
+    /// tools held 633 tokens to read and two minutes to read them at 460 ms each, so "Use the calculator:
+    /// what is 6789 times 3?" stopped at the deadline, and because it stopped before the system turn ended
+    /// no primed start formed for the next one either. Four minutes in a warm-up would hold the brain back
+    /// from answering anything. So this runs after the service is ready, in the gaps between turns, and
+    /// once per install: what it keeps is on disk for every later start, and one it left unfinished is
+    /// gone on with.
+    /// <para>
+    /// The order is <see cref="AvailableToolsAsync"/>'s, the one a tool turn offers them in: the block
+    /// is the same tokens or it is another block.
+    /// </para>
+    /// </remarks>
+    private async Task PrimeToolsAsync(IReadingGenerator reader)
+    {
+        try
+        {
+            var stop = _shutdownCts.Token;
+            var tools = (await AvailableToolsAsync(stop).ConfigureAwait(false)).Where(t => t is not null).ToList();
+            if (tools.Count == 0 || string.IsNullOrWhiteSpace(_options.SystemPrompt)) return;
+            if (!HasRoomToPrime())
+            {
+                CircleAI.Core.Logging.CircleLog.Info("Context", "the tools are left unread for now: the device is short of memory, hot or nearly flat");
+                return;
+            }
+
+            ChatMessage[] seed = [new("system", _options.SystemPrompt), new("user", ".")];
+            await reader.PrimeAsync(seed, tools, stop).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // The brain was let go. What was read is on disk, and its next start goes on from there.
+        }
+        catch (Exception ex)
+        {
+            // Nobody is waiting on this: a tool turn reads the block itself, as it did before.
+            _logger.LogWarning(ex, "Butler could not read the tools ahead of a turn.");
+        }
+    }
+
+    /// <summary>Whether the device has room for work nobody is waiting on: memory, heat and battery.</summary>
+    private bool HasRoomToPrime()
+    {
+        if (_pressureSource?.Current is > MemoryPressureLevel.Normal) return false;
+        try
+        {
+            return PowerBudgetPolicy.Conditions?.Invoke() is not { } now || (!now.Hot && now.BatteryPercent is not < 15);
+        }
+        catch
+        {
+            return true;   // a reading that fails knows nothing, as PowerBudgetPolicy has it
+        }
+    }
+
     // ------------------------------------------------------------------
     // Private — v2.0 context enrichment
     // ------------------------------------------------------------------
@@ -1661,7 +1732,11 @@ public sealed class AIService : IAIService
         CancellationToken ct,
         bool forceTools = false,
         string? retrievalQuery = null,
-        TurnTimingRecorder? timing = null)
+        TurnTimingRecorder? timing = null,
+        TimeSpan? readWithin = null,
+        bool justRead = false,
+        bool spoken = false,
+        string? conversation = null)
     {
         if (plain) return new PreparedTurn(messages.ToList(), System.Array.Empty<ToolDefinition>());
 
@@ -1670,8 +1745,18 @@ public sealed class AIService : IAIService
 
         // Enrichment is computed ONCE and used differently depending on whether
         // the caller owns the system turn.
+        //
+        // A TOOL TURN ON A BRAIN WITH ITS TOOLS IN ITS TEMPLATE CARRIES NO SKILL NOTE. The tools already
+        // say what it can do, and a skill is picked by the question's words: on the P30 on 2026-11-05
+        // "Use the calculator: what is 6789 times 3?" carried 575 characters on using the clinic, 154
+        // tokens, which is 70 s of the turn's 120 and the difference between an answer and none.
         var sources = new int[NoteSources.Length];
-        var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery, sources).ConfigureAwait(false);
+        //
+        // AND NOTHING PICKED BY THE WORDS WHILE THE WORDS ARE COMING IN. On the P30 on 2026-11-06 "Write one
+        // short" drew a note the whole question did not, and the brain read 158 tokens of it for 17 s with
+        // the person waiting; a tool cue would have been hundreds.
+        var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery, sources,
+            skills: !justRead && !(forceTools && toolsByTemplate), pastExchanges: !justRead, spoken: spoken).ConfigureAwait(false);
 
         // WHICH NOTES RIDE THIS TURN, BY SOURCE AND LENGTH - NEVER THEIR WORDS, which are the
         // person's. On the P30 on 2026-11-04 a 35-character question carried 210 characters of
@@ -1737,7 +1822,20 @@ public sealed class AIService : IAIService
         // invalidate the cache on every topic switch — the exact bug latching
         // was introduced to fix. Growing only when a genuinely new capability is
         // needed costs one re-prefill per new capability, and nothing after.
-        var all = _toolsLatched || forceTools || NeedsTools(userQuery)
+        //
+        // NONE OF THAT ON A BRAIN THAT KEEPS ITS SYSTEM TURNS ON DISK. Changing the
+        // system turn costs it a file, not a re-read: the persona and the persona
+        // with its tools are each a start of their own, and a turn begins after
+        // whichever it opens with. Latched, one tool turn left the block in front of
+        // every question after it - on the P30 on 2026-11-05 a token went from about
+        // 560 ms to about 800 ms and a reply from 1.51 to 1.15 tokens a second, for
+        // the rest of the process. So it is offered what each turn asks for.
+        var named = generator is IReadingGenerator ? new HashSet<string>(StringComparer.Ordinal) : _latchedTools;
+
+        // NOT ON A SPOKEN TURN, WHICH HAS NOTHING TO RUN THEM WITH. A tool cue is words in a question, and
+        // on the P30 on 2026-11-07 "How many people live in South Africa?" put every tool in front of the
+        // brain: 782 tokens, 17,9 s of silence, and the answer was the call itself, nobody there to make it.
+        var all = !justRead && (forceTools || !spoken && (_toolsLatched || NeedsTools(userQuery)))
             ? await AvailableToolsAsync(ct).ConfigureAwait(false)
             : System.Array.Empty<ToolDefinition>();
 
@@ -1754,22 +1852,22 @@ public sealed class AIService : IAIService
             // them - died on this line.
             var wanted = forceTools ? all : RelevantTools(all, userQuery);
             foreach (var t in wanted)
-                if (t is not null) _latchedTools.Add(t.Name);
+                if (t is not null) named.Add(t.Name);
         }
 
         if (_latchedTools.Count > 0) _toolsLatched = true;
 
-        IReadOnlyList<ToolDefinition> latched = _latchedTools.Count == 0
+        IReadOnlyList<ToolDefinition> offered = named.Count == 0
             ? System.Array.Empty<ToolDefinition>()
-            : all.Where(t => t is not null && _latchedTools.Contains(t.Name)).ToList();
+            : all.Where(t => t is not null && named.Contains(t.Name)).ToList();
 
         // THE MODEL'S OWN TOOLS BLOCK, NOT OUR NOTE, FOR A GENERATOR THAT TAKES ONE. Qwen3.5 was
         // trained on its template's tools block and writes its call in that template's XML form;
         // the note below asks for JSON. The tools travel on the call instead, the template puts
         // them where the model learned to find them, and the note stays out of the prompt.
-        var toolBlock = toolsByTemplate || latched.Count == 0
+        var toolBlock = toolsByTemplate || offered.Count == 0
             ? string.Empty
-            : ToolPromptRenderer.Render(latched);
+            : ToolPromptRenderer.Render(offered);
 
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
@@ -1801,7 +1899,7 @@ public sealed class AIService : IAIService
         Console.WriteLine(
             $"CIRCLEAI-PROMPT caller={_options.SystemPrompt?.Length ?? 0} " +
             $"enrichment={enrichment?.Length ?? 0} tools={toolBlock.Length} " +
-            (toolsByTemplate ? $"templateTools={latched.Count} " : string.Empty) +
+            (toolsByTemplate ? $"templateTools={offered.Count} " : string.Empty) +
             $"query={userQuery?.Length ?? 0} hasSystem={hasSystem}");
 
         var prepared = new List<ChatMessage>(messages.Count + 1);
@@ -1833,7 +1931,120 @@ public sealed class AIService : IAIService
                 prepared.FirstOrDefault(m =>
                     string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content));
 
-        return new PreparedTurn(prepared, toolsByTemplate ? latched : System.Array.Empty<ToolDefinition>());
+        return Fit(new PreparedTurn(prepared, toolsByTemplate ? offered : System.Array.Empty<ToolDefinition>()),
+            all.Where(t => t is not null).ToList(), generator, readWithin, conversation);
+    }
+
+    /// <summary>
+    /// The turn as far as <paramref name="generator"/> can read it in <paramref name="within"/>, by its
+    /// own measure: the tools go first if they cost anything, then the history, oldest first. The tool
+    /// loop gives no time: it asked for its tools, and it carries no history.
+    /// </summary>
+    /// <remarks>
+    /// A TURN THAT CANNOT BE READ IN TIME IS NO ANSWER AT ALL. On the P30 on 2026-11-05 the C# 2B took
+    /// about 450 ms a token and the session's history alone was about 170 s of reading, so five minutes
+    /// of questions ended at the queue's two-minute deadline with nothing said - "Say hello in one word."
+    /// among them. The history limit in characters was sized for MNN, 15 times faster.
+    /// <para>
+    /// THE TOKENS STILL TO READ, NOT THE TOKENS THERE ARE. What the brain already holds costs nothing,
+    /// so a live conversation keeps its history and only a cold one is cut. A cut that leaves the prompt
+    /// starting where the brain's state does is the cheapest of all, which is why this asks again after
+    /// every exchange it takes out rather than working out one length: the next turn finds its place in
+    /// the state that way.
+    /// </para>
+    /// <para>
+    /// NOT THE NOTES: they are what was found for this question, and the cost of reading them is what
+    /// the rest of the turn's time is for. NOT THE QUESTION: what cannot be cut is read, however long it
+    /// takes, and the deadline is what stops it.
+    /// </para>
+    /// <para>
+    /// THE TOOLS GO FIRST. A tool cue brings the template's tools block, hundreds of tokens, and a brain
+    /// that has not read it yet would miss the deadline for a question it can answer without them.
+    /// </para>
+    /// <para>
+    /// BUT EVERY TOOL CAN COST LESS THAN ONE. A cue picks the tools the question can use, and the brain
+    /// has read one block ahead of time: all of them (<see cref="PrimeToolsAsync"/>). The calculator
+    /// alone is another block, 459 tokens to read from nothing, so <paramref name="whole"/> is offered
+    /// instead when that is what the brain holds. Left out, a sum could never begin a tool call on the
+    /// P30, and the tool turn that follows one would never be asked for.
+    /// </para>
+    /// </remarks>
+    private PreparedTurn Fit(PreparedTurn turn, IReadOnlyList<ToolDefinition> whole, IChatGenerator? generator, TimeSpan? within, string? conversation = null)
+    {
+        if (within is not { } time || generator is not IReadingGenerator reader || reader.ReadCost is not { Ticks: > 0 } cost)
+            return turn;
+
+        var messages = turn.Messages;
+        var tools = turn.Tools;
+        if (tools.Count == 0 && OldestExchange(messages) is null) return turn;   // nothing here can be left out
+
+        var started = Stopwatch.GetTimestamp();
+        var can = (int)(time / cost);
+        var before = reader.Unread(messages, tools, conversation);
+        if (before <= can) return turn;
+
+        var unread = before;
+        if (whole.Count > tools.Count && tools.Count > 0 && reader.Unread(messages, whole, conversation) is var all && all < unread)
+        {
+            tools = whole;
+            unread = all;
+        }
+        if (unread > can && tools.Count > 0 && reader.Unread(messages, System.Array.Empty<ToolDefinition>(), conversation) is var bare && bare < unread)
+        {
+            tools = System.Array.Empty<ToolDefinition>();
+            unread = bare;
+        }
+
+        var left = 0;
+
+        // WHERE THE LAST TURN WAS CUT, FIRST. Each look writes the whole turn out, on the way to an
+        // answer somebody is waiting for: one look per exchange took 119 ms by the eighth question of a
+        // talk on the P30 on 2026-11-06. A talk grows at its end, so that place is nearly always this one.
+        if (unread > can && Volatile.Read(ref _leftOut) is > 0 and var last)
+        {
+            var shorter = new List<ChatMessage>(messages);
+            var gone = 0;
+            while (gone < last && OldestExchange(shorter) is { } oldest)
+            {
+                shorter.RemoveRange(oldest.Start, oldest.Count);
+                gone += oldest.Count;
+            }
+            if (reader.Unread(shorter, tools, conversation) is var rest && rest <= can)
+            {
+                messages = shorter;
+                left = gone;
+                unread = rest;
+            }
+        }
+
+        while (unread > can && OldestExchange(messages) is { } oldest)
+        {
+            messages.RemoveRange(oldest.Start, oldest.Count);
+            left += oldest.Count;
+            unread = reader.Unread(messages, tools, conversation);
+        }
+        Volatile.Write(ref _leftOut, left);
+
+        CircleAI.Core.Logging.CircleLog.Info("Context", string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"the turn held {before} tokens to read and {can} fit in {time.TotalSeconds:F0} s at {cost.TotalMilliseconds:F0} ms each: {left} older messages left out{(tools.Count == 0 && turn.Tools.Count > 0 ? ", and its tools" : tools.Count > turn.Tools.Count ? ", every tool offered, which the brain holds" : string.Empty)}, {unread} to read, worked out in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+        return new PreparedTurn(messages, tools);
+    }
+
+    private int _leftOut;
+
+    // The oldest exchange of a turn's history, where one is left: a question and what came back, up
+    // to the next question. Never a system message, and never the question being asked.
+    private static (int Start, int Count)? OldestExchange(List<ChatMessage> messages)
+    {
+        var start = messages.FindIndex(m => !string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
+        var question = messages.FindLastIndex(IsUser);
+        if (start < 0 || start >= question) return null;
+
+        var end = start + 1;
+        while (end < question && !IsUser(messages[end])) end++;
+        return (start, end - start);
+
+        static bool IsUser(ChatMessage m) => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The notes and the question as one user message.</summary>
@@ -2160,7 +2371,8 @@ public sealed class AIService : IAIService
         string.Join(", ", NoteSources.Select((source, i) => $"{source} {(i < sources.Count ? sources[i] : 0)}"));
 
     private async Task<string> BuildEnrichmentAsync(
-        string userQuery, CancellationToken ct, string? retrievalQuery = null, int[]? sources = null)
+        string userQuery, CancellationToken ct, string? retrievalQuery = null, int[]? sources = null, bool skills = true,
+        bool pastExchanges = true, bool spoken = false)
     {
         var sb = new StringBuilder();
         var mark = 0;
@@ -2293,7 +2505,7 @@ public sealed class AIService : IAIService
         }
 
         // 3. RAG context (relevant past exchanges).
-        if (_options.EpisodicMemory is not null && _options.RagTopK > 0 &&
+        if (pastExchanges && _options.EpisodicMemory is not null && _options.RagTopK > 0 &&
             !string.IsNullOrWhiteSpace(lookFor))
         {
             try
@@ -2312,12 +2524,12 @@ public sealed class AIService : IAIService
         Added(3);
 
         // 4. Skill context (relevant capability definitions).
-        if (_options.SkillStore is not null && !string.IsNullOrWhiteSpace(lookFor))
+        if (skills && _options.SkillStore is not null && !string.IsNullOrWhiteSpace(lookFor))
         {
             try
             {
                 var skillBuilder = EnsureSkillContextBuilder();
-                var skillBlock = await skillBuilder.BuildContextAsync(lookFor, ct)
+                var skillBlock = await skillBuilder.BuildContextAsync(lookFor, spoken, ct)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(skillBlock))
                 {

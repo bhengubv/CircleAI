@@ -206,6 +206,79 @@ public sealed class DurableQuestionsTests : IDisposable
         Assert.Equal(40, done.Timing!.PromptTokens);
     }
 
+    private static AskSubmission SoFar(string words) =>
+        new("internal:assistant", null, "session", AskLane.Assistant, words, words, Spoken: true);
+
+    [Fact]
+    public async Task What_is_still_being_said_is_read_and_answered_by_nobody()
+    {
+        using var store = Store();
+        var brain = new FakeBrain();
+        brain.Set(BrainPhase.Ready);
+        await using var front = new RequestCoordinator(store, brain, Quick);
+
+        front.ReadAhead(SoFar("What is the"));
+
+        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+        Assert.True(brain.Jobs[0].JustRead);
+        Assert.Equal(ReasoningEffort.Off, brain.Jobs[0].Effort);
+        Assert.Equal("What is the", brain.Jobs[0].Messages[^1].Content);
+        Assert.Empty(store.List("internal:assistant", 10));
+    }
+
+    [Fact]
+    public async Task Words_that_arrive_while_the_brain_reads_go_in_as_one_and_the_latest_wins()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { HoldAnswer = new TaskCompletionSource() };
+        brain.Set(BrainPhase.Ready);
+        await using var front = new RequestCoordinator(store, brain, Quick);
+
+        front.ReadAhead(SoFar("What"));
+        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+
+        front.ReadAhead(SoFar("What is"));
+        front.ReadAhead(SoFar("What is the capital"));
+        brain.HoldAnswer.SetResult();
+
+        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 2, TimeSpan.FromSeconds(5)));
+        Assert.Equal("What is the capital", brain.Jobs[1].Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task A_brain_that_is_not_up_is_not_started_for_a_head_start()
+    {
+        using var store = Store();
+        var brain = new FakeBrain();
+        await using var front = new RequestCoordinator(store, brain, Quick);
+
+        front.ReadAhead(SoFar("What is the"));
+        await Task.Delay(100);
+
+        Assert.Empty(brain.Jobs);
+    }
+
+    [Fact]
+    public async Task A_question_in_the_queue_has_the_brain_and_a_head_start_waits_for_nothing()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { HoldAnswer = new TaskCompletionSource() };
+        brain.Set(BrainPhase.Ready);
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var admission = front.Submit(Ask("What is the capital of Kenya?"));
+        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+
+        front.ReadAhead(SoFar("Something else"));
+        brain.HoldAnswer.SetResult();
+        await Final(front, "app:1", admission.Record!.Id);
+        await Task.Delay(100);
+
+        Assert.Single(brain.Jobs);
+        Assert.False(brain.Jobs[0].JustRead);
+    }
+
     [Fact]
     public async Task A_retry_with_the_same_request_id_does_no_second_generation()
     {

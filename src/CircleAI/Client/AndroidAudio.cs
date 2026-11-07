@@ -384,6 +384,77 @@ public sealed class AndroidAudioCapture : IAudioCapture
 }
 
 /// <summary>Speaker playback via AudioTrack, honouring the engine's sample rate.</summary>
+/// <summary>The sound of one reply: its pieces one after the other through one open track.</summary>
+/// <remarks>
+/// <see cref="AndroidAudioPlayer"/> plays a clip and waits it out, which is right for a clip and
+/// wrong for a reply that arrives in pieces: every piece paid a track built and a wait at the end,
+/// and those were gaps inside sentences. Here the track stays open and each piece is written behind
+/// the last, so a piece that is ready in time joins up with no gap at all.
+/// </remarks>
+public sealed class AndroidSpeechStream : IAsyncDisposable
+{
+    private const int WriteBytes = 3200;
+
+    private readonly AudioTrack _track;
+    private readonly IDisposable _mouth;
+    private readonly int _sampleRate;
+    private long _frames;
+
+    /// <param name="sampleRate">The rate of the PCM 16-bit mono it will be given.</param>
+    public AndroidSpeechStream(int sampleRate)
+    {
+        _sampleRate = sampleRate;
+        var min = AudioTrack.GetMinBufferSize(sampleRate, ChannelOut.Mono, Encoding.Pcm16bit);
+        _track = new AudioTrack.Builder()
+            .SetAudioAttributes(new AudioAttributes.Builder()
+                .SetUsage(AudioUsageKind.Assistant)!
+                .SetContentType(AudioContentType.Speech)!
+                .Build()!)!
+            .SetAudioFormat(new Android.Media.AudioFormat.Builder()
+                .SetEncoding(Encoding.Pcm16bit)!
+                .SetSampleRate(sampleRate)!
+                .SetChannelMask(ChannelOut.Mono)!
+                .Build()!)!
+            .SetBufferSizeInBytes(Math.Max(min, sampleRate / 5 * 2))!
+            .SetTransferMode(AudioTrackMode.Stream)!
+            .Build();
+
+        // For as long as the track is open: the wake loop must not hear this phone talking.
+        _mouth = OutLoud.While();
+        _track.Play();
+    }
+
+    /// <summary>Writes one piece behind the last. Completes when it has gone into the track, not when it has been heard.</summary>
+    public Task WriteAsync(byte[] pcm, CancellationToken ct) => Task.Run(() =>
+    {
+        for (var at = 0; at < pcm.Length && !ct.IsCancellationRequested;)
+        {
+            var wrote = _track.Write(pcm, at, Math.Min(WriteBytes, pcm.Length - at));
+            if (wrote <= 0) return;
+            at += wrote;
+            _frames += wrote / 2;
+        }
+    }, CancellationToken.None);
+
+    /// <summary>Waits for the last of it to be heard, then closes the track.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            var left = TimeSpan.FromSeconds((_frames - _track.PlaybackHeadPosition) / (double)_sampleRate) + TimeSpan.FromMilliseconds(400);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (_track.PlaybackHeadPosition < _frames && clock.Elapsed < left)
+                await Task.Delay(20).ConfigureAwait(false);
+            _track.Stop();
+        }
+        catch { /* a track that would not stop is still a track to let go of */ }
+
+        _track.Release();
+        _track.Dispose();
+        _mouth.Dispose();
+    }
+}
+
 public sealed class AndroidAudioPlayer : IAudioPlayer
 {
     public async Task PlayAsync(

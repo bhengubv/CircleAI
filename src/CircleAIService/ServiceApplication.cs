@@ -585,11 +585,11 @@ public sealed partial class ServiceApplication : Application
                 }
                 catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "test switches: " + ex.GetType().Name); }
             };
-            CircleAI.Service.Droid.SoakReceiver.Ask = (text, tools) =>
+            CircleAI.Service.Droid.SoakReceiver.Ask = (text, tools, spoken) =>
             {
                 var admission = coordinator.Submit(new CircleAI.Assistant.Requests.AskSubmission(
                     "internal:adb", Guid.NewGuid().ToString("N"), "adb", CircleAI.Assistant.Requests.AskLane.Foreground, text, text,
-                    Agentic: tools));
+                    Agentic: tools, Spoken: spoken));
                 global::Android.Util.Log.Info("CircleAI.Soak", admission.Accepted
                     ? "ask " + admission.Record!.Id + " accepted" + (tools ? " (tools allowed)" : string.Empty) : "ask refused");
                 if (admission.Accepted)
@@ -1048,6 +1048,7 @@ public sealed partial class ServiceApplication : Application
         // microphone, the recogniser, the brain and the voice. The turn itself is
         // WakeTurn, in the product.
         WakeTurn.Speech = CircleNeuronLinkService.Speech;
+        WakeTurn.HoldCores = () => CircleAI.Service.Droid.Assistant.TurnHold.Begin(this);
 
         // AND WARM IT AT START-UP, NOT AT THE FIRST WAKE - once housekeeping is done,
         // further down, because warming a voice that is not on the phone yet pulls

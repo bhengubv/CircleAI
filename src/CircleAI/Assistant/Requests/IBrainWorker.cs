@@ -55,6 +55,10 @@ public sealed record BrainWorkerStatus(
 /// The caller allowed tools for this turn (<see cref="AskSubmission.Agentic"/>): the answer is the tool
 /// turn's (<see cref="CircleAI.Hosting.ToolTurn"/>), written whole once the tools have run, not streamed.
 /// </param>
+/// <param name="JustRead">
+/// Somebody is still saying this: read as far as it goes and write nothing (<see cref="GenerationOptions.JustRead"/>).
+/// </param>
+/// <param name="Conversation">The conversation this goes on, for a brain that keeps one (<see cref="GenerationOptions.Conversation"/>).</param>
 public sealed record BrainJob(
     string AskId,
     IReadOnlyList<ChatMessage> Messages,
@@ -65,7 +69,9 @@ public sealed record BrainJob(
     ReasoningEffort? Effort = null,
     int ThinkingBudget = 0,
     bool Plain = false,
-    bool Tools = false);
+    bool Tools = false,
+    bool JustRead = false,
+    string? Conversation = null);
 
 /// <summary>A piece of an answer, or the end of one.</summary>
 /// <param name="Text">The new text (may be empty on the final piece).</param>

@@ -64,6 +64,9 @@ public sealed class SpeechGate
     /// </remarks>
     public TimeSpan Hangover { get; init; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>How much longer than <see cref="Hangover"/> the gate waits this time: the caller can see the words and it cannot.</summary>
+    public TimeSpan Hold { get; set; }
+
     /// <summary>Whether blocks heard while the gate is open teach it the room.</summary>
     /// <remarks>
     /// TRUE FOR THE WAKE LOOP, FALSE FOR A QUESTION - and the two are different
@@ -362,7 +365,7 @@ public sealed class SpeechGate
         else if (Open)
         {
             _since += length;
-            if (_since >= Hangover) { Close(); Closed = true; }
+            if (_since >= Hangover + Hold) { Close(); Closed = true; }
         }
 
         if (!Open)
@@ -390,6 +393,13 @@ public sealed class SpeechGate
 
         return true;
     }
+
+    /// <summary>How long an open stretch has been quiet; zero while sound comes in, or with the gate shut.</summary>
+    /// <remarks>
+    /// THE GATE WAITS OUT ITS HANGOVER BEFORE IT CALLS A STRETCH OVER, AND NOTHING ELSE HAS TO. The
+    /// ears can start on a quiet that may turn out to be the end, and be stopped if it does not.
+    /// </remarks>
+    public TimeSpan QuietFor => Open ? _since : TimeSpan.Zero;
 
     /// <summary>How long the stretch that just ended ran for.</summary>
     /// <remarks>

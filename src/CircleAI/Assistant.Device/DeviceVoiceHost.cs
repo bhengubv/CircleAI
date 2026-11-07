@@ -230,9 +230,15 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
         var sw = Stopwatch.StartNew();
         try
         {
-            await Task.Run(
+            var report = await Task.Run(
                 () => CircleAITtsProbe.RunCataloguedAsync(StorageDir, tag, spoken, wav, log: null, ct: ct),
                 ct).ConfigureAwait(false);
+            if (!File.Exists(wav))
+            {
+                var lines = report.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                Android.Util.Log.Warn("CircleAI.Turn", "render said nothing: " + string.Join(" | ", lines.Take(4)));
+                return null;
+            }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -240,8 +246,6 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
             Android.Util.Log.Warn("CircleAI.Turn", $"render failed: {ex.Message}");
             return null;
         }
-
-        if (!File.Exists(wav)) return null;
         Android.Util.Log.Info("CircleAI.Turn",
             $"rendered {text.Length} chars -> {WavMilliseconds(wav)} ms audio in {sw.ElapsedMilliseconds} ms");
         return wav;

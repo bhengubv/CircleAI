@@ -45,10 +45,15 @@ public sealed class SpokenReply : IAsyncDisposable
     private readonly Channel<string> _sentences = Channel.CreateUnbounded<string>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly StringBuilder _pending = new();
+    private readonly StringBuilder _incoming = new();
     private readonly Task _speaking;
     private readonly TaskCompletionSource _started =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _completed;
+    private int _nextPiece;
+    private string? _leaving;      // what ends the block being left out, while one is
+    private bool _leftOutCode;
+    private bool _leftOutCall;
 
     /// <summary>One stage: each sentence is rendered and played by one call.</summary>
     /// <param name="say">Speaks one sentence and returns when it has been said.</param>
@@ -80,6 +85,42 @@ public sealed class SpokenReply : IAsyncDisposable
         _speaking = Task.Run(() => RenderAheadAsync(render, play, Math.Max(1, lookAhead)), CancellationToken.None);
     }
 
+    /// <summary>
+    /// Two stages over audio held in memory: a host whose voice hands back samples rather than a file.
+    /// </summary>
+    /// <param name="render">Renders one sentence, or returns null if it could not.</param>
+    /// <param name="play">Plays one rendered sentence to the end.</param>
+    /// <param name="ct">Ends the whole reply.</param>
+    /// <param name="lookAhead">How many rendered sentences may wait to be played.</param>
+    public SpokenReply(
+        Func<string, CancellationToken, Task<byte[]?>> render,
+        Func<byte[], CancellationToken, Task> play,
+        CancellationToken ct = default,
+        int lookAhead = 1)
+    {
+        _ct = ct;
+        _speaking = Task.Run(() => RenderAheadAsync(render, play, Math.Max(1, lookAhead)), CancellationToken.None);
+    }
+
+    /// <summary>How many words the first piece may wait for; 0 waits for the first whole sentence.</summary>
+    /// <remarks>
+    /// THE FIRST SOUND WAITED FOR A WHOLE SENTENCE TO BE WRITTEN AND THEN RENDERED. Measured on the
+    /// P30 on 2026-11-06: 3 s to write it and 8,8 s to render it, nearly twelve seconds of silence
+    /// for words that could have started after the first four. A sentence is the safe unit to
+    /// clean and speak, not the unit a person is waiting for, so the opening is cut short: at the
+    /// first clause if one comes, else after this many words. Every piece after it is a sentence.
+    /// </remarks>
+    public int FirstWords { get; init; }
+
+    /// <summary>The most words a piece after the first may wait for; 0 waits for the end of the sentence.</summary>
+    /// <remarks>
+    /// A LONG SENTENCE AFTER A SHORT OPENING IS A HOLE IN THE MIDDLE OF THE ANSWER. The opening is
+    /// over in a second, and then nothing can be said until the sentence is written and rendered:
+    /// measured on the P30 on 2026-11-06, two and a half seconds of silence after the first four
+    /// words. Cut here, the voice works on what has been written while the brain writes the rest.
+    /// </remarks>
+    public int NextWords { get; init; }
+
     /// <summary>Completes when the first sentence actually starts being spoken.</summary>
     /// <remarks>
     /// THE SIGNAL BARGE-IN WAS MISSING. A watcher armed when this object is
@@ -107,8 +148,18 @@ public sealed class SpokenReply : IAsyncDisposable
     public void Push(string? fragment)
     {
         if (string.IsNullOrEmpty(fragment) || _completed) return;
-        _pending.Append(fragment);
+        _incoming.Append(fragment);
+        TakeSayable(final: false);
         foreach (var sentence in TakeComplete(_pending)) Enqueue(sentence);
+
+        // THE PIECES GROW, half as long again each time, up to NextWords: the first is short so it
+        // starts soon, and each after it has the one before it to be written and rendered behind.
+        var words = _nextPiece > 0 ? _nextPiece : Queued == 0 ? FirstWords : NextWords;
+        while (words > 0 && TakeOpening(_pending, words) is { } piece)
+        {
+            Enqueue(piece);
+            words = _nextPiece = Math.Min(NextWords, Math.Max(words + 1, words * 3 / 2));
+        }
     }
 
     /// <summary>
@@ -119,9 +170,12 @@ public sealed class SpokenReply : IAsyncDisposable
         if (!_completed)
         {
             _completed = true;
+            TakeSayable(final: true);
             var rest = _pending.ToString().Trim();
             _pending.Clear();
             if (rest.Length > 0) Enqueue(rest);
+            if (_leftOutCode) Enqueue(AssistantPersona.CodeLeftOut);
+            else if (_leftOutCall && Queued == 0) Enqueue(AssistantPersona.CannotDoThatYet);
             _sentences.Writer.TryComplete();
         }
         return _speaking;
@@ -137,6 +191,64 @@ public sealed class SpokenReply : IAsyncDisposable
     {
         try { await CompleteAsync().ConfigureAwait(false); }
         catch { /* the turn is over either way */ }
+    }
+
+    // WHAT CANNOT BE SAID NEVER REACHES A VOICE. Code and a tool's call are written to be read by
+    // something else, and said aloud they are a run of symbols. The markers can arrive in pieces, so what
+    // could still turn out to be one waits here for the next fragment.
+    private static readonly (string Open, string Close)[] Unsayable = [("```", "```"), ("<tool_call>", "</tool_call>")];
+
+    private void TakeSayable(bool final)
+    {
+        while (_incoming.Length > 0)
+        {
+            var text = _incoming.ToString();
+            if (_leaving is { } close)
+            {
+                var end = text.IndexOf(close, StringComparison.Ordinal);
+                if (end < 0)
+                {
+                    _incoming.Remove(0, text.Length - (final ? 0 : Math.Min(text.Length, close.Length - 1)));
+                    return;
+                }
+                _incoming.Remove(0, end + close.Length);
+                _leaving = null;
+                continue;
+            }
+
+            var at = -1;
+            var marker = default((string Open, string Close));
+            foreach (var block in Unsayable)
+            {
+                var found = text.IndexOf(block.Open, StringComparison.Ordinal);
+                if (found >= 0 && (at < 0 || found < at)) (at, marker) = (found, block);
+            }
+            if (at >= 0)
+            {
+                _pending.Append(text, 0, at);
+                _incoming.Remove(0, at + marker.Open.Length);
+                _leaving = marker.Close;
+                if (marker.Open[0] == '`') _leftOutCode = true;
+                else _leftOutCall = true;
+                continue;
+            }
+
+            var keep = final ? 0 : MarkerBeginning(text);
+            _pending.Append(text, 0, text.Length - keep);
+            _incoming.Remove(0, text.Length - keep);
+            return;
+        }
+    }
+
+    // How much of the end of the text could be the beginning of a marker.
+    private static int MarkerBeginning(string text)
+    {
+        foreach (var (open, _) in Unsayable)
+        {
+            for (var length = Math.Min(open.Length - 1, text.Length); length > 0; length--)
+                if (text.AsSpan(text.Length - length).SequenceEqual(open.AsSpan(0, length))) return length;
+        }
+        return 0;
     }
 
     private void Enqueue(string sentence)
@@ -164,14 +276,14 @@ public sealed class SpokenReply : IAsyncDisposable
         catch (OperationCanceledException) { /* asked to stop */ }
     }
 
-    private async Task RenderAheadAsync(
-        Func<string, CancellationToken, Task<string?>> render,
-        Func<string, CancellationToken, Task> play,
-        int lookAhead)
+    private async Task RenderAheadAsync<T>(
+        Func<string, CancellationToken, Task<T?>> render,
+        Func<T, CancellationToken, Task> play,
+        int lookAhead) where T : class
     {
         // Bounded, so rendering cannot run away from playback: a channel that
         // is full makes the renderer wait for the player to take one.
-        var rendered = Channel.CreateBounded<string>(new BoundedChannelOptions(lookAhead)
+        var rendered = Channel.CreateBounded<T>(new BoundedChannelOptions(lookAhead)
         {
             SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait,
         });
@@ -182,7 +294,7 @@ public sealed class SpokenReply : IAsyncDisposable
             {
                 await foreach (var sentence in _sentences.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
                 {
-                    string? item;
+                    T? item;
                     try { item = await render(sentence, _ct).ConfigureAwait(false); }
                     catch (OperationCanceledException) { break; }
                     catch { continue; }   // could not render this one; the next may be fine
@@ -260,5 +372,39 @@ public sealed class SpokenReply : IAsyncDisposable
         }
 
         return found;
+    }
+
+    // THE SHORTEST OPENING THAT IS A WORD AND NOT A LETTER: on its own the voice read "A" as the letter,
+    // and "The" cut from what it leads to has nowhere to go.
+    private const int LeastOpening = 5;
+
+    /// <summary>
+    /// Removes and returns the opening of a reply that has not finished its first sentence yet:
+    /// up to the first clause, or the first <paramref name="words"/> whole words. Null while there
+    /// is neither.
+    /// </summary>
+    /// <remarks>
+    /// A WORD IS WHOLE WHEN WHITESPACE FOLLOWS IT, because the last word in a growing buffer may
+    /// still be growing. A clause ends at a comma, colon or semicolon with whitespace after it, so
+    /// "3,5" and "12:30" are left alone, and only after two words, so that "Yes," is not a
+    /// sentence on its own while the next piece is still being rendered.
+    /// </remarks>
+    public static string? TakeOpening(StringBuilder buffer, int words)
+    {
+        var text = buffer.ToString();
+        var counted = 0;
+        for (var i = 1; i < text.Length; i++)
+        {
+            if (!char.IsWhiteSpace(text[i]) || char.IsWhiteSpace(text[i - 1])) continue;
+            counted++;
+            var clause = text[i - 1] is ',' or ':' or ';' && counted >= 2;
+            if (!clause && (counted < words || i < LeastOpening)) continue;
+
+            var opening = text[..i].Trim();
+            buffer.Clear();
+            buffer.Append(text.AsSpan(i));
+            return opening;
+        }
+        return null;
     }
 }

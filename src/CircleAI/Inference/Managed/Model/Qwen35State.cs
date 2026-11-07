@@ -136,6 +136,7 @@ public sealed class Qwen35State
         RopePosition = 0;
         _markedPosition = -1;
         _primedPosition = -1;
+        _talkPosition = -1;
         _checkpointPosition = -1;
         foreach (var conv in Conv) Array.Clear(conv ?? []);
         foreach (var ssm in Ssm) Array.Clear(ssm ?? []);
@@ -164,6 +165,7 @@ public sealed class Qwen35State
         Position = _primedPosition;
         RopePosition = _primedRope;
         if (_markedPosition > _primedPosition) _markedPosition = -1;
+        if (_talkPosition > _primedPosition) _talkPosition = -1;
     }
 
     /// <summary>Remembers this point, so <see cref="Rewind"/> can come back to it.</summary>
@@ -186,6 +188,39 @@ public sealed class Qwen35State
         Position = _markedPosition;
         RopePosition = _markedRope;
         if (_primedPosition > _markedPosition) _primedPosition = -1;
+        if (_talkPosition > _markedPosition) _talkPosition = -1;
+    }
+
+    // And a point of the conversation's own: where its last finished turn ended. What comes after it is
+    // a turn still being said or answered, and can be thrown away; what comes before it is what was said.
+    private int _talkPosition = -1;
+    private int _talkRope;
+    private float[][]? _talkConv;
+    private float[][]? _talkSsm;
+
+    /// <summary>The position <see cref="RewindToTalk"/> returns to; -1 when no conversation is kept.</summary>
+    internal int TalkPosition => _talkPosition;
+
+    /// <summary>Remembers this point as the end of the conversation's last finished turn.</summary>
+    internal void MarkTalk()
+    {
+        _talkConv ??= Allocate(Conv);
+        _talkSsm ??= Allocate(Ssm);
+        CopyInto(Conv, _talkConv);
+        CopyInto(Ssm, _talkSsm);
+        _talkPosition = Position;
+        _talkRope = RopePosition;
+    }
+
+    /// <summary>Goes back to where the conversation's last finished turn ended.</summary>
+    internal void RewindToTalk()
+    {
+        if (_talkPosition < 0) throw new InvalidOperationException("No conversation is kept.");
+        CopyInto(_talkConv!, Conv);
+        CopyInto(_talkSsm!, Ssm);
+        Position = _talkPosition;
+        RopePosition = _talkRope;
+        if (_markedPosition > _talkPosition) _markedPosition = -1;
     }
 
     // And a third: where a speculative verification began, so drafts the trunk rejects can be taken

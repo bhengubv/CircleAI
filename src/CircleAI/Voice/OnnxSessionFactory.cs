@@ -306,5 +306,5 @@ public static class OnnxSessionFactory
     /// what a saturated matmul wants anyway.
     /// </para>
     /// </remarks>
-    private static int IntraOpThreads() => Math.Max(1, Environment.ProcessorCount / 2);
+    private static int IntraOpThreads() => Math.Max(1, CircleAI.Core.DeviceContext.AllCores / 2);
 }

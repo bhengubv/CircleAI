@@ -57,6 +57,12 @@ public enum KernelPath
     /// Equal to the scalar path up to float rounding order, not to the last bit.
     /// </summary>
     Lut = 6,
+
+    /// <summary>x86 AVX-512 (BW): the 32 pairs widened into one 512-bit register, multiplied and paired at once.</summary>
+    Avx512 = 7,
+
+    /// <summary>x86 AVX-VNNI: the 32 pairs multiplied and summed four at a time in one instruction (vpdpbusd).</summary>
+    AvxVnni = 8,
 }
 
 /// <summary>PTQ1_0 decoding and its dot product with <see cref="Q8Activations"/>.</summary>
@@ -80,6 +86,8 @@ public static class Ptq1
     private static readonly KernelPath Fastest =
         Dp.IsSupported ? KernelPath.Dp :
         AdvSimd.Arm64.IsSupported ? KernelPath.AdvSimd :
+        System.Runtime.Intrinsics.X86.AvxVnni.IsSupported ? KernelPath.AvxVnni :
+        Avx512BW.IsSupported ? KernelPath.Avx512 :
         System.Runtime.Intrinsics.X86.Avx2.IsSupported ? KernelPath.Avx2 :
         System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated ? KernelPath.Vector128 :
         KernelPath.Scalar;
@@ -94,6 +102,8 @@ public static class Ptq1
         KernelPath.AdvSimd => AdvSimd.Arm64.IsSupported,
         KernelPath.Dp => Dp.IsSupported,
         KernelPath.Avx2 => System.Runtime.Intrinsics.X86.Avx2.IsSupported,
+        KernelPath.Avx512 => Avx512BW.IsSupported,
+        KernelPath.AvxVnni => System.Runtime.Intrinsics.X86.AvxVnni.IsSupported,
         _ => false,
     };
 
@@ -303,6 +313,21 @@ public static class Ptq1
                     Avx2.ConvertToVector256Int16(Vector128.LoadUnsafe(ref pa, 16)),
                     Avx2.ConvertToVector256Int16(Vector128.LoadUnsafe(ref pb, 16)));
                 return Vector256.Sum(lo + hi);
+            }
+            case KernelPath.Avx512:
+            {
+                var products = Avx512BW.MultiplyAddAdjacent(
+                    Avx512BW.ConvertToVector512Int16(Vector256.LoadUnsafe(ref pa)),
+                    Avx512BW.ConvertToVector512Int16(Vector256.LoadUnsafe(ref pb)));
+                return Vector512.Sum(products);
+            }
+            case KernelPath.AvxVnni:
+            {
+                // vpdpbusd multiplies unsigned bytes by signed ones, so |b| meets a carrying b's sign. a
+                // is the weights (-1 to 2, never -128); b may be -128 (Q8_K), whose 128 fits a byte.
+                var va = Vector256.LoadUnsafe(ref pa);
+                var vb = Vector256.LoadUnsafe(ref pb);
+                return Vector256.Sum(AvxVnni.MultiplyWideningAndAdd(Vector256<int>.Zero, Avx2.Abs(vb), Avx2.Sign(va, vb)));
             }
             case KernelPath.Vector128:
             {

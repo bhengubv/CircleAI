@@ -9,7 +9,10 @@
 // ends it at the earliest match and never reaches the caller; system messages merge into the one
 // system turn; cancellation throws, and a stream left early gives the engine back; the next turn
 // reuses the first, and a saved session and a cold start answer it exactly as the live state
-// does; and with thinking on, the reasoning and the answer come apart.
+// does; and with thinking on, the reasoning and the answer come apart. And every member the
+// interface gives a default body is the engine's own, called through the interface: the default's
+// guesses - four characters a token, a text marker for a session, the reply as one kind of
+// fragment - never answer for it. That gap is how LlamaGenerator leaked its thinking.
 //
 // Needs the 2B on this machine (says SKIPPED otherwise). Three conversations run unless
 // BONSAI2_GENERATOR_CASES=all. The kernels are unoptimised in Debug: run these in Release.
@@ -293,6 +296,68 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
     }
 
     [Fact]
+    public void Every_member_the_interface_gives_a_default_is_the_engines_own()
+    {
+        // A member the class leaves out maps to the interface's own body.
+        var map = typeof(ManagedChatGenerator).GetInterfaceMap(typeof(IChatGenerator));
+        var defaults = new List<string>();
+        for (var i = 0; i < map.InterfaceMethods.Length; i++)
+        {
+            var member = map.InterfaceMethods[i];
+            if (member.IsStatic || member.IsAbstract) continue;
+            defaults.Add(member.Name);
+            Assert.True(map.TargetMethods[i].DeclaringType == typeof(ManagedChatGenerator), $"{member.Name} falls to IChatGenerator's default body");
+        }
+        Assert.Equal(new[] { "GenerateResponseAsync", "LoadSessionAsync", "SaveSessionAsync", "StreamFragmentsAsync" }, defaults.Order().ToArray());
+    }
+
+    [Fact]
+    public async Task Through_the_interface_each_of_them_does_the_engines_work()
+    {
+        var engine = Generator();
+        if (engine is null) return;
+        IChatGenerator g = engine;
+
+        // GenerateResponseAsync: the default guesses four characters a token and always says Stop.
+        var response = await g.GenerateResponseAsync(Greet, Greedy(4));
+        Assert.Equal(engine.Tokenizer.Encode(engine.RenderPrompt(Greet)).Count, response.TokensIn);
+        Assert.Equal(4, response.TokensOut);
+        Assert.Equal(FinishReason.Length, response.FinishReason);
+
+        // StreamFragmentsAsync: the default hands StreamAsync's text back as content; the engine parts
+        // a thought from the answer, and neither carries a think tag.
+        var thinking = new GenerationOptions
+        {
+            Temperature = 1f, Seed = 7, MaxTokens = 16, Budget = PowerBudget.None, IncludeReasoning = true,
+            Effort = ReasoningEffort.Medium, ThinkingBudget = 8,
+        };
+        var fragments = new List<ChatFragment>();
+        await foreach (var fragment in g.StreamFragmentsAsync(Greet, thinking)) fragments.Add(fragment);
+        Assert.NotEmpty(fragments);
+        Assert.Equal(ChatFragmentKind.Reasoning, fragments[0].Kind);
+        Assert.DoesNotContain(fragments, f => f.Text.Contains("<think>") || f.Text.Contains("</think>"));
+
+        // SaveSessionAsync and LoadSessionAsync: the default writes a text marker and takes any marker
+        // back; the engine writes its own state and refuses a marker.
+        var session = Path.Combine(Path.GetTempPath(), $"circleai-session-{Guid.NewGuid():N}.bin");
+        var marker = Path.Combine(Path.GetTempPath(), $"circleai-marker-{Guid.NewGuid():N}.txt");
+        try
+        {
+            await g.GenerateAsync(Greet, Greedy(2));
+            Assert.True(await g.SaveSessionAsync(session));
+            Assert.Equal("CAIMGEN1", Encoding.ASCII.GetString(File.ReadAllBytes(session), 0, 8));
+            Assert.True(await g.LoadSessionAsync(session));
+            await File.WriteAllTextAsync(marker, $"circleai-session-marker\ntype:{typeof(ManagedChatGenerator).FullName}\n");
+            await Assert.ThrowsAsync<InvalidDataException>(() => g.LoadSessionAsync(marker));
+        }
+        finally
+        {
+            File.Delete(session);
+            File.Delete(marker);
+        }
+    }
+
+    [Fact]
     public async Task A_conversation_with_the_same_system_turn_starts_primed_and_answers_as_a_cold_start_does()
     {
         var g = Generator();
@@ -319,6 +384,446 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
         Assert.Equal("reset", reset.KvPath);
 
         output.WriteLine($"{answer} - prefill: primed {inMemory.PrefillMs} ms, from disk {fromDisk.PrefillMs} ms, cold {reset.PrefillMs} ms ({reset.PromptTokens} tokens)");
+    }
+
+    [Fact]
+    public async Task What_was_read_while_they_talked_is_not_read_again_and_the_answer_is_the_same_answer()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+
+        using var cold = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        var answer = await cold.GenerateAsync(Said("What is two plus two?"), Greedy(10));
+
+        await g.GenerateAsync(Said("Hello!"), Greedy(4));
+
+        var read = new TurnTimingRecorder();
+        Assert.Empty(await g.GenerateAsync(Said("What is two"), new GenerationOptions { Temperature = 0, MaxTokens = 10, Budget = PowerBudget.None, JustRead = true, Timing = read }));
+        Assert.Equal("primed", read.KvPath);
+
+        var whole = new TurnTimingRecorder();
+        Assert.Equal(answer, await g.GenerateAsync(Said("What is two plus two?"), Greedy(10, whole)));
+        Assert.Equal("continued", whole.KvPath);
+    }
+
+    [Fact]
+    public async Task A_word_that_changed_costs_the_last_read_and_not_the_ones_before_it()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+        var reading = new GenerationOptions { Temperature = 0, MaxTokens = 10, Budget = PowerBudget.None, JustRead = true };
+
+        using var cold = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        var answer = await cold.GenerateAsync(Said("Why is the sky blue?"), Greedy(10));
+
+        await g.GenerateAsync(Said("Hello!"), Greedy(4));
+        await g.GenerateAsync(Said("Why is"), reading);
+        await g.GenerateAsync(Said("Why is this"), reading);
+
+        var whole = new TurnTimingRecorder();
+        Assert.Equal(answer, await g.GenerateAsync(Said("Why is the sky blue?"), Greedy(10, whole)));
+        Assert.Equal("prefix-hit", whole.KvPath);
+    }
+
+    private static GenerationOptions Talking(string talk, int maxTokens, TurnTimingRecorder? timing = null, bool justRead = false) =>
+        new() { Temperature = 0, MaxTokens = maxTokens, Budget = PowerBudget.None, Timing = timing, Conversation = talk, JustRead = justRead };
+
+    [Fact]
+    public async Task A_kept_conversation_reads_only_the_new_turn_and_remembers_what_was_said()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        var talk = Guid.NewGuid().ToString("N");
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+
+        var opening = new TurnTimingRecorder();
+        await g.GenerateAsync(Said("My sister's name is Thandi."), Talking(talk, 24, opening));
+
+        // NONE OF THE EARLIER TURN IS IN THESE MESSAGES: the brain has it, and nothing has to say it again.
+        var next = Said("What is my sister's name?");
+        Assert.InRange(g.Unread(next, null, talk), 1, 30);
+
+        var second = new TurnTimingRecorder();
+        var answer = await g.GenerateAsync(next, Talking(talk, 24, second));
+
+        Assert.Equal("continued", second.KvPath);
+        Assert.True(second.PromptTokens > opening.PromptTokens, $"{second.PromptTokens} after {opening.PromptTokens}");
+        Assert.Contains("Thandi", answer, StringComparison.OrdinalIgnoreCase);
+        output.WriteLine($"{second.PromptTokens} tokens in all: {answer}");
+    }
+
+    [Fact]
+    public async Task What_a_table_answered_in_between_reaches_the_brain_with_the_next_turn()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        var talk = Guid.NewGuid().ToString("N");
+
+        ChatMessage[] first = [new("system", persona), new("user", "Name one kind of bird.")];
+        var reply = await g.GenerateAsync(first, Talking(talk, 10));
+
+        // The brain never saw the middle exchange: a table answered it.
+        ChatMessage[] next =
+        [
+            new("system", persona), new("user", "Name one kind of bird."), new("assistant", reply),
+            new("user", "My sister's name is Thandi."), new("assistant", "I'll remember that."),
+            new("user", "What is my sister's name?"),
+        ];
+        var timing = new TurnTimingRecorder();
+        var answer = await g.GenerateAsync(next, Talking(talk, 24, timing));
+
+        Assert.Equal("continued", timing.KvPath);
+        Assert.Contains("Thandi", answer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_false_start_leaves_the_conversation_where_it_was()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+
+        using var cold = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        var straight = Guid.NewGuid().ToString("N");
+        await cold.GenerateAsync(Said("What is two plus two?"), Talking(straight, 10));
+        var expected = await cold.GenerateAsync(Said("And three plus three?"), Talking(straight, 10));
+
+        var talk = Guid.NewGuid().ToString("N");
+        await g.GenerateAsync(Said("What is two plus two?"), Talking(talk, 10));
+
+        // Words that turned out wrong, read and then an answer begun and stopped on them.
+        await g.GenerateAsync(Said("And four"), Talking(talk, 10, justRead: true));
+        await g.GenerateAsync(Said("And four plus"), Talking(talk, 10, justRead: true));
+        using (var stop = new CancellationTokenSource())
+        {
+            var options = Talking(talk, 40);
+            var reading = g.StreamAsync(Said("And four plus four?"), options, stop.Token).GetAsyncEnumerator(stop.Token);
+            await reading.MoveNextAsync();
+            await stop.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => { while (await reading.MoveNextAsync()) { } });
+            await reading.DisposeAsync();
+        }
+
+        var timing = new TurnTimingRecorder();
+        Assert.Equal(expected, await g.GenerateAsync(Said("And three plus three?"), Talking(talk, 10, timing)));
+        Assert.Equal("talk", timing.KvPath);
+    }
+
+    [Fact]
+    public async Task Another_conversation_is_read_from_its_own_messages()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+
+        await g.GenerateAsync(Said("My sister's name is Thandi."), Talking(Guid.NewGuid().ToString("N"), 12));
+
+        var timing = new TurnTimingRecorder();
+        await g.GenerateAsync(Said("What is two plus two?"), Talking(Guid.NewGuid().ToString("N"), 6, timing));
+
+        Assert.Equal("primed", timing.KvPath);
+        Assert.Equal(g.BuildPrompt(Said("What is two plus two?")).Ids.Count, timing.PromptTokens);
+    }
+
+    [Fact]
+    public async Task What_is_still_to_read_leaves_out_what_the_state_holds_and_touches_nothing()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        // A system turn no other test uses: nothing of it is held or primed yet.
+        var persona = $"You are B!, an assistant on a phone. {Guid.NewGuid():N}";
+        ChatMessage[] first = [new("system", persona), new("user", "What is two plus two?")];
+        var whole = g.BuildPrompt(first).Ids.Count;
+        Assert.Equal(whole, g.Unread(first, null));
+
+        var reply = await g.GenerateAsync(first, Greedy(8));
+        ChatMessage[] next = [.. first, new("assistant", reply), new("user", "And three plus three?")];
+
+        // A follow-up reads from where the last turn began, and counting it moved nothing: the
+        // call finds the state as it was left.
+        var total = g.BuildPrompt(next).Ids.Count;
+        var unread = g.Unread(next, null);
+        Assert.InRange(unread, 1, total - whole + 8);
+        var timing = new TurnTimingRecorder();
+        await g.GenerateAsync(next, Greedy(2, timing));
+        Assert.Equal("prefix-hit", timing.KvPath);
+        output.WriteLine($"{unread} of {total} tokens to read");
+    }
+
+    [Fact]
+    public async Task A_primed_start_on_disk_is_not_still_to_read_and_a_new_brain_measures_nothing_until_it_reads()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        var persona = $"You are B!, an assistant on a phone. {Guid.NewGuid():N}";
+        ChatMessage[] conversation = [new("system", persona), new("user", "Hello!")];
+        await g.GenerateAsync(conversation, Greedy(2)); // reads the system turn once, and primes
+        ChatMessage[] next = [new("system", persona), new("user", "What is two plus two?")];
+        var whole = g.BuildPrompt(next).Ids.Count;
+
+        using var fresh = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = fixture.PrimedDirectory });
+        Assert.Null(fresh.ReadCost);
+        var unread = fresh.Unread(next, null);
+        Assert.InRange(unread, 1, whole - 1);
+
+        using var keepsNone = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        Assert.Equal(whole, keepsNone.Unread(next, null));
+
+        await fresh.GenerateAsync(next, Greedy(2));
+        Assert.True(fresh.ReadCost > TimeSpan.Zero);
+        output.WriteLine($"{unread} of {whole} tokens to read; {fresh.ReadCost!.Value.TotalMilliseconds:F1} ms a token");
+    }
+
+    [Fact]
+    public async Task The_service_hands_the_engine_what_it_can_read_in_time_and_the_engine_answers()
+    {
+        if (Generator() is null) return;
+
+        const string persona = "You are B!, an assistant on a phone. Answer in one short sentence.";
+        var engine = ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = "" });
+        await using var service = new CircleAI.Hosting.AIService(
+            new CircleAI.Hosting.AIOptions { ModelPath = fixture.Path!, WarmOnStart = false, SystemPrompt = persona },
+            generatorFactory: _ => engine);
+
+        // The first question measures the reading.
+        await service.ChatAsync([new ChatMessage("user", "Hello!")], Greedy(2));
+
+        var conversation = new List<ChatMessage>();
+        foreach (var n in new[] { "one", "two", "three", "four", "five", "six" })
+        {
+            conversation.Add(new ChatMessage("user", $"Tell me something about the number {n}, in a sentence of a few words please."));
+            conversation.Add(new ChatMessage("assistant", $"The number {n} is a small whole number that people count with every day."));
+        }
+        conversation.Add(new ChatMessage("user", "Name one fruit that is yellow."));
+        var whole = engine.BuildPrompt([new ChatMessage("system", persona), .. conversation]).Ids.Count;
+
+        var timing = new TurnTimingRecorder();
+        var options = new GenerationOptions { Temperature = 0, MaxTokens = 6, Budget = PowerBudget.None, Timing = timing, ReadWithin = engine.ReadCost!.Value * 100 };
+        var answer = new StringBuilder();
+        await foreach (var piece in service.StreamAsync(conversation, options)) answer.Append(piece);
+
+        Assert.InRange(timing.PromptTokens, 1, whole - 100);
+        Assert.False(string.IsNullOrWhiteSpace(answer.ToString()));
+        output.WriteLine($"{timing.PromptTokens} of {whole} tokens read ({timing.KvPath}): {answer}");
+    }
+
+    private static readonly CircleAI.Tools.ToolDefinition[] Weather =
+    [
+        new()
+        {
+            Name = "get_weather",
+            Description = "The weather now in a city",
+            Parameters = new Dictionary<string, CircleAI.Tools.ToolParameter> { ["location"] = new() { Type = "string", Description = "The city" } },
+            RequiredParameters = ["location"],
+        },
+    ];
+
+    private static ChatMessage[] Seed(string persona) => [new("system", persona), new("user", ".")];
+
+    private static ChatMessage[] AskedTheWeather(string persona) => [new("system", persona), new("user", "What is the weather in Paris right now?")];
+
+    private static string NewPersona() => $"You are B!, an assistant on a phone. {Guid.NewGuid():N}";
+
+    private ManagedChatGenerator Fresh(string folder) =>
+        ManagedChatGenerator.Load(fixture.Path!, new ManagedGeneratorOptions { ContextLength = 1024, PrimedStartDirectory = folder });
+
+    [Fact]
+    public async Task A_system_turn_read_in_the_gaps_starts_a_turn_that_answers_as_if_it_had_read_it_all()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        var persona = NewPersona();
+        var asked = AskedTheWeather(persona);
+        var whole = g.BuildPrompt(asked, Weather, false, null).Ids.Count;
+        Assert.Equal(whole, g.Unread(asked, Weather));
+
+        Assert.True(await g.PrimeAsync(Seed(persona), Weather));
+
+        Assert.InRange(g.Unread(asked, Weather), 1, 40);
+        var timing = new TurnTimingRecorder();
+        var answer = await g.GenerateAsync(asked, Greedy(12, timing).WithTools(Weather));
+        Assert.Equal("primed-disk", timing.KvPath);
+
+        // And read once is read: it is on disk for the next process and nothing was left behind.
+        using var next = Fresh(fixture.PrimedDirectory);
+        Assert.True(await next.PrimeAsync(Seed(persona), Weather));
+        Assert.Empty(Directory.GetFiles(fixture.PrimedDirectory, "*.priming"));
+
+        using var cold = Fresh("");
+        var read = new TurnTimingRecorder();
+        Assert.Equal(answer, await cold.GenerateAsync(asked, Greedy(12, read).WithTools(Weather)));
+        Assert.Equal("reset", read.KvPath);
+        output.WriteLine($"{whole} tokens: {timing.PrefillMs} ms primed, {read.PrefillMs} ms cold: {answer}");
+    }
+
+    [Fact]
+    public async Task A_brain_goes_from_its_tools_to_a_plain_turn_and_back_by_its_starts_and_answers_as_a_cold_one_does()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        var persona = NewPersona();
+        ChatMessage[] tool = AskedTheWeather(persona);
+        ChatMessage[] plain = [new("system", persona), new("user", "Name one fruit that is yellow.")];
+        Assert.True(await g.PrimeAsync(Seed(persona), null));
+        Assert.True(await g.PrimeAsync(Seed(persona), Weather));
+
+        var (toWhole, toPlain, back) = (new TurnTimingRecorder(), new TurnTimingRecorder(), new TurnTimingRecorder());
+        var called = await g.GenerateAsync(tool, Greedy(12, toWhole).WithTools(Weather));
+        var answered = await g.GenerateAsync(plain, Greedy(12, toPlain));
+        var calledAgain = await g.GenerateAsync(tool, Greedy(12, back).WithTools(Weather));
+
+        // Every change of system turn is a file, and neither turn sees what the other left in the state.
+        Assert.Equal(["primed-disk", "primed-disk", "primed-disk"], [toWhole.KvPath, toPlain.KvPath, back.KvPath]);
+        using var cold = Fresh("");
+        Assert.Equal(answered, await cold.GenerateAsync(plain, Greedy(12)));
+        Assert.Equal(called, await cold.GenerateAsync(tool, Greedy(12).WithTools(Weather)));
+        Assert.Equal(called, calledAgain);
+        output.WriteLine($"{toPlain.PrefillMs} ms into the plain turn, {back.PrefillMs} ms back: {answered}");
+    }
+
+    [Fact]
+    public async Task A_turn_takes_the_engine_from_a_read_in_the_gaps_and_keeps_its_conversation()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        ChatMessage[] first = [new("system", NewPersona()), new("user", "What is two plus two?")];
+        var reply = await g.GenerateAsync(first, Greedy(8));
+
+        var persona = NewPersona();
+        var reading = g.PrimeAsync(Seed(persona), Weather);
+
+        // The follow-up does not wait for the read, and the read has not touched what it follows up.
+        var timing = new TurnTimingRecorder();
+        await g.GenerateAsync([.. first, new("assistant", reply), new("user", "And three plus three?")], Greedy(2, timing));
+        Assert.Equal("prefix-hit", timing.KvPath);
+        Assert.False(reading.IsCompleted);
+
+        Assert.True(await reading);
+        Assert.InRange(g.Unread(AskedTheWeather(persona), Weather), 1, 40);
+    }
+
+    [Fact]
+    public async Task A_read_stopped_part_way_goes_on_from_what_it_wrote_down()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        var persona = NewPersona();
+        using var stop = new CancellationTokenSource();
+        var reading = g.PrimeAsync(Seed(persona), Weather, stop.Token);
+        var deadline = DateTime.UtcNow.AddMinutes(5);
+        while (!Directory.Exists(fixture.PrimedDirectory) || Directory.GetFiles(fixture.PrimedDirectory, "*.priming").Length == 0)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "nothing was written down");
+            await Task.Delay(20);
+        }
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reading);
+
+        // Another process, as after a kill: it goes on from there, and the start it keeps is the one a
+        // brain that read the whole of it would have kept.
+        using var next = Fresh(fixture.PrimedDirectory);
+        Assert.True(await next.PrimeAsync(Seed(persona), Weather));
+        Assert.True(next.PrimedFrom >= 64, $"it started at token {next.PrimedFrom}");
+        Assert.Empty(Directory.GetFiles(fixture.PrimedDirectory, "*.priming"));
+
+        var asked = AskedTheWeather(persona);
+        var timing = new TurnTimingRecorder();
+        var answer = await next.GenerateAsync(asked, Greedy(12, timing).WithTools(Weather));
+        Assert.Equal("primed-disk", timing.KvPath);
+        using var cold = Fresh("");
+        Assert.Equal(answer, await cold.GenerateAsync(asked, Greedy(12).WithTools(Weather)));
+    }
+
+    [Fact]
+    public async Task A_read_in_the_gaps_costs_no_kept_start_its_place()
+    {
+        if (Generator() is null) return;
+
+        // Three starts kept, then a fourth read in the gaps: four is what a brain keeps, and what the
+        // read wrote down on its way is not one of them.
+        var folder = System.IO.Path.Combine(fixture.PrimedDirectory, Guid.NewGuid().ToString("N"));
+        using var engine = Fresh(folder);
+        for (var i = 0; i < 3; i++) await engine.GenerateAsync([new("system", NewPersona()), new("user", "Hello!")], Greedy(1));
+
+        Assert.True(await engine.PrimeAsync(Seed(NewPersona()), Weather));
+
+        Assert.Equal(4, Directory.GetFiles(folder, "*.primed").Length);
+        Assert.Empty(Directory.GetFiles(folder, "*.priming"));
+    }
+
+    [Fact]
+    public async Task A_brain_let_go_stops_its_read_in_the_gaps_at_the_next_token()
+    {
+        if (Generator() is null) return;
+
+        var engine = Fresh(fixture.PrimedDirectory);
+        var reading = engine.PrimeAsync(Seed(NewPersona()), Weather);
+        engine.Dispose();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => reading);
+    }
+
+    [Fact]
+    public async Task A_brain_that_keeps_no_starts_or_a_conversation_with_no_system_turn_reads_nothing_ahead()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        using var keepsNone = Fresh("");
+        Assert.False(await keepsNone.PrimeAsync(Seed(NewPersona()), Weather));
+        Assert.False(await g.PrimeAsync([new("user", ".")], Weather));
+    }
+
+    [Fact]
+    public async Task A_service_reads_its_tools_ahead_and_a_tool_turn_starts_after_them_and_runs_the_tool()
+    {
+        if (Generator() is null) return;
+
+        const string persona = "You are B!, an assistant on a phone. Answer in one short sentence.";
+        var folder = System.IO.Path.Combine(fixture.PrimedDirectory, Guid.NewGuid().ToString("N"));
+        var ran = new List<string>();
+        await using var service = new CircleAI.Hosting.AIService(
+            new CircleAI.Hosting.AIOptions
+            {
+                ModelPath = fixture.Path!,
+                SystemPrompt = persona,
+                ToolBridge = new CircleAI.Tools.LoggedToolBridge(new CircleAI.Assistant.CircleAIToolBridge(() => 64), line => { lock (ran) ran.Add(line); }),
+            },
+            generatorFactory: _ => Fresh(folder));
+
+        await service.StartAsync();
+        var deadline = DateTime.UtcNow.AddMinutes(10);
+        while (!Directory.Exists(folder) || Directory.GetFiles(folder, "*.primed").Length < 2)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the tools were not read");
+            await Task.Delay(100);
+        }
+
+        var answer = await service.AgenticChatAsync("Use the calculator: what is 6789 times 3?", Greedy(96));
+
+        output.WriteLine(answer);
+        foreach (var line in ran) output.WriteLine(line);
+        Assert.Contains(ran, line => line.Contains("calculate", StringComparison.Ordinal));
     }
 
     [Fact]

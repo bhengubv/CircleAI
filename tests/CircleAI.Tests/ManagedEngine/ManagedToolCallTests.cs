@@ -163,6 +163,49 @@ public sealed class ManagedToolCallTests(ManagedGeneratorFixture fixture, ITestO
     }
 
     [Fact]
+    public async Task A_plain_question_after_a_tool_turn_reaches_the_2B_without_the_tools_block()
+    {
+        if (fixture.Path is not { } path)
+        {
+            output.WriteLine(Bonsai2Model.Missing);
+            return;
+        }
+
+        const string persona = "You are B!, a helpful assistant.";
+        const string fruit = "Name one fruit that is yellow.";
+        var folder = System.IO.Path.Combine(fixture.PrimedDirectory, Guid.NewGuid().ToString("N"));
+        var bridge = new WeatherBridge();
+        ManagedChatGenerator? engine = null;
+        await using var service = new AIService(
+            new AIOptions { ModelPath = path, ToolBridge = bridge, SystemPrompt = persona },
+            generatorFactory: p => engine = ManagedChatGenerator.Load(p, new ManagedGeneratorOptions { ContextLength = 2048, PrimedStartDirectory = folder }));
+
+        // The warm-up keeps the persona's start and the gaps the tools'.
+        await service.StartAsync();
+        var deadline = DateTime.UtcNow.AddMinutes(10);
+        while (!Directory.Exists(folder) || Directory.GetFiles(folder, "*.primed").Length < 2)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the tools were not read");
+            await Task.Delay(100);
+        }
+
+        await service.AgenticChatAsync("What is the weather in Durban right now?", Greedy(64));
+        Assert.NotEmpty(bridge.Calls);
+
+        var timing = new TurnTimingRecorder();
+        var answer = new StringBuilder();
+        var options = new GenerationOptions { Temperature = 0, MaxTokens = 8, Budget = PowerBudget.None, Timing = timing };
+        await foreach (var piece in service.StreamAsync([new ChatMessage("user", fruit)], options)) answer.Append(piece);
+
+        ChatMessage[] asked = [new("system", persona), new("user", fruit)];
+        var withTools = engine!.BuildPrompt(asked, [Weather], false, null).Ids.Count;
+        output.WriteLine($"{timing.PromptTokens} tokens against {withTools} with the tools ({timing.KvPath}): {answer}");
+        Assert.Equal("primed-disk", timing.KvPath);
+        Assert.InRange(timing.PromptTokens, 1, withTools - 1);
+        Assert.False(string.IsNullOrWhiteSpace(answer.ToString()));
+    }
+
+    [Fact]
     public async Task A_call_thinks_when_it_asks_and_its_budget_closes_the_thought_so_the_answer_still_comes()
     {
         var g = Generator();

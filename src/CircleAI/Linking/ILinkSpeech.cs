@@ -38,6 +38,10 @@ public interface ILinkSpeech
     /// </remarks>
     Task<string> TranscribeAsync(byte[] pcm16, string? language, CancellationToken ct = default);
 
+    /// <summary>Ears that take audio as it arrives; null when these can only work on a finished clip.</summary>
+    /// <param name="language">BCP-47 tag, or null to let the implementation choose.</param>
+    CircleAI.Voice.LiveHearing? BeginHearing(string? language) => null;
+
     /// <summary>Audio for these words.</summary>
     /// <param name="text">What to say.</param>
     /// <param name="language">BCP-47 tag, or null to let the implementation choose.</param>

@@ -9,6 +9,8 @@
 //   bonsai-ref logits <model.gguf> <templates.json> <out.json>
 //   bonsai-ref detok  <model.gguf> <logits.json>
 //   bonsai-ref vision <model.gguf> <mmproj.gguf> <image> <out.json>
+//   bonsai-ref layers <model.gguf> <logits.json> <out.json>
+//   bonsai-ref rotation <model.gguf> <logits.json> <out.json>
 //
 // meta    every metadata key with a short value, the chat template, the vocab size.
 // tokens  token ids and the raw bytes of each piece for a fixed multilingual corpus.
@@ -27,6 +29,11 @@
 //         tower's other attention path (flash attention off) move them, then the language
 //         model on those embeddings - 32 greedy steps with the top 20 logits, and the spread
 //         at 2 and 4 threads and with flash attention off, fed the same tokens.
+// layers  the per-layer checksums: logits.json's "fact" prompt with the graph callback on, and
+//         each layer's output at its last token - norm, sum, first 16 values - with the spread
+//         2 and 4 threads put on it (Layers.cs).
+// rotation one rotation chunk per width: for each width the fork rotates, the first block of the
+//         "fact" prompt's last-token activation before the signs and after the rotation (Rotation.cs).
 //
 // templates.json comes from render_templates.py, which renders the model's own chat
 // template with jinja2 the way Hugging Face does; this tool only tokenizes and runs it.
@@ -50,6 +57,12 @@ if (args.Length < 3)
     Console.Error.WriteLine("       bonsai-ref logits <model.gguf> <templates.json> <out.json>");
     Console.Error.WriteLine("       bonsai-ref detok <model.gguf> <logits.json>");
     Console.Error.WriteLine("       bonsai-ref vision <model.gguf> <mmproj.gguf> <image> <out.json>");
+    Console.Error.WriteLine("       bonsai-ref layers <model.gguf> <logits.json> <out.json>");
+    return 2;
+}
+if (args[0] is "layers" or "rotation" && args.Length < 4)
+{
+    Console.Error.WriteLine($"usage: bonsai-ref {args[0]} <model.gguf> <logits.json> <out.json>");
     return 2;
 }
 if (args[0] == "vision" && args.Length < 5)
@@ -112,10 +125,12 @@ try
         "tokens" => Tokens(vocab, source),
         "logits" => Logits(model, vocab, source, args[2]),
         "vision" => Vision(model, vocab, source, Path.GetFullPath(args[2]), Path.GetFullPath(args[3])),
+        "layers" => Layers.Run(model, Layers.PromptOf(Path.GetFullPath(args[2]), "fact"), source),
+        "rotation" => Rotation.Run(model, Layers.PromptOf(Path.GetFullPath(args[2]), "fact"), source),
         _        => throw new ArgumentException($"unknown mode '{mode}'"),
     };
 
-    var outPath = Path.GetFullPath(args[mode switch { "logits" => 3, "vision" => 4, _ => 2 }]);
+    var outPath = Path.GetFullPath(args[mode switch { "logits" or "layers" or "rotation" => 3, "vision" => 4, _ => 2 }]);
     Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
     File.WriteAllText(outPath, output.ToJsonString(Json(indented: mode is not ("logits" or "vision"))) + "\n");
     Console.WriteLine($"wrote : {outPath}");

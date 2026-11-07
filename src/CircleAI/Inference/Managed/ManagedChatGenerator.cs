@@ -34,6 +34,12 @@
 // the beginning. Checked token by token, the reuse needs neither ContinueConversation nor
 // UsePrefixCache to make it safe. One call at a time.
 //
+// WHAT NO TURN HAS TIME TO READ IS READ IN THE GAPS (PrimeAsync). The tools block is four minutes of
+// reading on the P30 and a turn has two, so a turn that met it never reached its question and never
+// got as far as keeping it. It is read on a state of its own, a token at a time, with a turn free to
+// take the engine at any token; what was read is written down as it goes, because EMUI ends a busy
+// process without notice, and the next start goes on from there.
+//
 // IT SEES WHEN ITS VISION TOWER IS BESIDE IT. A ChatMessage's ImageBytes become a picture in the
 // turn as the model's own template writes one (<|vision_start|><|image_pad|><|vision_end|>), and
 // the one <|image_pad|> becomes the picture's tokens from the tower (VisionTower), placed in the
@@ -140,10 +146,20 @@ public sealed record ManagedGeneratorOptions
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
-public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerator
+public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerator, IReadingGenerator
 {
     private const string Area = "Engine";
     private const ulong SessionMagic = 0x314E_4547_4D49_4143; // "CAIMGEN1", little-endian
+
+    // The fewest prompt tokens a read is measured from: one or two say more about the clock.
+    private const int ReadMeasuredFrom = 4;
+
+    // How often a read in the gaps writes down how far it got, in tokens: about 30 s on the P30, and
+    // about 20 MB each time, which is what the recurrent layers hold whatever the length.
+    private const int PrimingKeptEvery = 64;
+
+    // How long a read in the gaps waits to see the engine taken by the call that asked for it.
+    private static readonly TimeSpan GiveWay = TimeSpan.FromMilliseconds(50);
 
     // End-of-generation tokens beside the file's eos, eot and eom, as the fork collects them
     // (llama-vocab.cpp): by their text, whatever type the file gives them.
@@ -161,6 +177,8 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private readonly ManagedGeneratorOptions _options;
     private readonly HashSet<int> _endOfGeneration = [];
     private readonly int _turnStart;
+    private readonly int[] _userTurn;
+    private readonly int[] _turnEnd;
     private readonly int _thinkStart;
     private readonly int _thinkEnd;
     private readonly float[] _logits;
@@ -172,6 +190,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private readonly string _modelIdentity;
     private Qwen35State _state;
     private int _disposed;
+    private long _readCost; // what one prompt token last took, in ticks; 0 until one was measured
+    private int _wanted;    // calls waiting for the engine, which a read in the gaps stands aside for
+
+    // THE CONVERSATION THE BRAIN IS KEEPING: whose it is, and the tokens of its finished turns as they
+    // went in, the empty thought and the notes included. The template would write those turns differently
+    // from how they were read, and a prompt written from the words no longer matches what the state holds,
+    // so a turn that goes on this conversation is these tokens and then the new turn. Nothing is re-read.
+    private string? _talk;
+    private string? _talkAsked;     // the question of its last finished turn, as the messages hold it
+    private readonly List<int> _talkTokens = [];
 
     // Speculative decoding with the file's MTP head (S5): null for a file without one, or when the
     // options ask for plain decoding.
@@ -230,6 +258,8 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
         if (_endOfGeneration.Count == 0) throw new NotSupportedException("The model names no end-of-generation token.");
         _turnStart = tokenizer.TryGetSpecial("<|im_start|>", out var turn) ? turn : -1;
+        _userTurn = [.. tokenizer.Encode("user\n", parseSpecial: false)];
+        _turnEnd = tokenizer.TryGetSpecial("<|im_end|>", out var ended) ? [ended, .. tokenizer.Encode("\n", parseSpecial: false)] : [];
         _thinkStart = tokenizer.TryGetSpecial("<think>", out var start) ? start : -1;
         _thinkEnd = tokenizer.TryGetSpecial("</think>", out var end) ? end : -1;
 
@@ -253,7 +283,133 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// <summary>The vision tower the model sees with, or null.</summary>
     public string? VisionTowerPath => _towerPath;
 
+    /// <inheritdoc/>
+    public TimeSpan? ReadCost => Volatile.Read(ref _readCost) is > 0 and var ticks ? TimeSpan.FromTicks(ticks) : null;
+
+    /// <inheritdoc/>
+    /// <remarks>Counted as a call would run it and changing nothing: what the state holds now, the primed start on disk included.</remarks>
+    public int Unread(IReadOnlyList<ChatMessage> messages, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools) => Unread(messages, tools, null);
+
+    /// <inheritdoc/>
+    public int Unread(IReadOnlyList<ChatMessage> messages, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools, string? conversation)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        var offered = tools is { Count: > 0 } ? tools : null;
+        var built = BuildPrompt(messages, offered, _options.Thinking, null);
+        Interlocked.Increment(ref _wanted);
+        try
+        {
+            _gate.Wait();
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _wanted);
+        }
+        try
+        {
+            ThrowIfDisposed();
+            var prompt = GoingOn(conversation, messages, built, offered, _options.Thinking, null, 0) ?? built.Ids;
+            return prompt.Count - Reuse(prompt, PrimedLength(messages, prompt)).Position;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A STATE OF ITS OWN, because a turn's state is replaced by the next turn, and A TOKEN AT A TIME,
+    /// because whoever is waiting matters more than this does: a question waits for one token at most.
+    /// It reads as a turn would read it, so the state it keeps is the one a turn would have kept.
+    /// </remarks>
+    public async Task<bool> PrimeAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        ThrowIfDisposed();
+        if (_primedDirectory is null) return false;
+
+        var prompt = BuildPrompt(messages, tools is { Count: > 0 } ? tools : null, _options.Thinking, null).Ids;
+        var length = PrimedLength(messages, prompt);
+        if (length == 0) return false;
+        var file = PrimedPath(prompt, length);
+        if (File.Exists(file)) return true;
+
+        var started = Stopwatch.GetTimestamp();
+        var progress = Path.ChangeExtension(file, ".priming");
+        var state = SoFar(progress, prompt, length) ?? _model.NewState(_state.Capacity, _state.KvMode, _state.KeyForm);
+        var from = PrimedFrom = state.Position;
+        CircleLog.Info(Area, Invariant($"reading a {length}-token system turn in the gaps between turns, from token {from}"));
+
+        while (true)
+        {
+            while (Volatile.Read(ref _wanted) > 0) await Task.Delay(GiveWay, ct).ConfigureAwait(false);
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                ThrowIfDisposed();
+                if (!File.Exists(file))
+                {
+                    await Task.Run(() => ReadInTheGap(prompt, length, state, progress, ct), ct).ConfigureAwait(false);
+                    if (state.Position < length) continue;
+                    KeepPrimed(prompt, length, state);
+                    CircleLog.Info(Area, Invariant($"{length - from} tokens read in the gaps in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s"));
+                }
+                Forget(progress);
+                return File.Exists(file);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+    }
+
+    // Reads on until the system turn is in, somebody wants the engine, or the generator is going.
+    private void ReadInTheGap(List<int> prompt, int length, Qwen35State state, string progress, CancellationToken ct)
+    {
+        // The workers stay busy for the reading as they do for a turn (OPEN-GAPS E34).
+        using var spinning = _pool.KeepSpinning();
+        while (state.Position < length && Volatile.Read(ref _wanted) == 0 && Volatile.Read(ref _disposed) == 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            _model.Forward(prompt[state.Position], state);
+            if (state.Position % PrimingKeptEvery != 0 || state.Position == length) continue;
+            try
+            {
+                WritePrimed(progress, prompt, state.Position, state);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                CircleLog.Warn(Area, "how far the reading got could not be kept: " + e.Message);
+            }
+        }
+    }
+
+    // How far an earlier read of this system turn got, when one was written down for this engine.
+    private Qwen35State? SoFar(string progress, List<int> prompt, int length)
+    {
+        if (!File.Exists(progress)) return null;
+        try
+        {
+            return ReadPrimed(progress, prompt, length);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            CircleLog.Warn(Area, "how far the reading got could not be read, so it starts again: " + e.Message);
+            return null;
+        }
+    }
+
+    private static void Forget(string progress)
+    {
+        try { File.Delete(progress); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
     internal ByteLevelBpe Tokenizer => _tokenizer;
+
+    /// <summary>The token the last read in the gaps began at: past 0 when it went on from an earlier one.</summary>
+    internal int PrimedFrom { get; private set; }
 
     /// <summary>How long the last picture read took: decoded, fitted and through the tower.</summary>
     internal TimeSpan LastPicture { get; private set; }
@@ -478,7 +634,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     public async Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -511,7 +667,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!File.Exists(path)) return false;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -564,11 +720,25 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     private sealed record Outcome(string Content, string? Reasoning, int TokensIn, int TokensOut, FinishReason Finish, TimeSpan Elapsed);
 
+    // Takes the engine for a call, saying so first: a read in the gaps sees that and stands aside.
+    private async Task EnterAsync(CancellationToken ct)
+    {
+        Interlocked.Increment(ref _wanted);
+        try
+        {
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _wanted);
+        }
+    }
+
     private async Task<Outcome> RunAsync(IReadOnlyList<ChatMessage> messages, GenerationOptions? options, Action<ChatFragment>? emit, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(messages);
         options ??= new GenerationOptions();
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
@@ -590,14 +760,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         var started = Stopwatch.GetTimestamp();
         var sleptBefore = _pool.Sleeps;
+        var (runsBefore, waitedBefore) = (_pool.Runs, _pool.Waited);
         var timing = options.Timing;
         var thinking = ThinkingFor(options);
         var tools = options.Tools is { Count: > 0 } offered ? offered : null;
         var built = BuildPrompt(messages, tools, thinking, options.Effort);
-        var prompt = built.Ids;
+        var requested = options.MaxTokens > 0 ? options.MaxTokens : _options.MaxNewTokens;
+        var prompt = GoingOn(options.Conversation, messages, built, tools, thinking, options.Effort, requested) ?? built.Ids;
         if (prompt.Count >= _state.Capacity)
             throw new InvalidOperationException($"The prompt is {prompt.Count} tokens; this generator holds {_state.Capacity}.");
-        var requested = options.MaxTokens > 0 ? options.MaxTokens : _options.MaxNewTokens;
 
         // THE THOUGHT HAS ITS OWN ALLOWANCE, ON TOP OF THE ANSWER'S. A budget counted inside
         // MaxTokens let a long thought eat the answer's share and end the turn mid-thought.
@@ -611,17 +782,52 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         var primed = PrimedLength(messages, prompt);
         if (timing is not null) timing.PromptTokens = prompt.Count;
 
+        // THE EARS HOLD THE BRAIN UNTIL THIS, so nothing reading ahead takes a token's time from it.
+        if (!options.JustRead) BrainHold.Release();
+
+        // SOMEBODY IS STILL TALKING (GenerationOptions.JustRead): as far as they have got, no further.
+        // What comes after is their turn's end and the reply's opening, which have to follow the last word.
+        var readTo = options.JustRead ? EndOfWhatWasSaid(prompt, lastTurn) : prompt.Count;
+
         try
         {
             var path = Resume(prompt, primed);
             if (timing is not null) timing.KvPath = path;
             var reused = _history.Count;
             _model.TakeTimes(); // whatever an abandoned call left counted
-            for (var i = reused; i < prompt.Count; i++)
+
+            // A WORD CAN STILL CHANGE: the ears heard "Why is this?" on their way to "Why is the sky blue?",
+            // and a recurrent state only steps back to a mark. So only this read is lost, not all of them.
+            if (options.JustRead && reused < readTo) _state.Mark();
+
+            for (var i = reused; i < readTo; i++)
             {
                 ct.ThrowIfCancellationRequested();
+
+                // THE EARS ARE ON THE LAST WORDS (BrainHold): they are what a read ahead is waiting for.
+                while (options.JustRead && BrainHold.Now)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    Thread.Sleep(2);
+                }
+
                 if (i == primed && _state.PrimedPosition != i) Prime(prompt, i);
                 if (i == lastTurn) _state.Mark();
+
+                // AN ANSWER'S TOKENS GO IN TOGETHER, up to the next place the state is kept: the same
+                // sums, each weight read once for all of them. Reading ahead goes a token at a time, so
+                // that whatever real comes along need not wait.
+                var together = options.JustRead || built.Slots is not null || _speculator is not null ? 1 : Together(i, readTo, primed, lastTurn);
+                if (together > 1)
+                {
+                    var read = new float[]?[together];
+                    if (i + together == prompt.Count) read[together - 1] = _logits;
+                    _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together), _state, read);
+                    _history.AddRange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together));
+                    i += together - 1;
+                    continue;
+                }
+
                 if (built.Slots is { } slots && slots[i].Image >= 0)
                 {
                     // A picture token goes in as the tower made it; an MTP head drafts from text, so
@@ -642,6 +848,14 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             }
             var prefilled = Stopwatch.GetTimestamp();
             var prefillTimes = _model.TakeTimes();
+            if (options.JustRead)
+            {
+                var read = Stopwatch.GetElapsedTime(started, prefilled);
+                CircleLog.Info(Area, Invariant($"read ahead to token {readTo}: {Math.Max(0, readTo - reused)} run ({path}) in {read.TotalMilliseconds:F0} ms"));
+                return new Outcome(string.Empty, null, prompt.Count, 0, FinishReason.Stop, read);
+            }
+
+            if (prefillTimes.Tokens >= ReadMeasuredFrom) Volatile.Write(ref _readCost, (prefillTimes.Total / prefillTimes.Tokens).Ticks);
 
             var sampler = new TokenSampler(Settings(options, thinking), options.Seed);
             var generated = new List<int>();
@@ -772,6 +986,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                         (token, end) = _speculator.Step(token, _state, _history, Step);
                         continue;
                     }
+                    // THE VOICE IS ON THE FIRST WORDS (BrainHold). The workers sleep by themselves.
+                    while (BrainHold.Now) Thread.Sleep(2);
+
                     _model.Forward(token, _state, _logits);
                     _history.Add(token);
                     (token, end) = Step(_logits);
@@ -797,12 +1014,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var rate = decodeSeconds > 0 ? generated.Count / decodeSeconds : 0;
             var pictures = built.Images.Length == 0 ? "" : Invariant($" ({built.Images.Length} pictures, {built.Images.Sum(p => p.Count)} of them picture tokens)");
             CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens{pictures}, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
-            CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}; the {_pool.Threads - 1} workers slept {_pool.Sleeps - sleptBefore} times"));
+            CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}; the {_pool.Threads - 1} workers slept {_pool.Sleeps - sleptBefore} times; {_pool.Runs - runsBefore} pieces of work, {(_pool.Waited - waitedBefore).TotalMilliseconds:F0} ms of them waiting for the slowest"));
             var (drafted, accepted) = _speculator?.TakeCounts() ?? (0L, 0L);
             if (drafted > 0)
                 CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
             if (thinking) CircleLog.Info(Area, Invariant($"thought for {thoughtTokens} tokens{(closedByBudget ? $", closed by its {thinkingBudget}-token budget" : string.Empty)} ({options.Effort?.TemplateName() ?? "the generator's default"})"));
+            Keep(options, messages, built);
 
             return new Outcome(content.ToString(), options.IncludeReasoning && thought.Length > 0 ? thought.ToString().Trim() : null,
                 prompt.Count, generated.Count, finish, Stopwatch.GetElapsedTime(started, done));
@@ -811,6 +1029,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         {
             // Cancellation lands between steps, so the state and the history still agree.
             if (timing is not null) timing.Finish ??= "cancel";
+            CircleLog.Info(Area, Invariant($"stopped after {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms with {_history.Count} tokens in the state, the prompt being {prompt.Count}"));
             throw;
         }
         catch
@@ -823,37 +1042,128 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
     }
 
+    // The turn is written: what the state holds is the conversation now, and this is where it goes on from.
+    private void Keep(GenerationOptions options, IReadOnlyList<ChatMessage> messages, PromptIds built)
+    {
+        if (options.Conversation is null || built.Slots is not null) return;
+        _talk = options.Conversation;
+        _talkAsked = options.RetrievalQuery ?? messages.LastOrDefault(m => IsPerson(m))?.Content;
+        _talkTokens.Clear();
+        _talkTokens.AddRange(_history);
+        _state.MarkTalk();
+    }
+
+    private static bool IsPerson(ChatMessage message) => string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase);
+
+    // The prompt of a turn going on the conversation the brain is keeping: what it holds, the last turn's
+    // end, and what has been said since as the template writes it. Null when the turn is to be read from
+    // its messages: a conversation it is not keeping, a state that has since gone to somebody else, or no
+    // room left.
+    private List<int>? GoingOn(string? conversation, IReadOnlyList<ChatMessage> messages, PromptIds built,
+        IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools, bool thinking, ReasoningEffort? effort, int room)
+    {
+        if (conversation is null || conversation != _talk || built.Slots is not null || _turnEnd.Length == 0) return null;
+        if (_state.TalkPosition != _talkTokens.Count) return null;
+
+        // WHAT WAS SAID SINCE THE BRAIN LAST SPOKE, WHICH IS MORE THAN THE QUESTION WHEN A TABLE ANSWERED ONE
+        // IN BETWEEN: "What's the capital of Australia?" never reaches it, and "How many people live there?"
+        // has to. The messages run on from the last question it saw; everything after that exchange is new.
+        var fresh = new List<ChatMessage>(messages.Where(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)));
+        var first = fresh.Count;
+        var seen = -1;
+        for (var i = messages.Count - 2; i >= 0 && seen < 0; i--)
+            if (IsPerson(messages[i]) && string.Equals(messages[i].Content, _talkAsked, StringComparison.Ordinal)) seen = i;
+        var from = seen >= 0 ? seen + 2 : messages.Count - 1;
+        for (var i = Math.Max(from, 0); i < messages.Count; i++)
+            if (!string.Equals(messages[i].Role, "system", StringComparison.OrdinalIgnoreCase)) fresh.Add(messages[i]);
+        if (fresh.Count == first) return null;
+
+        var whole = BuildPrompt(fresh, tools, thinking, effort).Ids;
+
+        // After the system turn, where the first of them begins.
+        var start = whole.IndexOf(_turnStart);
+        if (start >= 0 && first > 0) start = whole.IndexOf(_turnStart, start + 1);
+        if (start < 0) return null;
+
+        var count = _talkTokens.Count + _turnEnd.Length + whole.Count - start;
+        if (count + room >= _state.Capacity) return null;
+
+        var prompt = new List<int>(count);
+        prompt.AddRange(_talkTokens);
+        prompt.AddRange(_turnEnd);
+        prompt.AddRange(whole.Skip(start));
+        return prompt;
+    }
+
+    // How many tokens from i can be read together: to the end, or the next place the state is kept.
+    private static int Together(int i, int readTo, int primed, int lastTurn)
+    {
+        var end = Math.Min(readTo, i + Qwen35Model.ReadTogether);
+        if (i < primed) end = Math.Min(end, primed);
+        if (i < lastTurn) end = Math.Min(end, lastTurn);
+        return end - i;
+    }
+
+    // Where the last thing said ends: before its turn's end and the line after it.
+    private int EndOfWhatWasSaid(List<int> prompt, int lastTurn)
+    {
+        var end = lastTurn < 0 ? prompt.Count : lastTurn;
+        while (end > 0 && (_endOfGeneration.Contains(prompt[end - 1]) || prompt[end - 1] == _userTurn[^1])) end--;
+        return end;
+    }
+
     // Brings the state to the longest start of the prompt it can reuse, and says which it did:
     // all it holds; the mark where the last turn began; the primed start where the system turn
     // ended, held in memory or kept on disk; or nothing.
     private string Resume(List<int> prompt, int primed)
     {
         Debug.Assert(_history.Count == _state.Position);
-        var held = _history.Count;
-        if (held > 0 && held < prompt.Count && Holds(prompt, held)) return "continued";
-
-        var marked = _state.MarkedPosition;
-        if (marked > 0 && marked < prompt.Count && Holds(prompt, marked))
+        var (path, position) = Reuse(prompt, primed);
+        switch (path)
         {
-            _state.Rewind();
-            _history.RemoveRange(marked, _history.Count - marked);
-            return "prefix-hit";
-        }
-
-        if (primed > 0)
-        {
-            if (_state.PrimedPosition == primed && _history.Count >= primed && Holds(prompt, primed))
-            {
+            case "continued":
+                return path;
+            case "prefix-hit":
+                _state.Rewind();
+                _history.RemoveRange(position, _history.Count - position);
+                return path;
+            case "talk":
+                _state.RewindToTalk();
+                _history.RemoveRange(position, _history.Count - position);
+                return path;
+            case "primed":
                 _state.RewindToPrimed();
-                _history.RemoveRange(primed, _history.Count - primed);
-                return "primed";
-            }
-            if (LoadPrimed(prompt, primed)) return "primed-disk";
+                _history.RemoveRange(position, _history.Count - position);
+                return path;
+            case "primed-disk" when LoadPrimed(prompt, primed):
+                return path;
         }
 
         _state.Reset();
         _history.Clear();
         return "reset";
+    }
+
+    // The longest start of the prompt the state can go on from and how, changing nothing: what
+    // Resume does, and what Unread counts from.
+    private (string Path, int Position) Reuse(List<int> prompt, int primed)
+    {
+        var held = _history.Count;
+        if (held > 0 && held < prompt.Count && Holds(prompt, held)) return ("continued", held);
+
+        // THE LATER OF THE TWO: a mark can be left over from before the conversation's last turn ended.
+        var marked = _state.MarkedPosition;
+        var talk = _state.TalkPosition;
+        if (talk > marked && talk < prompt.Count && Holds(prompt, talk)) return ("talk", talk);
+        if (marked > 0 && marked < prompt.Count && Holds(prompt, marked)) return ("prefix-hit", marked);
+        if (talk > 0 && talk < prompt.Count && Holds(prompt, talk)) return ("talk", talk);
+
+        if (primed > 0)
+        {
+            if (_state.PrimedPosition == primed && _history.Count >= primed && Holds(prompt, primed)) return ("primed", primed);
+            if (_primedDirectory is not null && File.Exists(PrimedPath(prompt, primed))) return ("primed-disk", primed);
+        }
+        return ("reset", 0);
     }
 
     // Where the system turn ends - the start of the turn after it - when the conversation opens
@@ -864,31 +1174,32 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         if (_turnStart < 0 || !messages.Any(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(m.Content)))
             return 0;
         var first = prompt.IndexOf(_turnStart);
-        return first < 0 ? 0 : Math.Max(0, prompt.IndexOf(_turnStart, first + 1));
+        var next = first < 0 ? -1 : prompt.IndexOf(_turnStart, first + 1);
+        if (next < 0) return 0;
+
+        // AND THE NEXT TURN'S OWN OPENING, which is the same tokens every time: whoever speaks after
+        // the system turn is the person. Three tokens are a third of a second on a P30, and a
+        // spoken question has nothing to spare.
+        var opening = next + 1 + _userTurn.Length;
+        return prompt.Count > opening && prompt.Skip(next + 1).Take(_userTurn.Length).SequenceEqual(_userTurn) ? opening : next;
     }
 
     // The system turn is in: this point is remembered, and kept on disk for the next process.
     private void Prime(List<int> prompt, int length)
     {
         _state.MarkPrimed();
+        KeepPrimed(prompt, length, _state);
+    }
+
+    // A system turn's state, kept on disk under its own name unless one is there already.
+    private void KeepPrimed(List<int> prompt, int length, Qwen35State state)
+    {
         if (_primedDirectory is null) return;
         try
         {
             var file = PrimedPath(prompt, length);
             if (File.Exists(file)) return;
-            Directory.CreateDirectory(_primedDirectory);
-            var writing = file + ".writing";
-            using (var stream = new FileStream(writing, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
-            using (var writer = new BinaryWriter(stream, Encoding.UTF8))
-            {
-                writer.Write(PrimedMagic);
-                writer.Write(EngineNumerics);
-                writer.Write(_modelIdentity);
-                writer.Write(length);
-                for (var i = 0; i < length; i++) writer.Write(prompt[i]);
-                _state.Write(writer, _model.Config);
-            }
-            File.Move(writing, file, overwrite: true);
+            WritePrimed(file, prompt, length, state);
             CircleLog.Info(Area, Invariant($"primed start kept: a {length}-token system turn, {new FileInfo(file).Length / 1024} KB"));
             Prune();
         }
@@ -896,6 +1207,43 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         {
             CircleLog.Warn(Area, "a primed start could not be kept: " + e.Message);
         }
+    }
+
+    // The first tokens of a prompt and the state after them, written aside and moved into place, so
+    // a reader never finds half of one.
+    private void WritePrimed(string file, List<int> prompt, int length, Qwen35State state)
+    {
+        Directory.CreateDirectory(_primedDirectory!);
+        var writing = file + ".writing";
+        using (var stream = new FileStream(writing, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8))
+        {
+            writer.Write(PrimedMagic);
+            writer.Write(EngineNumerics);
+            writer.Write(_modelIdentity);
+            writer.Write(length);
+            for (var i = 0; i < length; i++) writer.Write(prompt[i]);
+            state.Write(writer, _model.Config);
+        }
+        File.Move(writing, file, overwrite: true);
+    }
+
+    // The state WritePrimed kept, when it was kept for this model, engine and working memory and its
+    // tokens, at most `most` of them, are how this prompt starts; null when it is anything else.
+    private Qwen35State? ReadPrimed(string file, List<int> prompt, int most)
+    {
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        using var reader = new BinaryReader(stream, Encoding.UTF8);
+        if (reader.ReadUInt64() != PrimedMagic || reader.ReadInt32() != EngineNumerics || reader.ReadString() != _modelIdentity)
+            return null;
+        var count = reader.ReadInt32();
+        if (count <= 0 || count > most) return null;
+        for (var i = 0; i < count; i++)
+        {
+            if (reader.ReadInt32() != prompt[i]) return null;
+        }
+        var state = Qwen35State.Read(reader, _model.Config);
+        return state.Position == count && state.Capacity == _state.Capacity && state.KvMode == _state.KvMode && state.KeyForm == _state.KeyForm ? state : null;
     }
 
     // The state at the end of this prompt's system turn, from disk, when one was kept for this
@@ -907,21 +1255,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         if (!File.Exists(file)) return false;
         try
         {
-            Qwen35State state;
-            using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
-            using (var reader = new BinaryReader(stream, Encoding.UTF8))
-            {
-                if (reader.ReadUInt64() != PrimedMagic || reader.ReadInt32() != EngineNumerics
-                    || reader.ReadString() != _modelIdentity || reader.ReadInt32() != length)
-                    return false;
-                for (var i = 0; i < length; i++)
-                {
-                    if (reader.ReadInt32() != prompt[i]) return false;
-                }
-                state = Qwen35State.Read(reader, _model.Config);
-            }
-            if (state.Position != length || state.Capacity != _state.Capacity || state.KvMode != _state.KvMode || state.KeyForm != _state.KeyForm)
-                return false;
+            if (ReadPrimed(file, prompt, length) is not { } state || state.Position != length) return false;
 
             _state = state;
             _history.Clear();
@@ -950,14 +1284,18 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         return Path.Combine(_primedDirectory!, hash[..32].ToLowerInvariant() + ".primed");
     }
 
-    // A few primed starts are kept; the least recently used go first.
+    // A few primed starts are kept; the least recently used go first. Reads left unfinished are counted
+    // apart: on the P30 on 2026-11-05 the one about to finish took a place, the start of the shape the
+    // brain had just left went, and growing back to that shape read its 606 tokens all over again.
     private void Prune()
     {
-        var stale = new DirectoryInfo(_primedDirectory!).GetFiles("*.primed")
-            .OrderByDescending(f => f.LastWriteTimeUtc).Skip(PrimedStartsKept);
-        foreach (var file in stale)
+        var folder = new DirectoryInfo(_primedDirectory!);
+        foreach (var kind in new[] { "*.primed", "*.priming" })
         {
-            try { file.Delete(); } catch (IOException) { }
+            foreach (var file in folder.GetFiles(kind).OrderByDescending(f => f.LastWriteTimeUtc).Skip(PrimedStartsKept))
+            {
+                try { file.Delete(); } catch (IOException) { }
+            }
         }
     }
 

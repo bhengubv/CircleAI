@@ -44,9 +44,52 @@ public sealed partial class CalendarFactsShortcut(TimeProvider? clock = null) : 
     [GeneratedRegex(@"\b(?:when\s+is\s+the\s+next|next)\s+leap\s+year\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NextLeap();
 
+    // "What day does Christmas fall on this year?", "What day is Heritage Day?", "Which day is New Year's Day?"
+    [GeneratedRegex(@"\b(?:what|which)\s+day\s+(?:of\s+the\s+week\s+)?(?:does|is|will|was)\s+(?<name>[\p{L}'’ ]+?)(?:\s+(?:fall|land|be|on|this\s+year|next\s+year)\b.*)?\s*[\?\.!]*\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DayOf();
+
+    // The days that are on one date every year, as South Africa keeps them.
+    private static readonly (string[] Names, string Said, int Month, int Day)[] FixedDays =
+    [
+        (["new year's day", "new year", "new years day"], "New Year's Day", 1, 1),
+        (["human rights day"], "Human Rights Day", 3, 21),
+        (["freedom day"], "Freedom Day", 4, 27),
+        (["workers day", "workers' day", "worker's day", "may day"], "Workers' Day", 5, 1),
+        (["youth day"], "Youth Day", 6, 16),
+        (["women's day", "womens day", "national women's day"], "Women's Day", 8, 9),
+        (["heritage day"], "Heritage Day", 9, 24),
+        (["day of reconciliation", "reconciliation day"], "The Day of Reconciliation", 12, 16),
+        (["christmas", "christmas day"], "Christmas", 12, 25),
+        (["boxing day", "day of goodwill"], "The Day of Goodwill", 12, 26),
+    ];
+
     /// <inheritdoc />
-    public ValueTask<string?> TryAnswerAsync(AskRecord ask, CancellationToken ct) =>
-        ValueTask.FromResult(Answer(ask.Asked ?? string.Empty, _clock.GetUtcNow().Year));
+    public ValueTask<string?> TryAnswerAsync(AskRecord ask, CancellationToken ct)
+    {
+        var said = ask.Asked ?? string.Empty;
+        var now = _clock.GetUtcNow();
+        return ValueTask.FromResult(DayOfTheWeek(said, now.Date) ?? Answer(said, now.Year));
+    }
+
+    /// <summary>The day of the week a date everybody knows falls on, or null when the question is not that.</summary>
+    public static string? DayOfTheWeek(string said, DateTime today)
+    {
+        var m = DayOf().Match(said);
+        if (!m.Success) return null;
+
+        var name = m.Groups["name"].Value.Trim().Replace('’', '\'');
+        if (name.StartsWith("the ", StringComparison.OrdinalIgnoreCase)) name = name[4..];
+        foreach (var (names, spoken, month, day) in FixedDays)
+        {
+            if (!names.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+            var date = new DateTime(today.Year, month, day);
+            var next = date < today;
+            if (next) date = date.AddYears(1);
+            return $"{spoken} falls on a {date.DayOfWeek} {(next ? "next" : "this")} year.";
+        }
+        return null;
+    }
 
     /// <summary>The answer to a calendar question, or null when it is not one.</summary>
     public static string? Answer(string said, int thisYear)

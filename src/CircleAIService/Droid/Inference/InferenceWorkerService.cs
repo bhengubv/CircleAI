@@ -45,6 +45,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
     {
         public required string Id { get; init; }
         public DateTimeOffset Deadline { get; init; }   // the ask's own; past it by a minute, the supervisor ends this process (OPEN-GAPS E33)
+        public bool JustRead { get; init; }             // a head start: whatever real comes takes the brain from it
         public readonly System.Text.StringBuilder Text = new();
         public readonly CancellationTokenSource Cts = new();
         public readonly SemaphoreSlim News = new(0, int.MaxValue);
@@ -148,6 +149,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
     private static void Load(IReadOnlyDictionary<string, string> req)
     {
+        CircleAI.Inference.Managed.Runtime.BrainHold.Open(System.IO.Path.Combine(CircleAI.Assistant.Device.AppPaths.Cache, "brain-hold"));
         req.TryGetValue(WorkerWire.Model, out var model);
         req.TryGetValue(WorkerWire.Directory, out var dir);
         if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(dir))
@@ -227,6 +229,18 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         var deadline = deadlineMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(deadlineMs) : DateTimeOffset.UtcNow.AddMinutes(2);
         InProcessBrainWorker? brain;
         Job job;
+
+        // A HEAD START NEVER STANDS IN AN ANSWER'S WAY: it stops at the next token, and what it read stays
+        // read. NOR DOES AN ANSWER THAT WAS STOPPED: they carried on after a pause, and the question they
+        // meant is coming in behind it, a token before the brain has let go.
+        Job? ending;
+        lock (Gate) ending = _job;
+        if (ending is { Final: false } && (ending.JustRead || ending.Cts.IsCancellationRequested))
+        {
+            ending.Cts.Cancel();
+            SpinWait.SpinUntil(() => ending.Final, TimeSpan.FromSeconds(1));
+        }
+
         lock (Gate)
         {
             brain = _brain;
@@ -248,6 +262,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             {
                 Id = req.TryGetValue(WorkerWire.Job, out var id) && id.Length > 0 ? id : Guid.NewGuid().ToString("N"),
                 Deadline = deadline,
+                JustRead = WorkerWire.Flag(req, WorkerWire.JustRead),
             };
         }
 
@@ -263,7 +278,9 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             Effort: effort,
             ThinkingBudget: thinkingBudget,
             Plain: plain,
-            Tools: WorkerWire.GetTools(req));
+            Tools: WorkerWire.GetTools(req),
+            JustRead: WorkerWire.Flag(req, WorkerWire.JustRead),
+            Conversation: req.TryGetValue(WorkerWire.Conversation, out var talk) && talk.Length > 0 ? talk : null);
 
         _ = Task.Run(async () =>
         {

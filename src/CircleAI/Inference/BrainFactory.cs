@@ -106,10 +106,16 @@ public sealed class BrainFactory : IBrainFactory
             // only when the balance or Wolverine asks for them, and then the leaner of the two.
             // THE ROW'S GENERATION PROFILE samples the answers (S5) - the model card's numbers,
             // data rather than code - and says whether it thinks by default.
+            // THE VECTOR KERNEL RUNS ON THE FAST CORES AND NO OTHERS. A little core is about 11 times
+            // slower at a product and a product waits for its slowest thread: on the P30 on 2026-11-05
+            // KernelThreads measured a cached matrix, chose 7 threads, and a third of a question went
+            // on waiting. Four big cores ran the same kernel 1.8 times faster than 7 threads.
+            Managed.Kernels.KernelChoice.ScalarOnly = tuning.ScalarKernels;
             var threads = tuning.Threads(request.Threads is > 0
                 ? request.Threads.Value
-                : Managed.Kernels.KernelThreads.Choose(fallback: DeviceContext.Read().BrainThreads)) ?? 1;
-            Managed.Kernels.KernelChoice.ScalarOnly = tuning.ScalarKernels;
+                : Managed.Kernels.Ptq1PairMatrix.Usable
+                    ? Math.Max(1, DeviceContext.Read().PerformanceCores)
+                    : Managed.Kernels.KernelThreads.Choose(fallback: DeviceContext.Read().BrainThreads)) ?? 1;
             Console.WriteLine($"CIRCLEAI-SLOT built=Managed model={request.ModelId} cap={request.Capability}");
             return Managed.ManagedChatGenerator.Load(request.ModelPath, new Managed.ManagedGeneratorOptions
             {

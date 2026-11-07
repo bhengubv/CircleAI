@@ -351,6 +351,31 @@ public static class CircleAITtsProbe
         long? speakerOverride = null, long? langIdOverrideIn = null, long? foreignSpeakerId = null)
     {
         var sw = Stopwatch.StartNew();
+        VoicePace.KeepIn(Path.Combine(storageDir, "voice-pace.txt"));
+
+        // THE VOICE WAS FOUND AGAIN FOR EVERY SENTENCE: the catalogue read, the device probed, the
+        // plan made, the bundle checked. Measured on the P30 on 2026-11-06 that was 0,8 s in front
+        // of every piece of every spoken answer, with the same answer each time. It is found once.
+        var found = storageDir + "|" + langTag;
+        if (speakerOverride is null && langIdOverrideIn is null && foreignSpeakerId is null
+            && FoundVoices.TryGetValue(found, out var voice) && File.Exists(voice.Onnx))
+        {
+            var said = await RunLocalAsync(voice.Onnx, wavPath, phrase, log, ct, voice.LangId, null, voice.EnglishId,
+                                           null, langTagForRespell: langTag).ConfigureAwait(false);
+            if (File.Exists(wavPath))
+            {
+                Paced(voice.Name, found);
+                return said;
+            }
+
+            // IT WORKED LAST TIME AND NOT THIS TIME, SO IT IS THE SENTENCE AND NOT THE VOICE. On the P30 on
+            // 2026-11-07 this went back to the plan over a line of code with no sound in it, the plan moved
+            // on from a working voice to the next and then to one that was not on the phone, and every
+            // answer after it was silent until the service was restarted: 350 renders in one run.
+            VoiceTrace.Write($"tts: {voice.Name} said nothing this time: {said.Split('\n')[0]}");
+            return said;
+        }
+
         using var registry = new ModelRegistryService();
         // Through the interface: the language-aware PlanFor is a default interface
         // method, so the concrete type only exposes the language-blind overload —
@@ -473,6 +498,29 @@ public static class CircleAITtsProbe
         var englishId = langId is null ? null : ResolveLanguageId(dir, "en");
         var spoken = await RunLocalAsync(onnx, wavPath, phrase, log, ct, langId, speakerOverride, englishId,
                                          foreignSpeakerId, langTagForRespell: langTag).ConfigureAwait(false);
+        // A VOICE THAT SAID NOTHING IS PASSED OVER, AND THE SENTENCE IS NOT LOST WITH IT: the plan is
+        // asked again, once per voice, for one that can.
+        if (!File.Exists(wavPath))
+        {
+            // ONE THAT HAS SPOKEN ON THIS DEVICE IS NOT BROKEN: see above.
+            if (VoicePace.Of(entry.Name) is not null)
+            {
+                VoiceTrace.Write($"tts: {entry.Name} said nothing this time: {spoken.Split('\n')[0]}");
+                return spoken;
+            }
+
+            var first = VoicePace.CanSpeak(entry.Name);
+            VoicePace.CouldNotSpeak(entry.Name);
+            VoiceTrace.Write($"tts: {entry.Name} said nothing: {spoken.Split('\n')[0]}");
+            return first ? await RunCataloguedAsync(storageDir, langTag, phrase, wavPath, log, ct, speakerOverride, langIdOverrideIn, foreignSpeakerId).ConfigureAwait(false) : spoken;
+        }
+
+        if (speakerOverride is null && langIdOverrideIn is null && foreignSpeakerId is null)
+        {
+            FoundVoices[found] = (entry.Name, onnx, langId, englishId);
+            VoiceTrace.Write($"tts: {langTag} speaks through {entry.Name}");
+            Paced(entry.Name, found);
+        }
 
         // The language id is in the report because its absence is undetectable
         // from the audio unless you speak the language: a multi-lingual model
@@ -481,6 +529,19 @@ public static class CircleAITtsProbe
                $"source   : {entry.Source}:{entry.Repo}\n" +
                $"voice id : {(langId is null ? "single-language model (no id needed)" : langId.ToString())}\n" +
                $"total    : {sw.Elapsed:mm\\:ss} including download\n\n{spoken}";
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Name, string Onnx, long? LangId, long? EnglishId)> FoundVoices = new();
+
+    // What the render just done says about the voice (VoicePace). One that has shown it cannot keep
+    // up is not found again, so the next sentence goes back to the plan and the plan passes it over.
+    private static void Paced(string voice, string found)
+    {
+        if (_cachedSingle?.LastRender is not { Audio.Ticks: > 0 } render) return;
+        VoicePace.Note(voice, render.Work, render.Audio);
+        if (VoicePace.KeepsUp(voice)) return;
+        if (FoundVoices.TryRemove(found, out _))
+            VoiceTrace.Write($"tts: {voice} takes {VoicePace.Of(voice):0.00} s a second here and cannot keep up with speech");
     }
 
     /// <summary>

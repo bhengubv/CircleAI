@@ -28,6 +28,9 @@
 // by part (TakeTimes), so a phone can say where a token's second goes.
 
 using System.Diagnostics;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 using CircleAI.Core;
 using CircleAI.Core.Compression;
 using CircleAI.Inference.Managed.Gguf;
@@ -49,6 +52,9 @@ public sealed class Qwen35Model
 
     // One turned buffer, one quantisation and one lookup table per product width.
     private readonly Dictionary<int, InputTables> _inputs = [];
+    private readonly Dictionary<int, LaneTables> _lanes = [];
+    private readonly bool _paired;
+    private readonly LaneWork _laneWork = new();
 
     // Working buffers, sized once.
     private readonly float[] _x, _h, _qkv, _z, _conv, _o, _beta, _alpha;
@@ -60,7 +66,14 @@ public sealed class Qwen35Model
     // The value heads of a DeltaNet layer, shared out to the pool's threads; each thread has its
     // own delta buffer.
     private readonly DeltaWork _deltaWork;
+    private readonly ConvWork _convWork;
+    private readonly GateWork _gateWork;
     private readonly float[][] _deltas;
+
+    // The query heads of a full-attention layer, likewise.
+    private readonly AttendWork _attendWork;
+    private readonly TurboKvCache.Reader[] _readers;
+    private readonly float[][] _attendScores;
 
     // Where the time went since the last TakeTimes, in Stopwatch ticks.
     private long _tTotal, _tTables, _tProducts, _tRecurrence, _tAttention, _tHead;
@@ -75,15 +88,23 @@ public sealed class Qwen35Model
 
         if (file.Tensor("output.weight") is not null) throw new NotSupportedException("An untied output head is not read in this pass.");
         Packing = PackingOf(file);
-        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing);
+
+        // THE WEIGHTS REPACKED FOR THE VECTORS, WHERE THE RUNTIME HAS THEM (Ptq1Pair): the embedding's
+        // lookups still read the file; its product as the head reads the copy.
+        var paired = _paired = Packing == GgmlType.PTQ1_0 && (Ptq1PairMatrix.Usable || PairedForTest);
+        var packingStarted = Stopwatch.GetTimestamp();
+        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing, paired ? pool : null, paired);
         _outputNorm = Floats(file, "output_norm.weight", c.Embedding);
 
         _layers = new Layer[c.Layers];
-        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing);
+        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing, paired ? pool : null, paired);
         if (c.MtpLayers == 1) _mtp = new MtpHead(file, c, c.Layers);
+        if (paired)
+            CircleAI.Core.Logging.CircleLog.Info("Engine", string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"the weights repacked for the vector kernel in {Stopwatch.GetElapsedTime(packingStarted).TotalMilliseconds:F0} ms"));
 
         foreach (var width in new[] { c.Embedding, c.SsmInner, c.Heads * c.HeadDim, c.FeedForward }.Distinct())
-            _inputs[width] = new InputTables(width, Packing);
+            _inputs[width] = new InputTables(width, Packing, paired);
 
         _x = new float[c.Embedding];
         _h = new float[c.Embedding];
@@ -109,8 +130,19 @@ public sealed class Qwen35Model
         _ffnOut = new float[c.Embedding];
 
         _deltaWork = new DeltaWork(this);
+        _convWork = new ConvWork(this);
+        _gateWork = new GateWork();
         _deltas = new float[Math.Max(1, pool?.Threads ?? 1)][];
         for (var i = 0; i < _deltas.Length; i++) _deltas[i] = new float[c.SsmHeadDim];
+
+        _attendWork = new AttendWork(this);
+        _readers = new TurboKvCache.Reader[_deltas.Length];
+        _attendScores = new float[_deltas.Length][];
+        for (var i = 0; i < _readers.Length; i++)
+        {
+            _readers[i] = new TurboKvCache.Reader(c.HeadDim);
+            _attendScores[i] = new float[256];
+        }
     }
 
     /// <summary>The model's shape.</summary>
@@ -301,6 +333,13 @@ public sealed class Qwen35Model
         if (logits.Length != 0 && logits.Length != Config.Vocabulary) throw new ArgumentException($"Logits take {Config.Vocabulary} values.", nameof(logits));
     }
 
+    /// <summary>
+    /// Handed each layer's output - the residual after its feed-forward, the fork's "l_out" - as a
+    /// single token runs (Forward), for the per-layer checksums the plan holds the engine to
+    /// (S0, LayerChecksumTests). Null in the engine itself.
+    /// </summary>
+    internal Action<int, float[]>? LayerOutput { get; set; }
+
     // One position through every layer, its input in _x and its rotary position (t, h, w); then the
     // head when logits (or the MTP head's input, h_nextn) are wanted.
     private void Step(Qwen35State state, int t, int h, int w, Span<float> logits, Span<float> nextn, long started)
@@ -318,6 +357,7 @@ public sealed class Qwen35Model
             RmsNorm(_x, layer.PostNorm, _h, c.RmsEps);
             FeedForward(layer);
             Add(_x, _ffnOut);
+            LayerOutput?.Invoke(il, _x);
         }
         state.Position++;
 
@@ -397,12 +437,7 @@ public sealed class Qwen35Model
                 RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
             }
             Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
-            for (var i = 0; i < n; i++)
-            {
-                var g = b.Gate[i];
-                var u = b.Up[i];
-                for (var j = 0; j < g.Length; j++) g[j] = Silu(g[j]) * u[j];
-            }
+            for (var i = 0; i < n; i++) Gate(b.Gate[i], b.Up[i]);
             Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
             for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
         }
@@ -491,7 +526,8 @@ public sealed class Qwen35Model
     // The products of several weights that read the same activations, for each of the first n
     // inputs: each input turned and quantised once, its tables shared by every weight that reads it.
     // PQ2_0 builds one table per input and walks each weight once for all of them (Pq2BatchLut);
-    // PTQ1_0 runs the inputs one after another through its own tables.
+    // PTQ1_0 walks a weight once for as many as fill the lanes (Ptq1PairBatch), and runs the rest one
+    // after another through its own tables.
     private void Products(float[][] inputs, int n, InputTransform? transform, params (TernaryMatrix Matrix, float[][] Outputs)[] products)
     {
         var started = Stopwatch.GetTimestamp();
@@ -512,10 +548,117 @@ public sealed class Qwen35Model
             _tProducts += Stopwatch.GetTimestamp() - multiplied;
             return;
         }
-        for (var i = 0; i < n; i++)
+
+        var first = 0;
+        for (; _paired && n - first >= LanesPayFrom; first += Ptq1PairBatch.Lanes)
+        {
+            var count = Math.Min(Ptq1PairBatch.Lanes, n - first);
+            var lanes = Lanes(inputs[first].Length);
+            var turning = Stopwatch.GetTimestamp();
+            _laneWork.Set(lanes, inputs, first, count, transform);
+            try
+            {
+                if (_pool is null) _laneWork.Execute(0, 1);
+                else _pool.Run(_laneWork);
+            }
+            finally
+            {
+                _laneWork.Clear();
+            }
+            _tTables += Stopwatch.GetTimestamp() - turning;
+
+            var multiplied = Stopwatch.GetTimestamp();
+            foreach (var (matrix, outputs) in products) matrix.Pair!.MatVec(lanes.Batch, count, outputs, _pool, first);
+            _tProducts += Stopwatch.GetTimestamp() - multiplied;
+        }
+
+        for (var i = first; i < n; i++)
         {
             var tables = Tables(inputs[i], transform);
             foreach (var (matrix, outputs) in products) Product(matrix, tables, outputs[i]);
+        }
+    }
+
+    /// <summary>Tokens read together at most: what a pass of the lanes takes, so a question can stop them soon.</summary>
+    public const int ReadTogether = Ptq1PairBatch.Lanes;
+
+    // WHERE A PASS OF THE LANES BEGINS TO PAY. A pass costs the same however few lanes it fills, and a token
+    // through the lanes cost 46 ms of products on the P30 on 2026-11-06 against 59 ms on its own.
+    private const int LanesPayFrom = 7;
+
+    /// <summary>Takes the vector kernel's path where the runtime has none, for a test.</summary>
+    internal static bool PairedForTest { get; set; }
+
+    private LaneTables Lanes(int width)
+    {
+        if (!_lanes.TryGetValue(width, out var tables))
+            _lanes[width] = tables = new LaneTables(width, Math.Max(1, _pool?.Threads ?? 1));
+        return tables;
+    }
+
+    // What the lanes read at one width, and each thread's room to turn and quantise an input in.
+    private sealed class LaneTables
+    {
+        public LaneTables(int width, int workers)
+        {
+            Batch = new Ptq1PairBatch(width, workers);
+            Turned = new float[workers][];
+            Quantised = new Q8Activations[workers];
+            for (var i = 0; i < workers; i++)
+            {
+                Turned[i] = new float[width];
+                Quantised[i] = new Q8Activations(width);
+            }
+        }
+
+        public Ptq1PairBatch Batch { get; }
+
+        public float[][] Turned { get; }
+
+        public Q8Activations[] Quantised { get; }
+    }
+
+    // A batch's inputs into its lanes, one to whichever thread is free.
+    private sealed class LaneWork : WorkerPool.IWork
+    {
+        private LaneTables? _tables;
+        private float[][]? _inputs;
+        private InputTransform? _transform;
+        private int _first;
+        private int _count;
+        private int _next;
+
+        public void Set(LaneTables tables, float[][] inputs, int first, int count, InputTransform? transform)
+        {
+            _tables = tables;
+            _inputs = inputs;
+            _first = first;
+            _count = count;
+            _transform = transform;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _tables = null;
+            _inputs = null;
+            _transform = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            var tables = _tables!;
+            var turned = tables.Turned[worker];
+            var quantised = tables.Quantised[worker];
+            int lane;
+            while ((lane = Interlocked.Increment(ref _next) - 1) < _count)
+            {
+                var input = _inputs![_first + lane];
+                if (_transform is null) input.AsSpan(0, turned.Length).CopyTo(turned);
+                else _transform.Apply(input, turned);
+                quantised.Quantize(turned);
+                tables.Batch.Set(lane, quantised);
+            }
         }
     }
 
@@ -577,20 +720,16 @@ public sealed class Qwen35Model
         F32MatVec(layer.Beta!, _h, _beta); // beta and alpha read h unturned: they are not folded
         F32MatVec(layer.Alpha!, _h, _alpha);
 
-        // The causal conv (ggml_ssm_conv): each channel's last kernel-1 inputs and this one, then silu.
-        var window = c.ConvKernel - 1;
-        var conv = state.Conv[il];
-        var kernel = layer.ConvKernel!;
-        for (var ch = 0; ch < c.ConvChannels; ch++)
+        // The causal conv, on the pool's threads: a channel reads only its own past.
+        _convWork.Set(layer.ConvKernel!, state.Conv[il]);
+        try
         {
-            var past = conv.AsSpan(ch * window, window);
-            var taps = kernel.AsSpan(ch * c.ConvKernel, c.ConvKernel);
-            var sum = 0f;
-            for (var t = 0; t < window; t++) sum += past[t] * taps[t];
-            sum += _qkv[ch] * taps[window];
-            for (var t = 0; t + 1 < window; t++) past[t] = past[t + 1];
-            if (window > 0) past[window - 1] = _qkv[ch];
-            _conv[ch] = Silu(sum);
+            if (_pool is null) _convWork.Execute(0, 1);
+            else _pool.Run(_convWork);
+        }
+        finally
+        {
+            _convWork.Clear();
         }
 
         // q heads then k heads, adjacent and of one width: each L2-normalised.
@@ -609,6 +748,25 @@ public sealed class Qwen35Model
             _deltaWork.Clear();
         }
         _tRecurrence += Stopwatch.GetTimestamp() - started;
+    }
+
+    // The causal conv (ggml_ssm_conv) of channels [first, end): each one's last kernel-1 inputs and
+    // this one, then silu.
+    private void Conv(float[] kernel, float[] conv, int first, int end)
+    {
+        var c = Config;
+        var window = c.ConvKernel - 1;
+        for (var ch = first; ch < end; ch++)
+        {
+            var past = conv.AsSpan(ch * window, window);
+            var taps = kernel.AsSpan(ch * c.ConvKernel, c.ConvKernel);
+            var sum = 0f;
+            for (var t = 0; t < window; t++) sum += past[t] * taps[t];
+            sum += _qkv[ch] * taps[window];
+            for (var t = 0; t + 1 < window; t++) past[t] = past[t + 1];
+            if (window > 0) past[window - 1] = _qkv[ch];
+            _conv[ch] = Silu(sum);
+        }
     }
 
     // One value head of a DeltaNet layer: the delta rule as the fork's fused op runs it with raw
@@ -635,17 +793,7 @@ public sealed class Qwen35Model
             var k = conv + (c.SsmGroups + group) * hk;
             var v = conv + 2 * c.SsmGroups * hk + h * hk;
             var m = states + (long)h * hk * hk; // row j of m is column j of the state
-            var cells = hk * hk;
-            for (var i = 0; i < cells; i++) m[i] *= decay;
-            for (var j = 0; j < hk; j++) delta[j] = (v[j] - Dot(m + j * hk, k, hk)) * beta;
-            for (var j = 0; j < hk; j++)
-            {
-                var row = m + j * hk;
-                var d = delta[j];
-                for (var i = 0; i < hk; i++) row[i] += k[i] * d;
-            }
-            var o = output + h * hk;
-            for (var j = 0; j < hk; j++) o[j] = Dot(m + j * hk, q, hk) * scale;
+            DeltaRule(m, q, k, v, beta, decay, scale, hk, delta, output + h * hk);
         }
 
         var head = _o.AsSpan(h * hk, hk);
@@ -653,6 +801,81 @@ public sealed class Qwen35Model
         var z = _z.AsSpan(h * hk, hk);
         for (var j = 0; j < hk; j++) head[j] = Silu(z[j]) * head[j];
     }
+
+    // The delta rule itself, for one value head with its gates worked out: the state decays, what it
+    // recalls at k is corrected toward v at strength beta, and it is read at q into o. m is the head's
+    // hk x hk state - row j of m is column j of the state - and delta is hk floats of scratch.
+    // DeltaRuleTests holds it to the rule written out.
+    internal static unsafe void DeltaRule(float* m, float* q, float* k, float* v, float beta, float decay, float scale, int hk,
+        float* delta, float* o)
+    {
+        if (Vectored && hk % 16 == 0)
+        {
+            DeltaRows(m, q, k, v, beta, decay, scale, hk, o);
+            return;
+        }
+
+        var cells = hk * hk;
+        for (var i = 0; i < cells; i++) m[i] *= decay;
+        for (var j = 0; j < hk; j++) delta[j] = (v[j] - Dot(m + j * hk, k, hk)) * beta;
+        for (var j = 0; j < hk; j++)
+        {
+            var row = m + j * hk;
+            var d = delta[j];
+            for (var i = 0; i < hk; i++) row[i] += k[i] * d;
+        }
+        for (var j = 0; j < hk; j++) o[j] = Dot(m + j * hk, q, hk) * scale;
+    }
+
+    // THE SAME RULE, A ROW AT A TIME. Nothing a row of the state does reads another row, so one pass does
+    // all of it while the row is in the cache: four passes over 64 KB a head, on one lane each and every
+    // sum waiting on the last, were most of what a DeltaNet layer cost on the P30.
+    private static unsafe void DeltaRows(float* m, float* q, float* k, float* v, float beta, float decay, float scale, int hk, float* o)
+    {
+        var fade = Vector128.Create(decay);
+        for (var j = 0; j < hk; j++)
+        {
+            var row = m + j * hk;
+            Vector128<float> a0 = default, a1 = default, a2 = default, a3 = default;
+            for (var i = 0; i < hk; i += 16)
+            {
+                var r0 = Vector128.Load(row + i) * fade;
+                var r1 = Vector128.Load(row + i + 4) * fade;
+                var r2 = Vector128.Load(row + i + 8) * fade;
+                var r3 = Vector128.Load(row + i + 12) * fade;
+                Vector128.Store(r0, row + i);
+                Vector128.Store(r1, row + i + 4);
+                Vector128.Store(r2, row + i + 8);
+                Vector128.Store(r3, row + i + 12);
+                a0 = Vector128.FusedMultiplyAdd(r0, Vector128.Load(k + i), a0);
+                a1 = Vector128.FusedMultiplyAdd(r1, Vector128.Load(k + i + 4), a1);
+                a2 = Vector128.FusedMultiplyAdd(r2, Vector128.Load(k + i + 8), a2);
+                a3 = Vector128.FusedMultiplyAdd(r3, Vector128.Load(k + i + 12), a3);
+            }
+
+            var d = Vector128.Create((v[j] - Vector128.Sum(a0 + a1 + (a2 + a3))) * beta);
+            Vector128<float> b0 = default, b1 = default, b2 = default, b3 = default;
+            for (var i = 0; i < hk; i += 16)
+            {
+                var r0 = Vector128.FusedMultiplyAdd(Vector128.Load(k + i), d, Vector128.Load(row + i));
+                var r1 = Vector128.FusedMultiplyAdd(Vector128.Load(k + i + 4), d, Vector128.Load(row + i + 4));
+                var r2 = Vector128.FusedMultiplyAdd(Vector128.Load(k + i + 8), d, Vector128.Load(row + i + 8));
+                var r3 = Vector128.FusedMultiplyAdd(Vector128.Load(k + i + 12), d, Vector128.Load(row + i + 12));
+                Vector128.Store(r0, row + i);
+                Vector128.Store(r1, row + i + 4);
+                Vector128.Store(r2, row + i + 8);
+                Vector128.Store(r3, row + i + 12);
+                b0 = Vector128.FusedMultiplyAdd(r0, Vector128.Load(q + i), b0);
+                b1 = Vector128.FusedMultiplyAdd(r1, Vector128.Load(q + i + 4), b1);
+                b2 = Vector128.FusedMultiplyAdd(r2, Vector128.Load(q + i + 8), b2);
+                b3 = Vector128.FusedMultiplyAdd(r3, Vector128.Load(q + i + 12), b3);
+            }
+            o[j] = Vector128.Sum(b0 + b1 + (b2 + b3)) * scale;
+        }
+    }
+
+    // Whether this runtime has real vectors: the Mono that ships does not, and would pay to pretend.
+    private static bool Vectored => AdvSimd.Arm64.IsSupported || Fma.IsSupported;
 
     private void Attention(int il, Layer layer, Qwen35State state)
     {
@@ -675,20 +898,26 @@ public sealed class Qwen35Model
         QueriesAndKeys(_qg, layer.QNorm!, layer.KNorm!);
 
         var count = position + 1;
-        var scores = Scores(count);
         var scale = 1.0f / MathF.Sqrt(hd);
         var groupSize = c.Heads / c.KvHeads;
         if (state.Turbo[il] is { } turbo)
         {
             // A compressed mode: this token's keys and values join the cache as TurboQuant codes,
             // and each query head attends on the codes of its group's key/value head.
+            // THE HEADS GO OUT TO THE POOL. On one thread the other workers slept through it: at 620
+            // positions on the P30 attention took 100 of a token's 250 ms. A head touches only its own
+            // output, so each thread's heads come out as they would on one. The Prod form's QJL keeps
+            // its own buffers, so it stays on one thread.
             turbo.Write(position, _k, _v);
-            for (var h = 0; h < c.Heads; h++)
+            _attendWork.Set(turbo, count, scale, groupSize);
+            try
             {
-                var g = h / groupSize;
-                turbo.Scores(g, _q.AsSpan(h * hd, hd), count, scores);
-                Weights(scores.AsSpan(0, count), scale);
-                turbo.Mix(g, scores, count, _attn.AsSpan(h * hd, hd));
+                if (_pool is null || turbo.KeyForm != CircleAI.Core.Compression.TurboQuantForm.Mse) _attendWork.Execute(0, 1);
+                else _pool.Run(_attendWork);
+            }
+            finally
+            {
+                _attendWork.Clear();
             }
             for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
             _tAttention += Stopwatch.GetTimestamp() - started;
@@ -780,8 +1009,23 @@ public sealed class Qwen35Model
         var lut = Tables(_h, layer.FfnGate.Input);
         Product(layer.FfnGate, lut, _ffnGate);
         Product(layer.FfnUp, lut, _ffnUp);
-        for (var i = 0; i < _ffnGate.Length; i++) _ffnGate[i] = Silu(_ffnGate[i]) * _ffnUp[i];
+        Gate(_ffnGate, _ffnUp);
         Product(layer.FfnDown, Tables(_ffnGate, layer.FfnDown.Input), _ffnOut);
+    }
+
+    // silu(gate) * up in place, on the pool's threads: an exponential a value, six thousand a layer.
+    private void Gate(float[] gate, float[] up)
+    {
+        _gateWork.Set(gate, up);
+        try
+        {
+            if (_pool is null) _gateWork.Execute(0, 1);
+            else _pool.Run(_gateWork);
+        }
+        finally
+        {
+            _gateWork.Clear();
+        }
     }
 
     // An activation ready for the ternary products that read it: turned, quantised, tabled - the
@@ -898,26 +1142,36 @@ public sealed class Qwen35Model
         for (var i = 0; i < x.Length; i++) x[i] += y[i];
     }
 
-    private static float Dot(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
-    {
-        var s = 0f;
-        for (var i = 0; i < a.Length; i++) s += a[i] * b[i];
-        return s;
-    }
-
-    // The same sum through pointers: Mono checks every span index, and the delta rule takes
-    // four of these passes over a 128x128 state per head.
+    // Through pointers: Mono checks every span index, and the delta rule takes four of these passes
+    // over a 128x128 state per head where it has no vectors.
     private static unsafe float Dot(float* a, float* b, int n)
     {
         var s = 0f;
-        for (var i = 0; i < n; i++) s += a[i] * b[i];
+        var i = 0;
+        if (Vectored && n >= 16)
+        {
+            Vector128<float> s0 = default, s1 = default, s2 = default, s3 = default;
+            for (; i + 16 <= n; i += 16)
+            {
+                s0 = Vector128.FusedMultiplyAdd(Vector128.Load(a + i), Vector128.Load(b + i), s0);
+                s1 = Vector128.FusedMultiplyAdd(Vector128.Load(a + i + 4), Vector128.Load(b + i + 4), s1);
+                s2 = Vector128.FusedMultiplyAdd(Vector128.Load(a + i + 8), Vector128.Load(b + i + 8), s2);
+                s3 = Vector128.FusedMultiplyAdd(Vector128.Load(a + i + 12), Vector128.Load(b + i + 12), s3);
+            }
+            s = Vector128.Sum(s0 + s1 + (s2 + s3));
+        }
+        for (; i < n; i++) s += a[i] * b[i];
         return s;
     }
 
     // A small F32 weight (rows of the input width) times x.
-    private static void F32MatVec(float[] weight, ReadOnlySpan<float> x, Span<float> y)
+    private static unsafe void F32MatVec(float[] weight, ReadOnlySpan<float> x, Span<float> y)
     {
-        for (var r = 0; r < y.Length; r++) y[r] = Dot(weight.AsSpan(r * x.Length, x.Length), x);
+        fixed (float* w = weight)
+        fixed (float* v = x)
+        {
+            for (var r = 0; r < y.Length; r++) y[r] = Dot(w + (long)r * x.Length, v, x.Length);
+        }
     }
 
     private static float[] Floats(GgufFile file, string name, int length)
@@ -929,6 +1183,111 @@ public sealed class Qwen35Model
     }
 
     // One DeltaNet layer's value heads, handed out one at a time to whichever thread is free.
+    // The query heads of a full-attention layer, shared out to the pool's threads; each thread has its
+    // own reader of the cache and its own scores.
+    private sealed class AttendWork(Qwen35Model model) : WorkerPool.IWork
+    {
+        private TurboKvCache? _cache;
+        private int _count;
+        private float _scale;
+        private int _groupSize;
+        private int _next;
+
+        public void Set(TurboKvCache cache, int count, float scale, int groupSize)
+        {
+            _cache = cache;
+            _count = count;
+            _scale = scale;
+            _groupSize = groupSize;
+            _next = 0;
+        }
+
+        public void Clear() => _cache = null;
+
+        public void Execute(int worker, int workers)
+        {
+            int h;
+            while ((h = Interlocked.Increment(ref _next) - 1) < model.Config.Heads)
+                model.AttendHead(_cache!, h, _count, _scale, _groupSize, worker);
+        }
+    }
+
+    private void AttendHead(TurboKvCache cache, int h, int count, float scale, int groupSize, int worker)
+    {
+        var hd = Config.HeadDim;
+        if (_attendScores[worker].Length < count) _attendScores[worker] = new float[Math.Max(count, _attendScores[worker].Length * 2)];
+        var scores = _attendScores[worker];
+        var reader = _readers[worker];
+        var g = h / groupSize;
+        cache.Scores(g, _q.AsSpan(h * hd, hd), count, scores, reader);
+        Weights(scores.AsSpan(0, count), scale);
+        cache.Mix(g, scores, count, _attn.AsSpan(h * hd, hd), reader);
+    }
+
+    // A DeltaNet layer's conv, its channels in runs to whichever thread is free.
+    private sealed class ConvWork(Qwen35Model model) : WorkerPool.IWork
+    {
+        private const int Channels = 512;
+        private float[]? _kernel;
+        private float[]? _conv;
+        private int _next;
+
+        public void Set(float[] kernel, float[] conv)
+        {
+            _kernel = kernel;
+            _conv = conv;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _kernel = null;
+            _conv = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            var all = model.Config.ConvChannels;
+            int first;
+            while ((first = (Interlocked.Increment(ref _next) - 1) * Channels) < all)
+                model.Conv(_kernel!, _conv!, first, Math.Min(all, first + Channels));
+        }
+    }
+
+    // The feed-forward's gate, in runs to whichever thread is free.
+    private sealed class GateWork : WorkerPool.IWork
+    {
+        private const int Values = 1024;
+        private float[]? _gate;
+        private float[]? _up;
+        private int _next;
+
+        public void Set(float[] gate, float[] up)
+        {
+            _gate = gate;
+            _up = up;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _gate = null;
+            _up = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            var gate = _gate!;
+            var up = _up!;
+            int first;
+            while ((first = (Interlocked.Increment(ref _next) - 1) * Values) < gate.Length)
+            {
+                var end = Math.Min(gate.Length, first + Values);
+                for (var i = first; i < end; i++) gate[i] = Silu(gate[i]) * up[i];
+            }
+        }
+    }
+
     private sealed class DeltaWork(Qwen35Model model) : WorkerPool.IWork
     {
         private Layer? _layer;
@@ -966,15 +1325,17 @@ public sealed class Qwen35Model
         private readonly Q8Activations? _q8;
         private readonly Q8KActivations? _q8k;
         private readonly Ptq1Lut? _ptq1;
+        private readonly Ptq1PairInput? _pair;
         private readonly Pq2Lut? _pq2;
 
-        public InputTables(int width, GgmlType packing)
+        public InputTables(int width, GgmlType packing, bool paired)
         {
             Turned = new float[width];
             if (packing == GgmlType.PTQ1_0)
             {
                 _q8 = new Q8Activations(width);
-                _ptq1 = new Ptq1Lut(width);
+                if (paired) _pair = new Ptq1PairInput(width);
+                else _ptq1 = new Ptq1Lut(width);
                 return;
             }
             if (width % Q8KActivations.BlockSize == 0) _q8k = new Q8KActivations(width);
@@ -985,6 +1346,8 @@ public sealed class Qwen35Model
         public float[] Turned { get; }
 
         public Ptq1Lut Ptq1 => _ptq1 ?? throw new InvalidOperationException("These tables are PQ2_0's.");
+
+        public Ptq1PairInput Pair => _pair ?? throw new InvalidOperationException("These tables are the lookup kernels'.");
 
         public Pq2Lut Pq2 => _pq2 ?? throw new InvalidOperationException("These tables are PTQ1_0's.");
 
@@ -999,6 +1362,11 @@ public sealed class Qwen35Model
                 return;
             }
             _q8!.Quantize(Turned);
+            if (_pair is not null)
+            {
+                _pair.Set(_q8);
+                return;
+            }
             if (_ptq1 is not null)
             {
                 if (pool is null) _ptq1.Build(_q8);
@@ -1016,7 +1384,7 @@ public sealed class Qwen35Model
         private readonly GgufFile _file;
         private readonly GgufTensor _tensor;
 
-        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows, GgmlType packing)
+        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows, GgmlType packing, WorkerPool? pool = null, bool paired = false)
         {
             _file = file;
             _tensor = file.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
@@ -1025,7 +1393,15 @@ public sealed class Qwen35Model
             if (_tensor.RowLength != columns || _tensor.Rows != rows)
                 throw new InvalidDataException($"{name} is {_tensor.RowLength}x{_tensor.Rows}, not {columns}x{rows}.");
             Packing = packing;
-            Scales = packing == GgmlType.PQ2_0 ? Pq2.BlockScales(file.Bytes(_tensor)) : Ptq1.BlockScales(file.Bytes(_tensor));
+            if (paired)
+            {
+                Pair = new Ptq1PairMatrix(file.Bytes(_tensor), rows, columns, pool);
+                Scales = [];
+            }
+            else
+            {
+                Scales = packing == GgmlType.PQ2_0 ? Pq2.BlockScales(file.Bytes(_tensor)) : Ptq1.BlockScales(file.Bytes(_tensor));
+            }
             Input = hadamard?.InputOf(name);
         }
 
@@ -1033,12 +1409,20 @@ public sealed class Qwen35Model
 
         public float[] Scales { get; }
 
+        // The weights repacked for the vector kernel, where the runtime has one.
+        public Ptq1PairMatrix? Pair { get; }
+
         public InputTransform? Input { get; }
 
         public ReadOnlySpan<byte> Bytes => _file.Bytes(_tensor);
 
         public void MatVec(InputTables tables, Span<float> output, WorkerPool? pool)
         {
+            if (Pair is not null)
+            {
+                Pair.MatVec(tables.Pair, output, pool);
+                return;
+            }
             if (Packing == GgmlType.PQ2_0)
             {
                 if (pool is null) tables.Pq2.MatVec(Bytes, Scales, output);
@@ -1154,10 +1538,10 @@ public sealed class Qwen35Model
 
     private sealed class Layer
     {
-        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing)
+        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired)
         {
             string Name(string part) => $"blk.{il}.{part}";
-            TernaryMatrix Ternary(string part, int columns, int rows) => new(file, Name(part), hadamard, columns, rows, packing);
+            TernaryMatrix Ternary(string part, int columns, int rows) => new(file, Name(part), hadamard, columns, rows, packing, pool, paired);
             AttnNorm = Floats(file, Name("attn_norm.weight"), c.Embedding);
             PostNorm = Floats(file, Name("post_attention_norm.weight"), c.Embedding);
             FfnGate = Ternary("ffn_gate.weight", c.Embedding, c.FeedForward);

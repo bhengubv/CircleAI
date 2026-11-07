@@ -19,6 +19,7 @@
 // S5: THE REST OF THE FLEET, HELD TO THE SAME RULE. fixtures/bonsai2/4B was made the same way from
 // the 4B PTQ1_0 (32 layers, 2560 wide, 16 query heads) and the 4B is held to the same tolerance and
 // the same torn-token rule; so is the 2B in PQ2_0, which proves the PQ2_0 kernels on real weights.
+// The 9B and the 27B are held the same way once their fixtures are made.
 // Each says SKIPPED when its file or its fixtures are not here.
 //
 // THE TOLERANCE IS 0.3, OR THE FORK'S OWN LARGEST DRIFT BETWEEN ITS 1-, 2- AND 4-THREAD RUNS ON THE
@@ -71,6 +72,12 @@ public sealed class Qwen35ModelTests(ITestOutputHelper output)
 
     [Fact]
     public void The_4B_predicts_the_forks_tokens_and_logits() => Parity("4B");
+
+    [Fact]
+    public void The_9B_predicts_the_forks_tokens_and_logits() => Parity("9B");
+
+    [Fact]
+    public void The_27B_predicts_the_forks_tokens_and_logits() => Parity("27B");
 
     [Fact]
     public void The_2B_in_PQ2_0_predicts_the_forks_tokens_and_logits() => Parity("2B-PQ2_0");

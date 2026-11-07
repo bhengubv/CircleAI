@@ -125,6 +125,23 @@ public sealed record DeviceContext(
     /// </remarks>
     internal const double FastCoreShare = 0.8;
 
+    /// <summary>The cores this device has, whichever of them this process is allowed just now.</summary>
+    /// <remarks>
+    /// NOT Environment.ProcessorCount, WHICH IS WHAT THE PROCESS WAS ALLOWED WHEN IT STARTED. A service
+    /// a phone starts with nothing of ours on the screen starts on the slow cores: on the P30 on
+    /// 2026-11-06 that count was 3, half of it made the voice single-threaded for as long as the process
+    /// lived, and the same words took twice as long to render as before the last install. Off a phone,
+    /// what a process is allowed is a limit somebody set, and it stands.
+    /// </remarks>
+    public static int AllCores => CountCores(OperatingSystem.IsAndroid(), CpuRoot, Environment.ProcessorCount);
+
+    internal static int CountCores(bool phone, string root, int allowed)
+    {
+        if (!phone) return Math.Max(1, allowed);
+        var (fast, slow) = Cores(root, allowed);
+        return fast + slow;
+    }
+
     /// <summary>Reads this device now.</summary>
     /// <param name="probe">An existing snapshot, or null to take one.</param>
     public static DeviceContext Read(DeviceProbe? probe = null)

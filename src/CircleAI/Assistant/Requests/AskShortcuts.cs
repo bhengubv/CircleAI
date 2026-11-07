@@ -36,6 +36,8 @@ public static class AskShortcuts
         new CapitalsShortcut(),
         new JokeShortcut(wakePhrase),
         new NoLiveDataShortcut(),
+        new NotYetShortcut(),
+        new MannersShortcut(),
     };
 }
 
@@ -160,7 +162,9 @@ public sealed partial class DeviceClockShortcut(TimeProvider? clock = null, Func
     /// <inheritdoc />
     public string Name => "clock";
 
-    [GeneratedRegex(@"\b(what(?:'s| is)?\s+(?:the\s+)?(?:date|day)(?:\s+(?:is it|today|it is))?|what\s+day\s+is\s+(?:it|today)|today'?s\s+date|which\s+day\s+is\s+(?:it|today))\b",
+    // TO THE END OF THE SENTENCE. Left open, "What day does Christmas fall on this year?" was this
+    // question with some words after it, and on the P30 on 2026-11-07 it got today's date.
+    [GeneratedRegex(@"\b(?:what(?:'s| is)?\s+(?:the\s+)?(?:date|day)(?:\s+(?:is it|today|it is))?|what\s+day\s+is\s+(?:it|today)|today'?s\s+date|which\s+day\s+is\s+(?:it|today))\s*[\?\.!]*\s*$",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DateQuestion();
 
@@ -244,6 +248,79 @@ public sealed partial class DeviceClockShortcut(TimeProvider? clock = null, Func
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
         catch { return null; }
+    }
+}
+
+/// <summary>What the assistant cannot do from here yet is said to be so, never pretended.</summary>
+/// <remarks>
+/// A MODEL WITH NOTHING TO DO IT WITH WILL SAY SOMETHING ANYWAY. On the P30 on 2026-11-07 "Set a timer
+/// for ten minutes" came back as "A timer that runs out of electricity after ten minutes is the only
+/// one you can trust", and "Wake me up at six tomorrow morning" as "You won't wake up until tomorrow".
+/// Somebody who hears no refusal believes it was done, and an alarm that was never set is worse than
+/// one they know they have to set themselves. The ears wrote "Set a timer" as "Said a timer".
+/// </remarks>
+public sealed partial class NotYetShortcut : IAskShortcut
+{
+    /// <inheritdoc />
+    public string Name => "not-yet";
+
+    [GeneratedRegex(@"\b(?:(?:set|said|start|put\s+on)\s+(?:a|an|the|my)\s+(?:[\p{L}\d-]+\s+){0,2}(?:timer|alarm)|timer\s+for\s+\S+|wake\s+me(?:\s+up)?\b|alarm\s+for\s+\S+)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Timers();
+
+    [GeneratedRegex(@"\bremind\s+me\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Reminders();
+
+    [GeneratedRegex(@"^(?:please\s+|can\s+you\s+|could\s+you\s+)*play\s+\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Music();
+
+    [GeneratedRegex(@"^(?:please\s+|can\s+you\s+|could\s+you\s+)*(?:call|phone|ring|text|message|send\s+(?:a\s+)?(?:message|text|email))\s+\S+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Messages();
+
+    [GeneratedRegex(@"\b(?:turn|switch)\s+(?:(?:on|off|up|down)\s+(?:the\s+|my\s+)?(?:flash\s*light|torch|wi-?fi|bluetooth|volume|sound|brightness)|(?:the\s+|my\s+)?(?:flash\s*light|torch|wi-?fi|bluetooth|volume|sound|brightness)\s+(?:on|off|up|down))\b|\bvolume\s+(?:up|down)\b",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Settings();
+
+    /// <inheritdoc />
+    public ValueTask<string?> TryAnswerAsync(AskRecord ask, CancellationToken ct)
+    {
+        var said = ask.Asked ?? string.Empty;
+        string? answer = null;
+        if (Timers().IsMatch(said)) answer = AssistantPersona.NoTimersYet;
+        else if (Reminders().IsMatch(said)) answer = AssistantPersona.NoRemindersYet;
+        else if (Music().IsMatch(said)) answer = AssistantPersona.NoMusicYet;
+        else if (Messages().IsMatch(said)) answer = AssistantPersona.NoMessagesYet;
+        else if (Settings().IsMatch(said)) answer = AssistantPersona.NoSettingsYet;
+        return ValueTask.FromResult(answer);
+    }
+}
+
+/// <summary>"Stop." and "Thanks." are answered in a word, not a paragraph.</summary>
+/// <remarks>
+/// On the P30 on 2026-11-07 "Stop." came back as "I understand you need a pause. How can I assist you
+/// now?" Only the whole of what was said counts: "Stop the car" is a sentence about something else.
+/// </remarks>
+public sealed partial class MannersShortcut : IAskShortcut
+{
+    /// <inheritdoc />
+    public string Name => "manners";
+
+    [GeneratedRegex(@"^\s*(?:stop|cancel|never\s*mind|forget\s+it|that'?s\s+all|nothing|quiet|shh+)\s*[\.,!]*\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LeaveIt();
+
+    [GeneratedRegex(@"^\s*(?:(?:ok(?:ay)?\s*,?\s*)?thanks?(?:\s+you)?(?:\s+(?:very|so)\s+much)?|cheers|ngiyabonga)\s*[\.,!]*\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex Thanks();
+
+    /// <inheritdoc />
+    public ValueTask<string?> TryAnswerAsync(AskRecord ask, CancellationToken ct)
+    {
+        var said = ask.Asked ?? string.Empty;
+        return ValueTask.FromResult<string?>(
+            LeaveIt().IsMatch(said) ? AssistantPersona.LeftIt
+            : Thanks().IsMatch(said) ? AssistantPersona.Welcome
+            : null);
     }
 }
 

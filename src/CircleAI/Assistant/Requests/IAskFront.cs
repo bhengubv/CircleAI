@@ -24,6 +24,21 @@ public interface IAskFront
     /// </summary>
     AskAdmission Submit(AskSubmission submission);
 
+    /// <summary>
+    /// Somebody is still saying this: the brain may read as far as they have got, so the question it is
+    /// the start of has less to read. Nothing is recorded and nothing is answered. Returns at once.
+    /// </summary>
+    /// <param name="soFar">What has been said, as the ask would be submitted; the message may be empty.</param>
+    void ReadAhead(AskSubmission soFar) { }
+
+    /// <summary>
+    /// Walks a question through everything in front of the brain with nobody waiting and nothing recorded,
+    /// so the first real one does not pay for that code running for the first time.
+    /// </summary>
+    /// <param name="question">A question nothing there answers.</param>
+    /// <param name="ct">Cancellation.</param>
+    Task RehearseAsync(AskSubmission question, CancellationToken ct) => Task.CompletedTask;
+
     /// <summary>One of this caller's asks, or null when it is not theirs or does not exist.</summary>
     AskRecord? Status(string callerKey, string askId);
 

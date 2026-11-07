@@ -28,6 +28,16 @@ public sealed record InProcessBrain(IAIService Service, string ModelId);
 /// <summary><see cref="IBrainWorker"/> over an <see cref="IAIService"/> in this process.</summary>
 public sealed class InProcessBrainWorker : IBrainWorker
 {
+    // THE SHARE OF AN ANSWER'S TIME ITS PROMPT MAY TAKE TO READ, the rest left to write in.
+    private const double ReadingShare = 1.0 / 3;
+
+    // AND THE MOST IT MAY TAKE, HOWEVER LONG THE ANSWER HAS: the first word is what a person waits
+    // for. A third of the queue's two minutes was 40 s of reading, and once the C# engine read 8 tokens
+    // a second on the P30 the turn filled it with history: "Write one short sentence about the rain."
+    // read 230 tokens and spoke after 31 s, where the question alone is 3. What a brain still holds
+    // costs nothing, so a live conversation keeps its history; what it would have to read again goes.
+    private static readonly TimeSpan ReadingLimit = TimeSpan.FromSeconds(3);
+
     private readonly Func<CancellationToken, Task<InProcessBrain>> _start;
     private readonly TimeProvider _clock;
     private readonly Action<string> _log;
@@ -199,6 +209,10 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 Effort = job.Effort,
                 ThinkingBudget = job.ThinkingBudget,
                 Plain = job.Plain,
+                JustRead = job.JustRead,
+                Conversation = job.Conversation,
+                Spoken = job.Spoken,
+                ReadWithin = left > TimeSpan.Zero ? TimeSpan.FromTicks(Math.Min((left * ReadingShare).Ticks, ReadingLimit.Ticks)) : null,
             };
             var clock = Stopwatch.StartNew();
             long ttft = -1;

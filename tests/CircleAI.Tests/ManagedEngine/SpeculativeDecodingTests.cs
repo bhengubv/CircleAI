@@ -8,6 +8,8 @@
 //   - With a draft source scripted to be right, half right and wrong, the reply is the plain reply
 //     token for token - greedy and sampled with a seed - and the state afterwards is the plain
 //     state: the next token's logits agree to the bit.
+//   - Over many seeds, what sampling with drafts draws at each position is what plain sampling
+//     draws there (the plan's distribution check), and the draws vary, so it is a distribution.
 //   - The MTP head of a PQ2_0-MTP file loads, drafts, and changes nothing either.
 //   - On the real 4B PQ2_0-MTP file (opt-in), the head's drafts are kept often enough to matter and
 //     the reply is still the plain one.
@@ -42,6 +44,41 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
         using var pool = new WorkerPool(threads);
         return use(Qwen35Model.Load(file, pool));
     });
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(8)]
+    [InlineData(11)]
+    public void Tokens_through_the_lanes_give_each_its_own_logits_to_the_bit(int n)
+    {
+        Qwen35Model.PairedForTest = true;
+        try
+        {
+            WithModel(SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 3), threads: 3, m =>
+            {
+                var v = m.Config.Vocabulary;
+                var batch = Enumerable.Range(0, n).Select(i => (i * 5 + 1) % v).ToArray();
+                var one = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
+                var together = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
+
+                var want = batch.Select(t =>
+                {
+                    var logits = new float[v];
+                    m.Forward(t, one, logits);
+                    return logits;
+                }).ToArray();
+                var got = batch.Select(_ => new float[v]).ToArray();
+                m.ForwardBatch(batch, together, got);
+
+                for (var i = 0; i < n; i++) Assert.Equal(want[i], got[i]);
+                return 0;
+            });
+        }
+        finally
+        {
+            Qwen35Model.PairedForTest = false;
+        }
+    }
 
     [Theory]
     [InlineData(GgmlType.PQ2_0, KvCompressionMode.Off)]
@@ -156,6 +193,14 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
         return (logits, generated) => sampler.Sample(logits, generated);
     };
 
+    // Hot and uncut, for a count over seeds: at the card's settings this small model leaves one token
+    // to draw at every position, every seed draws it, and there is no distribution to compare.
+    private static Func<Func<float[], List<int>, int>> Hot(int seed) => () =>
+    {
+        var sampler = new TokenSampler(SamplingSettings.Direct with { Temperature = 2f, TopP = 1f }, seed);
+        return (logits, generated) => sampler.Sample(logits, generated);
+    };
+
     private static int ArgMax(ReadOnlySpan<float> values)
     {
         var best = 0;
@@ -195,6 +240,43 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
             m.Forward(spec[^1], specState, b);
             Same(a, b, "the logits after the reply");
             output.WriteLine($"{packing}, {(sampled ? "sampled" : "greedy")}: {speculator.Accepted} of {speculator.Drafted} drafts kept");
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void Over_many_seeds_sampling_with_drafts_draws_what_plain_sampling_draws()
+    {
+        // THE PLAN'S DISTRIBUTION CHECK WITH SAMPLING. Each seed's drafts are right and wrong at
+        // places that move with the seed; what lands at each position, counted over the seeds, must
+        // be what plain sampling lands there - and the seeds must not all agree, or nothing was sampled.
+        const int count = 8, seeds = 48;
+        WithModel(SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 9), threads: 2, m =>
+        {
+            var plainDraws = new Dictionary<(int Position, int Token), int>();
+            var draftedDraws = new Dictionary<(int Position, int Token), int>();
+            long drafted = 0, kept = 0;
+            for (var seed = 1; seed <= seeds; seed++)
+            {
+                var (plain, _) = Plain(m, Hot(seed), count);
+                var truth = Prompt.Concat(plain).ToList();
+                var source = new Scripted(truth, m.Config.Vocabulary, (position, i) => (position + i + seed) % 3 == 0);
+                var (spec, _, speculator) = Speculative(m, source, drafts: 2, Hot(seed), count);
+                for (var p = 0; p < count; p++)
+                {
+                    plainDraws[(p, plain[p])] = plainDraws.GetValueOrDefault((p, plain[p])) + 1;
+                    draftedDraws[(p, spec[p])] = draftedDraws.GetValueOrDefault((p, spec[p])) + 1;
+                }
+                drafted += speculator.Drafted;
+                kept += speculator.Accepted;
+            }
+
+            static List<(int Position, int Token, int Times)> Sorted(Dictionary<(int Position, int Token), int> draws) =>
+                [.. draws.OrderBy(d => d.Key).Select(d => (d.Key.Position, d.Key.Token, d.Value))];
+            Assert.Equal(Sorted(plainDraws), Sorted(draftedDraws));
+            Assert.True(plainDraws.Count > count, "every seed drew the same tokens: nothing was sampled");
+            Assert.True(kept > 0 && kept < drafted, $"{kept} of {drafted} drafts kept: the count needs drafts kept and drafts turned down");
+            output.WriteLine($"{seeds} seeds x {count} tokens: {plainDraws.Count} different draws, {kept} of {drafted} drafts kept");
             return 0;
         });
     }

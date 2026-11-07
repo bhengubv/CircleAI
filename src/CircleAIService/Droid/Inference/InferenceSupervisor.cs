@@ -221,7 +221,7 @@ public sealed class InferenceSupervisor : IBrainWorker
 
                     // AN ANSWER IS WOLVERINE'S PROOF (S6): a knob it turned down worked, and one
                     // back at full after its window has worked at full.
-                    CircleAI.Hosting.SelfHealing.DeviceWolverine.Current?.BrainAnswered(answered);
+                    if (!job.JustRead) CircleAI.Hosting.SelfHealing.DeviceWolverine.Current?.BrainAnswered(answered);
                 }
                 yield return chunk;
             }

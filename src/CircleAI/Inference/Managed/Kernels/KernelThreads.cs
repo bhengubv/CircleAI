@@ -130,7 +130,7 @@ public static class KernelThreads
 
             try
             {
-                var most = Math.Clamp(Environment.ProcessorCount, 1, MostThreads);
+                var most = Math.Clamp(CircleAI.Core.DeviceContext.AllCores, 1, MostThreads);
                 var started = System.Diagnostics.Stopwatch.GetTimestamp();
                 var results = MeasureForTest?.Invoke(most) ?? KernelBench.Ptq1LutThreads(passes: 4, maxThreads: most).Results;
                 var choice = Pick(results, fingerprint) ?? new Choice(Math.Max(1, fallback), 0, fingerprint);
@@ -190,7 +190,7 @@ public static class KernelThreads
     /// PQ2_0 rate, so a device that holds one measures once more rather than plan on half the facts.
     /// </remarks>
     internal static string Fingerprint() => string.Create(CultureInfo.InvariantCulture,
-        $"{Environment.ProcessorCount}|{RuntimeInformation.ProcessArchitecture}|{RuntimeInformation.FrameworkDescription}|{Ptq1.Best}|packings");
+        $"{CircleAI.Core.DeviceContext.AllCores}|{RuntimeInformation.ProcessArchitecture}|{RuntimeInformation.FrameworkDescription}|{Ptq1.Best}|packings");
 
     private static Choice? Read(string file)
     {

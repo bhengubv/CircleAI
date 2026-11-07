@@ -225,6 +225,22 @@ public sealed class BrainPlanTests : IDisposable
     }
 
     [Fact]
+    public void A_phone_counts_the_cores_it_has_and_not_the_ones_its_process_started_on()
+    {
+        var p30 = CpuTree(1_709_000, 1_709_000, 1_709_000, 1_709_000, 2_208_000, 2_208_000, 2_208_000, 2_208_000);
+        try
+        {
+            Assert.Equal(8, DeviceContext.CountCores(phone: true, p30, allowed: 3));
+            Assert.Equal(3, DeviceContext.CountCores(phone: false, p30, allowed: 3));
+            Assert.Equal(3, DeviceContext.CountCores(phone: true, Path.Combine(p30, "nowhere"), allowed: 3));
+        }
+        finally
+        {
+            Directory.Delete(p30, recursive: true);
+        }
+    }
+
+    [Fact]
     public void The_fast_cores_are_read_from_the_kernel_and_the_little_ones_are_not_counted()
     {
         // The P30's Kirin 710: 4 x A53 at 1.71 GHz, 4 x A73 at 2.2 GHz.

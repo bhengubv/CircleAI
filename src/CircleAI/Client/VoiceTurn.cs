@@ -36,11 +36,28 @@ public sealed class VoiceTurn
 {
     /// <summary>Silence after speech that ends the turn.</summary>
     /// <remarks>
-    /// 1.4 s. Long enough for "what is the weather… in Durban", short enough that
-    /// finishing does not feel like waiting. Being cut off mid-sentence costs the
-    /// person the whole turn; waiting an extra half-second costs half a second.
+    /// A SECOND, THE SAME AS THE SPOKEN TURN THE PHONE'S NAME OPENS (SpeechGate.Hangover). Long
+    /// enough for "what is the weather… in Durban", and short enough that finishing does not feel
+    /// like waiting. It was 1,4 s here and 1 s there: the same person, the same phone, and two
+    /// answers to how long they may pause.
     /// </remarks>
-    public TimeSpan EndOfSpeech { get; init; } = TimeSpan.FromMilliseconds(1400);
+    public TimeSpan EndOfSpeech { get; init; } = TimeSpan.FromMilliseconds(1000);
+
+    /// <summary>How long a quiet lasts before <see cref="Ears"/> start on what has been said so far.</summary>
+    public TimeSpan EarsStartAfter { get; init; } = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>
+    /// The recogniser, started on the first quiet rather than at the end of the turn; null leaves
+    /// the caller to transcribe what <see cref="ListenAsync"/> returns.
+    /// </summary>
+    /// <remarks>
+    /// THE TURN HOLDS ON TO BE SURE SOMEBODY HAS FINISHED, AND THE EARS NEED NOT WAIT WITH IT. A
+    /// pause that was not the end costs only the work started on it.
+    /// </remarks>
+    public Func<byte[], CancellationToken, Task<string>>? Ears { get; init; }
+
+    /// <summary>What the <see cref="Ears"/> made of the whole turn, once ListenAsync has returned; null if they never got that far.</summary>
+    public Task<string>? Heard { get; private set; }
 
     /// <summary>Give up if nobody says anything at all.</summary>
     public TimeSpan NoSpeechTimeout { get; init; } = TimeSpan.FromSeconds(6);
@@ -130,6 +147,7 @@ public sealed class VoiceTurn
         // Declared outside the try so the log line below can read it on every
         // exit, including the deadline firing before the floor was ever set.
         var floorAtEnd = 0.0;
+        CancellationTokenSource? earsStop = null;
         try
         {
         // The first few frames measure the room rather than the speaker, so the
@@ -212,6 +230,23 @@ public sealed class VoiceTurn
                     SpeechStarted?.Invoke(this, EventArgs.Empty);
                 }
                 lastVoice = now;
+            }
+
+            if (Ears is { } ears && heardAnything && lastVoice is { } quietSince)
+            {
+                var quiet = now - quietSince >= EarsStartAfter;
+                if (quiet && Heard is null)
+                {
+                    earsStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    Heard = ears(captured.ToArray(), earsStop.Token);
+                }
+                else if (!quiet && Heard is { } stale)
+                {
+                    // THEY WENT ON. What the ears have is not the whole question.
+                    earsStop?.Cancel();
+                    _ = stale.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                    Heard = null;
+                }
             }
 
             // ONLY silence after speech ends the turn. Ending on silence alone

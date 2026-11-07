@@ -84,8 +84,10 @@ public sealed record ServiceLimits(
     /// <summary>The limits for this device.</summary>
     /// <remarks>
     /// A phone with less memory gets a shorter history (every character of it is
-    /// prefill, at ~29 ms a token on the slowest phone this targets); a desktop gets a
-    /// longer queue and history. Everything else is the same everywhere.
+    /// prefill, at ~29 ms a token through MNN on the slowest phone this targets); a desktop
+    /// gets a longer queue and history. Everything else is the same everywhere. The C# engine
+    /// reads about 15 times slower on that phone, so a brain that measures its reading is
+    /// handed only what it can read in time, whatever this allows (IReadingGenerator).
     /// </remarks>
     public static ServiceLimits For(DeviceProbe probe)
     {

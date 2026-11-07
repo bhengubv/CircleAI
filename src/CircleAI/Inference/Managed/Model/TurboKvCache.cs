@@ -8,8 +8,8 @@
 // each key as a sum of table lookups; the values are summed in the turned space and turned back
 // once a head. Codes are packed low bit first, a stream of `bits` bits a coordinate.
 //
-// Only the compressed modes make one; Off keeps the fp16 cache the fork keeps. One thread at a
-// time: it works in buffers it owns.
+// Only the compressed modes make one; Off keeps the fp16 cache the fork keeps. One thread writes at a
+// time, in buffers it owns; threads may read side by side, each with a Reader of its own.
 
 using CircleAI.Core;
 using CircleAI.Core.Compression;
@@ -31,8 +31,26 @@ internal sealed class TurboKvCache
     private readonly float[]? _keyResiduals;
 
     // Working buffers.
-    private readonly float[] _unit, _turned, _lut, _projected, _sum;
+    private readonly float[] _unit, _turned;
     private readonly byte[] _codes;
+    private readonly Reader _reader;
+
+    /// <summary>
+    /// What one thread works in while it reads a cache. Reading changes nothing else, so query heads
+    /// can attend on one cache side by side, each thread with a reader of its own.
+    /// </summary>
+    internal sealed class Reader(int dim)
+    {
+        private const int MostKeyBits = 4;
+
+        public float[] Turned { get; } = new float[dim];
+
+        public float[] Lut { get; } = new float[dim << MostKeyBits];
+
+        public float[] Projected { get; } = new float[dim];
+
+        public float[] Sum { get; } = new float[dim];
+    }
 
     public TurboKvCache(int capacity, int heads, int dim, KvCompressionMode mode, TurboQuantForm keyForm)
     {
@@ -67,10 +85,8 @@ internal sealed class TurboKvCache
 
         _unit = new float[dim];
         _turned = new float[dim];
-        _lut = new float[dim << _keyBits];
-        _projected = new float[dim];
-        _sum = new float[dim];
         _codes = new byte[dim];
+        _reader = new Reader(dim);
     }
 
     /// <summary>The bits a coordinate takes.</summary>
@@ -107,23 +123,28 @@ internal sealed class TurboKvCache
     /// <paramref name="scores"/>[t] = &lt;<paramref name="query"/>, key t of <paramref name="head"/>&gt;
     /// for the first <paramref name="count"/> positions, from the codes.
     /// </summary>
-    public void Scores(int head, ReadOnlySpan<float> query, int count, Span<float> scores)
+    public void Scores(int head, ReadOnlySpan<float> query, int count, Span<float> scores) => Scores(head, query, count, scores, _reader);
+
+    /// <summary>The same, in <paramref name="reader"/>'s buffers.</summary>
+    public void Scores(int head, ReadOnlySpan<float> query, int count, Span<float> scores, Reader reader)
     {
-        HadamardRotation.Rotate(query, _turned);
+        var turned = reader.Turned;
+        var lut = reader.Lut;
+        HadamardRotation.Rotate(query, turned);
         var levels = 1 << _keyBits;
         var centroids = _keyBook.Centroids;
         for (var j = 0; j < _dim; j++)
         {
-            var q = _turned[j];
-            for (var c = 0; c < levels; c++) _lut[j * levels + c] = q * centroids[c];
+            var q = turned[j];
+            for (var c = 0; c < levels; c++) lut[j * levels + c] = q * centroids[c];
         }
-        if (_qjl is not null) _qjl.Project(_turned, _projected);
+        if (_qjl is not null) _qjl.Project(turned, reader.Projected);
 
         for (var t = 0; t < count; t++)
         {
             var slot = t * _heads + head;
-            var sum = LookupSum(_keyCodes.AsSpan(slot * _keyBytes, _keyBytes), _keyBits, _lut, _dim);
-            if (_qjl is not null) sum += _qjl.Estimate(_projected, _keySigns!.AsSpan(slot * _qjl.SignBytes, _qjl.SignBytes), _keyResiduals![slot]);
+            var sum = LookupSum(_keyCodes.AsSpan(slot * _keyBytes, _keyBytes), _keyBits, lut, _dim);
+            if (_qjl is not null) sum += _qjl.Estimate(reader.Projected, _keySigns!.AsSpan(slot * _qjl.SignBytes, _qjl.SignBytes), _keyResiduals![slot]);
             scores[t] = _keyNorms[slot] * sum;
         }
     }
@@ -132,9 +153,13 @@ internal sealed class TurboKvCache
     /// <paramref name="output"/> = the sum over the first <paramref name="count"/> positions of
     /// <paramref name="weights"/>[t] times value t of <paramref name="head"/>, from the codes.
     /// </summary>
-    public void Mix(int head, ReadOnlySpan<float> weights, int count, Span<float> output)
+    public void Mix(int head, ReadOnlySpan<float> weights, int count, Span<float> output) => Mix(head, weights, count, output, _reader);
+
+    /// <summary>The same, in <paramref name="reader"/>'s buffers.</summary>
+    public void Mix(int head, ReadOnlySpan<float> weights, int count, Span<float> output, Reader reader)
     {
-        Array.Clear(_sum);
+        var sum = reader.Sum;
+        Array.Clear(sum);
         var centroids = _valueBook.Centroids;
         var mask = (1u << _valueBits) - 1;
         for (var t = 0; t < count; t++)
@@ -152,12 +177,12 @@ internal sealed class TurboKvCache
                     buffer |= (uint)packed[at++] << have;
                     have += 8;
                 }
-                _sum[j] += w * centroids[buffer & mask];
+                sum[j] += w * centroids[buffer & mask];
                 buffer >>= _valueBits;
                 have -= _valueBits;
             }
         }
-        HadamardRotation.Unrotate(_sum, output);
+        HadamardRotation.Unrotate(sum, output);
     }
 
     // Sessions: the mode and the first `count` positions, as they are held.

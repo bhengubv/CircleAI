@@ -70,6 +70,10 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     private readonly Dictionary<string, (string Asked, DateTimeOffset At, EffortChoice Choice)> _lastAnswered = new(StringComparer.Ordinal);
 
     private string? _runningId;
+
+    // What somebody has said so far, for the brain to read when it is free; the latest wins.
+    private AskSubmission? _readNext;
+    private Task? _reading;
     private CancellationTokenSource? _runningCts;
     private bool _runningCancelledByCaller;
     private EffortChoice? _runningChoice;
@@ -555,8 +559,11 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         if (ask.IsFinal) { Forget(ask.Id); return; }   // cancelled while it waited
 
         // HOW HARD TO THINK ABOUT IT, chosen for this question on this device (EffortRouter). A
-        // plain ask never thinks: it is text to transform, and the engine's prompt says how.
-        var choice = ask.Plain ? null : ChooseEffort(ask);
+        // plain ask never thinks: it is text to transform, and the engine's prompt says how. A
+        // spoken one never thinks either: a thought comes before the first word, and somebody is
+        // standing there in silence. Measured on the P30 on 2026-11-06, a spoken question weighed
+        // hard spent 49 of its 71 seconds thinking before the phone made a sound.
+        var choice = ask.Plain || ask.Spoken ? null : ChooseEffort(ask);
         var job = ask.Plain
             ? new BrainJob(
                 AskId: ask.Id,
@@ -574,12 +581,15 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 MaxTokens: _limits.MaxTokensFor(ask.Spoken),
                 Spoken: ask.Spoken,
                 Deadline: started + _limits.GenerationDeadline,
-                Effort: choice?.Effort,
+                Effort: ask.Spoken ? ReasoningEffort.Off : choice?.Effort,
                 ThinkingBudget: choice?.ThinkingBudget ?? 0,
                 // TOOLS WHEN THE CALLER ALLOWED THEM (OPEN-GAPS A16). The flag was stored with
                 // every ask and read by nothing, so an app's tool turn through the link was
                 // answered as a plain one - the call it had already seen, written again.
-                Tools: ask.Agentic);
+                Tools: ask.Agentic,
+                Conversation: Kept(ask));
+
+        lock (_gate) _readNext = null;
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(_limits.GenerationDeadline);
@@ -615,8 +625,10 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 }
                 if (chunk.Final) workerTiming = chunk.Timing;
 
+                // A SPOKEN ANSWER GOES ON AS IT COMES: the voice is waiting for these words, and
+                // holding them back for the store's sake is silence somebody can hear.
                 var now = _clock.GetUtcNow();
-                if (now - lastWrite >= _limits.TextWriteInterval && text.Length > 0)
+                if ((ask.Spoken || now - lastWrite >= _limits.TextWriteInterval) && text.Length > 0)
                 {
                     var partial = text.ToString();
                     Save(ask.Id, r => r.State == AskState.Running ? r with { Text = partial, UpdatedAt = now } : r);
@@ -843,6 +855,11 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
     // ── records ──────────────────────────────────────────────────────────────
 
+    // A SPOKEN CONVERSATION IS KEPT IN THE BRAIN, the one kind that goes on turn after turn with somebody
+    // waiting on each. A picture is read by itself, and an app's turn may be anywhere in its own talk.
+    private static string? Kept(AskRecord ask) =>
+        ask.Spoken && !string.IsNullOrEmpty(ask.SessionId) ? ask.CallerKey + "|" + ask.SessionId : null;
+
     private IReadOnlyList<ChatMessage> Conversation(AskRecord ask)
     {
         // AND THE PICTURE THE QUESTION IS ABOUT, when one came with it (Step 4): kept on disk beside
@@ -886,6 +903,75 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
         messages.Add(new ChatMessage("user", ask.Message) { ImageBytes = image });
         return messages;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE FIRST QUESTION AFTER A START SPENT 1,1 s IN THE QUEUE AND EVERY ONE AFTER IT 14 ms, measured on the
+    /// P30 on 2026-11-06: the shortcuts, each looked at for the first time.
+    /// </remarks>
+    public async Task RehearseAsync(AskSubmission question, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(question);
+        var ask = AskRecord.Accept(Guid.NewGuid().ToString("N"), question, _clock.GetUtcNow());
+        foreach (var shortcut in _shortcuts)
+        {
+            try { await shortcut.TryAnswerAsync(ask, ct).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { _log($"rehearsing {shortcut.Name} failed: {ex.GetType().Name}"); }
+        }
+    }
+
+    /// <inheritdoc />
+    public void ReadAhead(AskSubmission soFar)
+    {
+        ArgumentNullException.ThrowIfNull(soFar);
+        lock (_gate)
+        {
+            if (_open.Count > 0) return;   // the brain has somebody's answer to write
+            _readNext = soFar;
+            if (_reading is { IsCompleted: false }) return;
+            _reading = Task.Run(ReadingAheadAsync);
+        }
+    }
+
+    // One job at a time, each only the words that came since the last, and never in an ask's way.
+    private async Task ReadingAheadAsync()
+    {
+        while (true)
+        {
+            AskSubmission? next;
+            lock (_gate)
+            {
+                next = _readNext;
+                _readNext = null;
+                if (next is null || _open.Count > 0) return;
+            }
+
+            if (_worker.Status.Phase != BrainPhase.Ready) return;
+
+            try
+            {
+                var now = _clock.GetUtcNow();
+                var ask = AskRecord.Accept(Guid.NewGuid().ToString("N"), next, now);
+                var job = new BrainJob(
+                    AskId: ask.Id,
+                    Messages: Conversation(ask),
+                    RetrievalQuery: ask.Asked,
+                    MaxTokens: _limits.MaxTokensFor(ask.Spoken),
+                    Spoken: ask.Spoken,
+                    Deadline: now + _limits.GenerationDeadline,
+                    Effort: ReasoningEffort.Off,
+                    JustRead: true,
+                    Conversation: Kept(ask));
+                await foreach (var _ in _worker.GenerateAsync(job, CancellationToken.None).ConfigureAwait(false)) { }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // ONLY EVER A HEAD START: the question reads it all itself, and takes the brain from it.
+                _log($"reading ahead stopped: {ex.GetType().Name}");
+                return;
+            }
+        }
     }
 
     /// <summary>

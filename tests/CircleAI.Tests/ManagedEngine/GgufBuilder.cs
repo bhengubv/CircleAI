@@ -136,6 +136,8 @@ internal static class Bonsai2Model
     {
         ["2B"] = ("Ternary-Bonsai-2-2B", "Ternary-Bonsai-2-2B-PTQ1_0.gguf", "BONSAI2_2B_GGUF"),
         ["4B"] = ("Ternary-Bonsai-2-4B", "Ternary-Bonsai-2-4B-PTQ1_0.gguf", "BONSAI2_4B_GGUF"),
+        ["9B"] = ("Ternary-Bonsai-2-9B", "Ternary-Bonsai-2-9B-PTQ1_0.gguf", "BONSAI2_9B_GGUF"),
+        ["27B"] = ("Ternary-Bonsai-2-27B", "Ternary-Bonsai-2-27B-PTQ1_0.gguf", "BONSAI2_27B_GGUF"),
         ["2B-PQ2_0"] = ("Ternary-Bonsai-2-2B-PQ2_0", "Ternary-Bonsai-2-2B-PQ2_0.gguf", "BONSAI2_2B_PQ2_GGUF"),
         ["4B-PQ2_0-MTP"] = ("Ternary-Bonsai-2-4B-PQ2_0-MTP", "Ternary-Bonsai-2-4B-PQ2_0-MTP-Q8_0.gguf", "BONSAI2_4B_MTP_GGUF"),
     };

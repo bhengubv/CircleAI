@@ -96,8 +96,14 @@ public sealed class LinkedBrain : IBrain, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<string> AskAsync(string prompt, Action<string>? token = null,
-                                       CancellationToken ct = default)
+    public Task<string> AskAsync(string prompt, Action<string>? token = null,
+                                 CancellationToken ct = default) => AskAsync(prompt, spoken: false, token, ct);
+
+    /// <summary>Asks as somebody speaking asks: the answer will be read aloud, and is not thought over first.</summary>
+    public Task<string> AskSpokenAsync(string prompt, Action<string>? token = null, CancellationToken ct = default) =>
+        AskAsync(prompt, spoken: true, token, ct);
+
+    private async Task<string> AskAsync(string prompt, bool spoken, Action<string>? token, CancellationToken ct)
     {
         // TRACED AT EVERY STEP, because the first end-to-end run of this produced a
         // question on screen with no reply, no error and not one line anywhere. A
@@ -115,7 +121,7 @@ public sealed class LinkedBrain : IBrain, IDisposable
         var rid = Guid.NewGuid().ToString("N");
         Journal(add: new PendingAsk(rid, prompt, DateTimeOffset.UtcNow));
         var reply = await client.AskDurablyAsync(
-            prompt, CircleAI.Assistant.Recalling.Question(prompt), _session, spoken: false,
+            prompt, CircleAI.Assistant.Recalling.Question(prompt), _session, spoken: spoken,
             clientRequestId: rid,
             partial: text =>
             {

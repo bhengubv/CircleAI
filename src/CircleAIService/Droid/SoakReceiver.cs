@@ -59,7 +59,8 @@ public sealed class SoakReceiver : BroadcastReceiver
             case "ask":
                 // ONE QUESTION THROUGH THE QUEUE, so a fault can be injected while it runs - with
                 // "--ez tools true", as an app's tool turn comes (OPEN-GAPS A16).
-                if (intent?.GetStringExtra("text") is { Length: > 0 } text) Ask?.Invoke(text, intent.GetBooleanExtra("tools", false));
+                // With "--ez spoken true", as a spoken question comes, answered and not read out.
+                if (intent?.GetStringExtra("text") is { Length: > 0 } text) Ask?.Invoke(text, intent.GetBooleanExtra("tools", false), intent.GetBooleanExtra("spoken", false));
                 break;
             case "kill-worker":
                 // THE RELIABILITY GATE'S FAULT: end the inference process, as the
@@ -86,6 +87,39 @@ public sealed class SoakReceiver : BroadcastReceiver
                     }
                 });
                 break;
+            case "limits":
+                // WHAT LIMITS A TOKEN ON THIS PHONE: its real clock, memory, what a block of the
+                // kernel costs at each level of the memory, how that scales over the cores, the
+                // pool's hand-over and a sustained load, each taken apart from the engine.
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        CircleAI.Inference.Managed.Kernels.KernelLimits.Report(line => CircleAI.Core.Logging.CircleLog.Info("Engine.Bench", line));
+                    }
+                    catch (Exception ex)
+                    {
+                        CircleAI.Core.Logging.CircleLog.Error("Engine.Bench", "limits failed", ex);
+                    }
+                });
+                break;
+            case "fast":
+                // HOW FAST A TERNARY PRODUCT CAN GO IN C# ON THIS PHONE: kernels built to be
+                // timed, not the engine's. "--es only batch" takes the several-tokens one alone.
+                var only = intent?.GetStringExtra("only");
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        if (only == "batch") CircleAI.Inference.Managed.Kernels.KernelFast.Batches(line => CircleAI.Core.Logging.CircleLog.Info("Engine.Bench", line));
+                        else CircleAI.Inference.Managed.Kernels.KernelFast.Report(line => CircleAI.Core.Logging.CircleLog.Info("Engine.Bench", line));
+                    }
+                    catch (Exception ex)
+                    {
+                        CircleAI.Core.Logging.CircleLog.Error("Engine.Bench", "fast failed", ex);
+                    }
+                });
+                break;
             case "engine":
                 // ONE QUESTION THROUGH THE INFERENCE PROCESS'S OWN BUILD SITE (S2): the model
                 // loaded there with the engine named - the C# engine unless told otherwise - and
@@ -106,6 +140,46 @@ public sealed class SoakReceiver : BroadcastReceiver
                 var max = intent?.GetIntExtra("max", 48) ?? 48;
                 var picture = intent?.GetStringExtra("image");
                 System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max, picture));
+                break;
+            case "talk":
+                // A RECORDED QUESTION THROUGH THE WHOLE SPOKEN TURN: the greeting, the gate, the
+                // ears, the queue, the brain, the voice and the speaker, with the file in the
+                // microphone's place. The turn's own "spoken turn:" line says how long it took.
+                // Several files, comma between them, are a conversation: each after the first is said in
+                // the window after the answer before it, with no name and no hello.
+                //   ... --es do talk --es file q1.wav[,q2.wav] [--ei first 3] [--es ears tiny-streaming-en|whisper] [--ez fresh true]
+                if (intent?.GetIntExtra("first", 0) is > 0 and var first) CircleAI.Assistant.Device.WakeTurn.FirstWords = first;
+                if (intent?.GetStringExtra("ears") is { } liveEars) CircleAI.Assistant.Device.ServiceSpeech.LiveEars = liveEars == "whisper" ? string.Empty : liveEars;
+                if (intent?.GetBooleanExtra("fresh", false) == true) CircleAI.Assistant.Device.WakeTurn.NewConversation();
+                var said = (intent?.GetStringExtra("file") ?? "q1.wav").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(PictureFile).ToArray();
+                _ = System.Threading.Tasks.Task.Run(() => TalkAsync(said));
+                break;
+            case "hear":
+                // THE EARS ALONE ON A STRETCH OF A RECORDING, several times. The transcript of a
+                // test recording is logged here; nobody's words are ever in a file in that folder.
+                //   ... --es do hear --es file q1.wav [--ei from 0] [--ei to 2000] [--ei times 3]
+                _ = System.Threading.Tasks.Task.Run(() => HearAsync(
+                    PictureFile(intent?.GetStringExtra("file") ?? "q1.wav"),
+                    intent?.GetIntExtra("from", 0) ?? 0, intent?.GetIntExtra("to", 0) ?? 0, intent?.GetIntExtra("times", 3) ?? 3));
+                break;
+            case "ears":
+                // THE STREAMING EARS ALONE ON A RECORDING, fed at the pace somebody speaks it, with
+                // what they had written down at every update and how far behind they were.
+                //   ... --es do ears --es file q1.wav --es model tiny-streaming-en [--ei every 500]
+                //       [--ei threads 2] [--ez spin true] [--ez prepack true] [--ei times 2]
+                //       [--ei left 0]
+                _ = System.Threading.Tasks.Task.Run(() => EarsAsync(
+                    PictureFile(intent?.GetStringExtra("file") ?? "q1.wav"),
+                    intent?.GetStringExtra("model") ?? "tiny-streaming-en",
+                    intent?.GetIntExtra("every", 500) ?? 500, intent?.GetIntExtra("threads", 0) ?? 0,
+                    intent?.GetBooleanExtra("spin", true) ?? true, intent?.GetBooleanExtra("prepack", true) ?? true,
+                    intent?.GetIntExtra("times", 2) ?? 2, intent?.GetIntExtra("left", 0) ?? 0));
+                break;
+            case "say":
+                // THE VOICE ALONE, RENDERED AND NOT PLAYED, several times.
+                //   ... --es do say --es text "Hello there" [--ei times 3]
+                _ = System.Threading.Tasks.Task.Run(() => SayAsync(
+                    intent?.GetStringExtra("text") ?? "The capital of Kenya is Nairobi.", intent?.GetIntExtra("times", 3) ?? 3));
                 break;
             case "see":
                 // A PICTURE THROUGH THE QUEUE, AS AN APP'S COMES (S9): held where the link holds one
@@ -171,7 +245,7 @@ public sealed class SoakReceiver : BroadcastReceiver
     public static Action? KillWorker { get; set; }
 
     /// <summary>Submits one question as the adb caller, tools allowed or not. Set by the service's startup.</summary>
-    public static Action<string, bool>? Ask { get; set; }
+    public static Action<string, bool, bool>? Ask { get; set; }
 
     /// <summary>
     /// Loads a model in the inference process with an engine, asks it one question there and lets
@@ -199,6 +273,119 @@ public sealed class SoakReceiver : BroadcastReceiver
         System.IO.Path.IsPathRooted(name) || Application.Context.GetExternalFilesDir(null)?.AbsolutePath is not { } sideload
             ? name
             : System.IO.Path.Combine(sideload, name);
+
+    private static byte[] Recording(string file) =>
+        CircleAI.Voice.WavIo.ToPcm16(CircleAI.Voice.WavIo.ReadMono(file, 16_000));
+
+    private static async System.Threading.Tasks.Task TalkAsync(string[] files)
+    {
+        try
+        {
+            var then = files.Skip(1).Select(file => (CircleAI.Voice.IAudioCapture)new CircleAI.Voice.ClipCapture(Recording(file))).ToList();
+            await CircleAI.Assistant.Device.WakeTurn.RunAsync("a recorded question", default, new CircleAI.Voice.ClipCapture(Recording(files[0])), then)
+                .ConfigureAwait(false);
+            global::Android.Util.Log.Info("CircleAI.Soak", "talk: the turn is over");
+        }
+        catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "talk: " + ex.GetType().Name + " " + ex.Message); }
+    }
+
+    private static async System.Threading.Tasks.Task HearAsync(string file, int fromMs, int toMs, int times)
+    {
+        try
+        {
+            var pcm = Recording(file);
+            var from = Math.Clamp(fromMs * 32, 0, pcm.Length) & ~1;
+            var to = toMs <= 0 ? pcm.Length : Math.Clamp(toMs * 32, from, pcm.Length) & ~1;
+            var stretch = pcm[from..to];
+            var speech = CircleAI.Assistant.Device.WakeTurn.Speech ?? throw new InvalidOperationException("no ears");
+            for (var i = 0; i < times; i++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var text = await speech.TranscribeAsync(stretch, null).ConfigureAwait(false);
+                global::Android.Util.Log.Info("CircleAI.Soak", $"hear: {stretch.Length / 32} ms of audio in {clock.ElapsedMilliseconds} ms: {text}");
+            }
+        }
+        catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "hear: " + ex.GetType().Name + " " + ex.Message); }
+    }
+
+    private static System.Threading.Tasks.Task EarsAsync(
+        string file, string model, int every, int threads, bool spin, bool prepack, int times, int left)
+    {
+        // ONE THREAD OF ITS OWN, as the ears have in a turn.
+        var done = new System.Threading.Tasks.TaskCompletionSource();
+        var thread = new System.Threading.Thread(() =>
+        {
+            try { Ears(file, model, every, threads, spin, prepack, times, left); }
+            finally { done.SetResult(); }
+        }) { IsBackground = true, Name = "Ears" };
+        thread.Start();
+        return done.Task;
+    }
+
+    private static void Ears(string file, string model, int every, int threads, bool spin, bool prepack, int times, int left)
+    {
+        const string tag = "CircleAI.Soak";
+        try
+        {
+            var dir = ModelFolders().Select(folder => System.IO.Path.Combine(folder, model)).First(System.IO.Directory.Exists);
+            var pcm = Recording(file);
+
+            var load = System.Diagnostics.Stopwatch.StartNew();
+            var before = Environment.WorkingSet;
+            var ears = new CircleAI.Voice.MoonshineTranscriber(dir, "en", threads > 0 ? threads : null, options =>
+            {
+                if (!spin) options.AddSessionConfigEntry("session.intra_op.allow_spinning", "0");
+                if (!prepack) options.AddSessionConfigEntry("session.disable_prepacking", "1");
+            }) { LeftContext = left > 0 ? left : null };
+            global::Android.Util.Log.Info(tag, $"ears: {model} open in {load.ElapsedMilliseconds} ms, "
+                + $"{(Environment.WorkingSet - before) / 1_000_000} MB, threads {threads}, spin {spin}, prepack {prepack}, every {every}, left {left}");
+
+            for (var i = 0; i < times; i++)
+            {
+                using var hearing = ears.Begin();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var step = every * 32;
+
+                for (var at = 0; at < pcm.Length; at += step)
+                {
+                    var block = Math.Min(step, pcm.Length - at);
+                    var audio = (at + block) / 32;
+                    var wait = audio - clock.ElapsedMilliseconds;
+                    if (wait > 0) System.Threading.Thread.Sleep((int)wait);
+
+                    var start = clock.ElapsedMilliseconds;
+                    hearing.Hear(pcm.AsSpan(at, block));
+                    var text = hearing.Update();
+                    global::Android.Util.Log.Info(tag, $"ears: {audio} ms of audio, update {clock.ElapsedMilliseconds - start} ms, "
+                        + $"{clock.ElapsedMilliseconds - audio} ms behind: {text}");
+                }
+
+                var end = clock.ElapsedMilliseconds;
+                var words = hearing.Finish();
+                global::Android.Util.Log.Info(tag, $"ears: finished in {clock.ElapsedMilliseconds - end} ms, "
+                    + $"{clock.ElapsedMilliseconds - pcm.Length / 32} ms after the audio: {words}");
+                global::Android.Util.Log.Info(tag, "ears: spent " + hearing.Spent);
+            }
+
+            ears.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex) { global::Android.Util.Log.Warn(tag, "ears: " + ex.GetType().Name + " " + ex.Message); }
+    }
+
+    private static async System.Threading.Tasks.Task SayAsync(string text, int times)
+    {
+        try
+        {
+            var speech = CircleAI.Assistant.Device.WakeTurn.Speech ?? throw new InvalidOperationException("no voice");
+            for (var i = 0; i < times; i++)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var pcm = await speech.SpeakAsync(text, null).ConfigureAwait(false);
+                global::Android.Util.Log.Info("CircleAI.Soak", $"say: {text.Length} chars to {pcm.Length / 32} ms of audio in {clock.ElapsedMilliseconds} ms");
+            }
+        }
+        catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "say: " + ex.GetType().Name + " " + ex.Message); }
+    }
 
     // The models folders a model is looked for in when the broadcast names none: the store, then
     // the sideload folder.

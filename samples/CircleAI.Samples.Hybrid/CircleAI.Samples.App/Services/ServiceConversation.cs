@@ -52,10 +52,41 @@ public sealed class ServiceConversation(LinkedBrain brain, IRemembers memory) : 
         if (string.IsNullOrWhiteSpace(heard)) return;
 
         updates.Report(new TurnState(TurnPhase.Thinking, Heard: heard));
-        var reply = await brain.AskAsync(heard, null, ct).ConfigureAwait(false);
 
-        updates.Report(new TurnState(TurnPhase.Speaking, Heard: heard, Reply: reply));
-        await SayAsync(reply, null, ct).ConfigureAwait(false);
+        // SPOKEN AS IT IS WRITTEN, AS THE TURN THE PHONE'S NAME OPENS IS (WakeTurn): the opening
+        // words as soon as they exist, each piece rendered behind the one being heard, through one
+        // open track. This asked for the whole answer, then rendered the whole of it, then played
+        // it, so the person waited for all of that in silence and the answer was thought over first.
+        AndroidSpeechStream? speaker = null;
+        string reply;
+        try
+        {
+            await using var mouth = new SpokenReply(
+                async (piece, tok) =>
+                {
+                    var audio = await brain.SpeakAsync(PlainReply.Clean(piece), null, tok).ConfigureAwait(false);
+                    return audio.Length > 0 ? audio : null;
+                },
+                (pcm, tok) =>
+                {
+                    if (speaker is null)
+                    {
+                        speaker = new AndroidSpeechStream(LinkAudioFormat.SampleRate);
+                        updates.Report(new TurnState(TurnPhase.Speaking, Heard: heard));
+                    }
+                    return speaker.WriteAsync(pcm, tok);
+                }, ct)
+            { FirstWords = 1, NextWords = 8 };
+
+            reply = await brain.AskSpokenAsync(heard, mouth.Push, ct).ConfigureAwait(false);
+            updates.Report(new TurnState(speaker is null ? TurnPhase.Thinking : TurnPhase.Speaking, Heard: heard, Reply: reply));
+            await mouth.CompleteAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (speaker is not null) await speaker.DisposeAsync().ConfigureAwait(false);
+        }
+
         updates.Report(new TurnState(TurnPhase.Idle, Heard: heard, Reply: reply));
     }
 
@@ -200,16 +231,22 @@ public sealed class ServiceConversation(LinkedBrain brain, IRemembers memory) : 
         updates.Report(new TurnState(TurnPhase.Listening));
 
         ReadOnlyMemory<byte> audio;
+        var turn = new VoiceTurn
+        {
+            Ears = (pcm, tok) => brain.TranscribeAsync(pcm.Length > LinkAudio.MaxAudioBytes ? pcm[..LinkAudio.MaxAudioBytes] : pcm, language, tok),
+        };
         await using (var mic = new AndroidAudioCapture())
         {
-            audio = await new VoiceTurn().ListenAsync(mic, ct).ConfigureAwait(false);
+            audio = await turn.ListenAsync(mic, ct).ConfigureAwait(false);
         }
 
         if (audio.Length == 0) return null;
         if (audio.Length > LinkAudio.MaxAudioBytes) audio = audio[..LinkAudio.MaxAudioBytes];
 
         updates.Report(new TurnState(TurnPhase.Thinking, Detail: "hearing…"));
-        var heard = await brain.TranscribeAsync(audio.ToArray(), language, ct).ConfigureAwait(false);
+        var heard = turn.Heard is { } early
+            ? await early.ConfigureAwait(false)
+            : await brain.TranscribeAsync(audio.ToArray(), language, ct).ConfigureAwait(false);
 
         // An empty transcript is a RESULT — a quiet room — so it comes back as null
         // rather than an error a screen would show.

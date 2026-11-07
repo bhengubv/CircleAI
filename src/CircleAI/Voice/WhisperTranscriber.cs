@@ -56,7 +56,7 @@ public sealed class WhisperTranscriber : IVoiceTranscriber
     /// </param>
     /// <param name="threads">
     /// Number of CPU threads to use for inference. Defaults to
-    /// <c>Environment.ProcessorCount / 2</c> (clamped to at least 1).
+    /// half the device's cores (clamped to at least 1).
     /// </param>
     /// <exception cref="ArgumentException">
     /// Thrown when <paramref name="modelPath"/> is null or whitespace.
@@ -65,7 +65,7 @@ public sealed class WhisperTranscriber : IVoiceTranscriber
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         _modelPath = modelPath;
-        _threads = threads > 0 ? threads : Math.Max(1, Environment.ProcessorCount / 2);
+        _threads = threads > 0 ? threads : Math.Max(1, CircleAI.Core.DeviceContext.AllCores / 2);
     }
 
     /// <inheritdoc />

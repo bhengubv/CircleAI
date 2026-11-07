@@ -331,6 +331,7 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var loaded = _session is not null;
             var result = SynthesiseCore(text, cancellationToken);
+            if (loaded) LastRender = (sw.Elapsed, TimeSpan.FromSeconds(result.AudioData.Length / (double)Math.Max(1, _sampleRate * 2)));
 
             // ONE SENTENCE, AND WHERE ITS SECONDS WENT. Synthesis was timed only
             // from the caller, which could not distinguish opening the model from
@@ -348,6 +349,9 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             return result;
         }, cancellationToken);
     }
+
+    /// <summary>The last render that did not include opening the model: how long it took, and the speech it made.</summary>
+    public (TimeSpan Work, TimeSpan Audio) LastRender { get; private set; }
 
     /// <summary>
     /// Opens the model now, so that the first spoken sentence does not.

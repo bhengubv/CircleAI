@@ -47,6 +47,8 @@ public sealed class WorkerPool : IDisposable
     private int _pending;
     private int _held;
     private long _sleeps;
+    private long _runs;
+    private long _waited;
     private bool _stopping;
 
     /// <summary>
@@ -78,6 +80,12 @@ public sealed class WorkerPool : IDisposable
 
     /// <summary>How many times a worker has gone to sleep waiting for work: what a hold saves, counted.</summary>
     public long Sleeps => Interlocked.Read(ref _sleeps);
+
+    /// <summary>Pieces of work run on the pool so far.</summary>
+    public long Runs => _runs;
+
+    /// <summary>How long the caller has stood at the end of a piece of work waiting for the other workers.</summary>
+    public TimeSpan Waited => Stopwatch.GetElapsedTime(0, _waited);
 
     /// <summary>
     /// Keeps the workers spinning between pieces of work until the returned hold is disposed: for a
@@ -136,8 +144,11 @@ public sealed class WorkerPool : IDisposable
         }
 
         // The others are mid-product, so spin for them rather than block.
+        var finished = Stopwatch.GetTimestamp();
         var spinner = new SpinWait();
         while (Volatile.Read(ref _pending) != 0) spinner.SpinOnce(sleep1Threshold: -1);
+        _waited += Stopwatch.GetTimestamp() - finished;
+        _runs++;
         _work = null;
 
         var error = mine ?? _error;

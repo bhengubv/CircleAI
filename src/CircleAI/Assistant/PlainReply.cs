@@ -20,7 +20,9 @@
 // and a backtick block is the one place these characters mean something. Stripping
 // inside it would corrupt the only content whose punctuation is load-bearing.
 
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CircleAI.Assistant;
 
@@ -96,6 +98,40 @@ public static class PlainReply
         // Models that have had their emphasis removed often leave the spacing behind.
         return outp.ToString().Trim();
     }
+
+    /// <summary>What a voice can say of a piece of a reply; empty when there is nothing in it to say.</summary>
+    /// <remarks>
+    /// A SUM ON A PAGE IS NOT A SENTENCE. On the P30 on 2026-11-07 "How many legs..." came back as
+    /// "$3 \times 2 = 6$", which is markup to the eye and a run of symbols to a voice. And a piece that
+    /// is nothing but punctuation has no sound in it at all, so it is not given to a voice to fail on.
+    /// </remarks>
+    public static string ForTheEar(string? piece)
+    {
+        var text = Clean(piece);
+        if (text.Length == 0) return text;
+
+        if (text.Contains('\\') || Sum.IsMatch(text))
+        {
+            foreach (var (mark, word) in SumWords) text = text.Replace(mark, word, System.StringComparison.Ordinal);
+            text = Fraction.Replace(text, "${top} over ${bottom}");
+            text = Sum.Replace(text, m => m.Groups["sum"].Value.Replace(" = ", " equals ", System.StringComparison.Ordinal)
+                                                               .Replace(" + ", " plus ", System.StringComparison.Ordinal));
+            text = Spaces.Replace(text.Replace("\\", string.Empty, System.StringComparison.Ordinal), " ").Trim();
+        }
+
+        return text.Any(char.IsLetterOrDigit) ? text : string.Empty;
+    }
+
+    private static readonly (string Mark, string Word)[] SumWords =
+    [
+        ("\\times", " times "), ("\\cdot", " times "), ("\\div", " divided by "), ("\\approx", " about "), ("\\%", " percent"),
+    ];
+
+    private static readonly Regex Sum = new(@"\$(?<sum>[^$\n]{1,120})\$", RegexOptions.CultureInvariant);
+
+    private static readonly Regex Fraction = new(@"\\frac\{(?<top>[^}]*)\}\{(?<bottom>[^}]*)\}", RegexOptions.CultureInvariant);
+
+    private static readonly Regex Spaces = new(@"[ \t]{2,}", RegexOptions.CultureInvariant);
 
     private static bool Fence(string text, int at)
         => at + 2 < text.Length && text[at] == '`' && text[at + 1] == '`' && text[at + 2] == '`';

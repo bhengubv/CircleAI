@@ -23,6 +23,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Assistant.Voice;   // CircleAIListener - the shared ASR model
@@ -42,6 +43,20 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
 
     private CircleAIListener? _listener;
     private string _listenerStatus = "the recogniser has not been started yet";
+
+    /// <summary>The ears that work while somebody is talking, by the folder they are in; empty is none.</summary>
+    public static string LiveEars { get; set; } = "tiny-streaming-en";
+
+    /// <summary>Threads the live ears work on.</summary>
+    /// <remarks>
+    /// FOUR, MEASURED ON THE P30 ON 2026-11-06: twelve turns averaged 2,54 s on four and 2,70 s on two. The
+    /// last words are what everybody is waiting for, and the brain stands aside while they are written.
+    /// </remarks>
+    private const int LiveThreads = 4;
+
+    private readonly object _liveGate = new();
+    private MoonshineTranscriber? _live;
+    private string? _liveOpened;
 
     /// <param name="spoken">
     /// The device's own spoken language, used when a caller does not name one. Null
@@ -85,6 +100,52 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             .TranscribeAsync(audio, ct, tag).ConfigureAwait(false);
 
         return Heard(result.Text);
+    }
+
+    /// <inheritdoc />
+    public LiveHearing? BeginHearing(string? language)
+    {
+        var tag = language ?? _spoken?.Current ?? "en";
+        if (!tag.StartsWith("en", StringComparison.OrdinalIgnoreCase)) return null;
+        if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains(ListeningAbility) == true) return null;
+
+        CircleAI.Inference.Managed.Runtime.BrainHold.Open(Path.Combine(AppPaths.Cache, "brain-hold"));
+
+        try { return OpenLiveEars() is { } ears ? new LiveHearing(ears) : null; }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Android.Util.Log.Warn(Tag, "the live ears could not start: " + ex.GetType().Name + " " + ex.Message);
+            return null;
+        }
+    }
+
+    // The ears named by LiveEars, open and kept; null when they are not on this phone.
+    private MoonshineTranscriber? OpenLiveEars()
+    {
+        lock (_liveGate)
+        {
+            if (_live is not null && _liveOpened == LiveEars) return _live;
+
+            var old = _live;
+            _live = null;
+            if (old is not null) old.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+            var folders = new[]
+            {
+                ModelStore.Path,
+                Path.Combine(Android.App.Application.Context.GetExternalFilesDir(null)?.AbsolutePath ?? ModelStore.Path, "models"),
+            };
+            var folder = LiveEars.Length == 0
+                ? null
+                : folders.Select(f => Path.Combine(f, LiveEars)).FirstOrDefault(Directory.Exists);
+            if (folder is null) return null;
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            _live = new MoonshineTranscriber(folder, threads: LiveThreads);
+            _liveOpened = LiveEars;
+            Android.Util.Log.Info(Tag, $"live ears open: {LiveEars} in {clock.ElapsedMilliseconds} ms");
+            return _live;
+        }
     }
 
     /// <summary>What was actually said, or nothing.</summary>
@@ -136,11 +197,18 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }, ct,
             atMost: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
 
+        // THE VOICE HAS THE BIG CORES WHILE IT RENDERS (BrainHold): somebody is listening, and the
+        // brain, which writes twice as fast as anybody speaks, has the time to give.
+        CircleAI.Inference.Managed.Runtime.BrainHold.Open(Path.Combine(AppPaths.Cache, "brain-hold"));
+        CircleAI.Inference.Managed.Runtime.BrainHold.For(TimeSpan.FromSeconds(3));
+
         // RENDER, DO NOT PLAY. DeviceVoiceHost.SayAsync would put this out of THIS
         // app's loudspeaker, which is the wrong one: the person is looking at the
         // client, and the client is the process that knows whether its screen is on
         // and when to duck. RenderAsync is the half that stops at the file.
-        var wav = await _voice.RenderAsync(tag, text, ct).ConfigureAwait(false);
+        string? wav;
+        try { wav = await _voice.RenderAsync(tag, text, ct).ConfigureAwait(false); }
+        finally { CircleAI.Inference.Managed.Runtime.BrainHold.Release(); }
         if (string.IsNullOrWhiteSpace(wav) || !File.Exists(wav))
             throw new InvalidOperationException(
                 $"the device voice for '{tag}' could not synthesise that");
@@ -200,6 +268,23 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             if (CircleAI.Core.ServicePreferences.Current?.AbilitiesOff.Contains(ListeningAbility) == true)
                 return (null, "listening is switched off");
 
+            // THE LIVE EARS WALK THE SAME PATH ONCE, so the first question is not the one to pay for it.
+            var live = await Task.Run(() =>
+            {
+                if (OpenLiveEars() is not { } ears) return false;
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                using var hearing = ears.Begin();
+                hearing.Hear(new byte[LinkAudioFormat.BytesPerSecond]);
+                hearing.Finish();
+                Android.Util.Log.Info(Tag, $"live ears warmed in {clock.ElapsedMilliseconds} ms");
+                return true;
+            }, ct).ConfigureAwait(false);
+
+            // AND THEN THEY ARE THE EARS: a second recogniser held ready on a phone of this size is what
+            // the phone kills the service for (2026-11-07, four times, free memory near 400 MB). What the
+            // live ears do not hear still gets Whisper, opened when it is wanted.
+            if (live) return (LiveEars, "primed");
+
             var earsId = EarsOnThePhone();
             if (earsId is null) return (null, "the ears are not on the phone yet");
 
@@ -207,7 +292,9 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             if (listener is null) return (null, _listenerStatus);
 
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            var silence = new byte[LinkAudioFormat.BytesPerSecond / 2];
+            // MORE THAN A SECOND, OR IT PROVES NOTHING: whisper.cpp hands back anything shorter without
+            // running a thing, so "warmed" on half a second left the first real question to pay.
+            var silence = new byte[LinkAudioFormat.BytesPerSecond * 6 / 5];
             _ = await listener.Transcriber.TranscribeAsync(silence, ct, "en").ConfigureAwait(false);
             Android.Util.Log.Info(Tag, $"ears primed: {earsId} warmed in {clock.ElapsedMilliseconds} ms");
             return (earsId, "primed");
@@ -284,6 +371,8 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
     {
         if (_listener is not null) await _listener.DisposeAsync().ConfigureAwait(false);
         _listener = null;
+        if (_live is not null) await _live.DisposeAsync().ConfigureAwait(false);
+        _live = null;
         _gate.Dispose();
     }
 }

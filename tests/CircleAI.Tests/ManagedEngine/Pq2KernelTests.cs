@@ -125,6 +125,8 @@ public sealed class Pq2KernelTests
     [InlineData(KernelPath.AdvSimd)]
     [InlineData(KernelPath.Dp)]
     [InlineData(KernelPath.Avx2)]
+    [InlineData(KernelPath.Avx512)]
+    [InlineData(KernelPath.AvxVnni)]
     public void Every_runnable_path_equals_the_scalar_path_exactly(KernelPath path)
     {
         if (!Pq2.CanRun(path)) return; // That instruction set is not on this machine.
@@ -148,6 +150,8 @@ public sealed class Pq2KernelTests
     [InlineData(KernelPath.AdvSimd)]
     [InlineData(KernelPath.Dp)]
     [InlineData(KernelPath.Avx2)]
+    [InlineData(KernelPath.Avx512)]
+    [InlineData(KernelPath.AvxVnni)]
     public void With_Q8_0_activations_every_runnable_path_equals_the_scalar_path_exactly(KernelPath path)
     {
         if (!Pq2.CanRun(path)) return;

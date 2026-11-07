@@ -105,6 +105,36 @@ public static class AssistantPersona
     /// </remarks>
     public const string Greeting = "Hi.";
 
+    /// <summary>The other ways it says hello, in turn with <see cref="Greeting"/>.</summary>
+    public static readonly string[] OtherGreetings = ["Yes?", "I'm listening."];
+
+    /// <summary>What it says to a timer or an alarm it cannot set.</summary>
+    public const string NoTimersYet = "I can't set timers or alarms yet.";
+
+    /// <summary>What it says to a reminder it cannot keep.</summary>
+    public const string NoRemindersYet = "I can't set reminders yet.";
+
+    /// <summary>What it says when asked to play something.</summary>
+    public const string NoMusicYet = "I can't play music yet.";
+
+    /// <summary>What it says when asked to call or message somebody.</summary>
+    public const string NoMessagesYet = "I can't make calls or send messages yet.";
+
+    /// <summary>What it says when asked to change something on the phone.</summary>
+    public const string NoSettingsYet = "I can't change the phone's settings yet.";
+
+    /// <summary>What it says to "stop" and "never mind".</summary>
+    public const string LeftIt = "Okay.";
+
+    /// <summary>What it says to thanks.</summary>
+    public const string Welcome = "You're welcome.";
+
+    /// <summary>What it says in place of code, which it has written but will not read out.</summary>
+    public const string CodeLeftOut = "That's code, so it won't read well out loud.";
+
+    /// <summary>What it says when the answer was something it cannot do from here.</summary>
+    public const string CannotDoThatYet = "I can't do that from here yet.";
+
     /// <summary>What it says when it greeted somebody and heard nothing back.</summary>
     /// <remarks>
     /// THE SECOND HALF OF THE SAME DEFECT. Saying hello and then going silent for

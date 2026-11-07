@@ -11,7 +11,7 @@
 // WHAT IT GOVERNS TODAY, SAID PLAINLY. The model's products run on the lookup-table kernel
 // (Ptq1Lut), which is plain pointer code with no vector instructions at all, so a scalar-only
 // device loses nothing on that path. What it stops is every path chosen by Ptq1.Best - the
-// AdvSimd, dot-product, AVX2 and Vector128 kernels - and any kernel added later must take its
+// AdvSimd, dot-product, AVX-VNNI, AVX-512, AVX2 and Vector128 kernels - and any kernel added later must take its
 // "fastest" through Allows, or this switch cannot protect it.
 
 namespace CircleAI.Inference.Managed.Kernels;
@@ -33,7 +33,7 @@ public static class KernelChoice
 
     /// <summary>Whether <paramref name="path"/> runs vector instructions.</summary>
     public static bool IsVector(KernelPath path) =>
-        path is KernelPath.Vector128 or KernelPath.AdvSimd or KernelPath.Dp or KernelPath.Avx2;
+        path is KernelPath.Vector128 or KernelPath.AdvSimd or KernelPath.Dp or KernelPath.Avx2 or KernelPath.Avx512 or KernelPath.AvxVnni;
 
     /// <summary>Whether this process may run <paramref name="path"/> now.</summary>
     public static bool Allows(KernelPath path) => !(ScalarOnly && IsVector(path));

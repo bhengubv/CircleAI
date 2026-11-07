@@ -112,6 +112,8 @@ public sealed class Ptq1KernelTests
     [InlineData(KernelPath.AdvSimd)]
     [InlineData(KernelPath.Dp)]
     [InlineData(KernelPath.Avx2)]
+    [InlineData(KernelPath.Avx512)]
+    [InlineData(KernelPath.AvxVnni)]
     public void Every_runnable_path_equals_the_scalar_path_exactly(KernelPath path)
     {
         if (!Ptq1.CanRun(path)) return; // That instruction set is not on this machine.
@@ -242,6 +244,32 @@ public sealed class Ptq1KernelTests
             shared.MatVec(matrix, scales, actual);
             for (var r = 0; r < rows; r++)
                 Assert.Equal(BitConverter.SingleToInt32Bits(expected[r]), BitConverter.SingleToInt32Bits(actual[r]));
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Activations_are_what_the_rule_says_value_for_value(int seed)
+    {
+        const int cols = 256;
+        var random = new Random(seed);
+        var x = new float[cols];
+        for (var i = 0; i < cols; i++) x[i] = (float)(random.NextDouble() * 8 - 4);
+        for (var i = 0; i < cols; i += 37) x[i] = 0; // and a block's quiet values
+        var q = new Q8Activations(cols);
+
+        q.Quantize(x);
+
+        for (var b = 0; b < cols / Q8Activations.BlockSize; b++)
+        {
+            var amax = 0f;
+            for (var j = 0; j < Q8Activations.BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(x[b * Q8Activations.BlockSize + j]));
+            Assert.Equal((float)(Half)(amax / 127f), q.Scales[b]);
+            var id = amax != 0f ? 127f / amax : 0f;
+            for (var j = 0; j < Q8Activations.BlockSize; j++)
+                Assert.Equal((sbyte)Math.Clamp((int)MathF.Round(x[b * Q8Activations.BlockSize + j] * id), -128, 127), q.Quants[b * Q8Activations.BlockSize + j]);
         }
     }
 

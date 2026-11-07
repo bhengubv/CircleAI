@@ -160,7 +160,7 @@ public sealed class PocketTtsEngine : ITtsEngine, IDisposable
     private static SessionOptions SessionOptions() => new()
     {
         GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-        IntraOpNumThreads = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)),
+        IntraOpNumThreads = Math.Max(1, Math.Min(4, CircleAI.Core.DeviceContext.AllCores / 2)),
         InterOpNumThreads = 1,
         ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
     };

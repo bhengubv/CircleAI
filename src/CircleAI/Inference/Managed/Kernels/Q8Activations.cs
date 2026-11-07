@@ -26,6 +26,10 @@
 // branch) takes id = 1 / d with midpoints to even - neither this nor the reference.
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 
 namespace CircleAI.Inference.Managed.Kernels;
 
@@ -75,13 +79,48 @@ public sealed class Q8Activations
         for (var b = 0; b < x.Length / BlockSize; b++)
         {
             var block = x.Slice(b * BlockSize, BlockSize);
-            var amax = 0f;
-            for (var j = 0; j < BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(block[j]));
+            var amax = AbsoluteMax(block);
 
             scales[b] = (float)(Half)(amax / 127f);
             var id = amax != 0f ? 127f / amax : 0f;
             var q = quants.Slice(b * BlockSize, BlockSize);
-            for (var j = 0; j < BlockSize; j++) q[j] = RoundToInt8(block[j] * id);
+            if (Vectored) RoundBlock(block, id, q);
+            else for (var j = 0; j < BlockSize; j++) q[j] = RoundToInt8(block[j] * id);
+        }
+    }
+
+    // Whether this runtime has real vectors: the Mono that ships does not, and would pay to pretend.
+    private static bool Vectored => AdvSimd.Arm64.IsSupported || Sse41.IsSupported;
+
+    private static float AbsoluteMax(ReadOnlySpan<float> block)
+    {
+        var amax = 0f;
+        if (!Vectored)
+        {
+            for (var j = 0; j < BlockSize; j++) amax = MathF.Max(amax, MathF.Abs(block[j]));
+            return amax;
+        }
+
+        ref var x = ref MemoryMarshal.GetReference(block);
+        var most = Vector128<float>.Zero;
+        for (nuint j = 0; j < BlockSize; j += 4) most = Vector128.Max(most, Vector128.Abs(Vector128.LoadUnsafe(ref x, j)));
+        for (var j = 0; j < 4; j++) amax = MathF.Max(amax, most[j]);
+        return amax;
+    }
+
+    // RoundToInt8, sixteen at a time: rounded half to even, and nothing a block holds can leave the range.
+    private static void RoundBlock(ReadOnlySpan<float> block, float id, Span<sbyte> q)
+    {
+        ref var x = ref MemoryMarshal.GetReference(block);
+        ref var y = ref MemoryMarshal.GetReference(q);
+        var scale = Vector128.Create(id);
+        for (nuint j = 0; j < BlockSize; j += 16)
+        {
+            var a = Vector128.ConvertToInt32(Vector128.Round(Vector128.LoadUnsafe(ref x, j) * scale));
+            var b = Vector128.ConvertToInt32(Vector128.Round(Vector128.LoadUnsafe(ref x, j + 4) * scale));
+            var c = Vector128.ConvertToInt32(Vector128.Round(Vector128.LoadUnsafe(ref x, j + 8) * scale));
+            var d = Vector128.ConvertToInt32(Vector128.Round(Vector128.LoadUnsafe(ref x, j + 12) * scale));
+            Vector128.Narrow(Vector128.Narrow(a, b), Vector128.Narrow(c, d)).StoreUnsafe(ref y, j);
         }
     }
 

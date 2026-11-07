@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The device that keeps the service on the big cores for the length of a spoken turn: see
+     TurnHold.cs. Private, so no other app is ever shown it. -->
+<devices>
+    <device manufacturer="Circle AI" product="Circle AI turn hold" private="true">
+        <input-port name="unused" />
+    </device>
+</devices>

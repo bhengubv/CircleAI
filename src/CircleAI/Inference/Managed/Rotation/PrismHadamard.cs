@@ -70,11 +70,23 @@ public sealed class InputTransform
             x.CopyTo(output);
         }
 
-        if (_signs is not null)
-        {
-            for (var i = 0; i < output.Length; i++) output[i] *= _signs[i];
-        }
+        if (_signs is not null) Turn(output, _signs);
         for (var b = 0; b < output.Length; b += BlockSize) PrismHadamard.Transform(output.Slice(b, BlockSize));
+    }
+
+    private static unsafe void Turn(Span<float> values, float[] signs)
+    {
+        fixed (float* x = values)
+        fixed (float* s = signs)
+        {
+            var i = 0;
+            if (System.Runtime.Intrinsics.Arm.AdvSimd.Arm64.IsSupported || System.Runtime.Intrinsics.X86.Sse2.IsSupported)
+            {
+                for (; i + 4 <= values.Length; i += 4)
+                    System.Runtime.Intrinsics.Vector128.Store(System.Runtime.Intrinsics.Vector128.Load(x + i) * System.Runtime.Intrinsics.Vector128.Load(s + i), x + i);
+            }
+            for (; i < values.Length; i++) x[i] *= s[i];
+        }
     }
 }
 

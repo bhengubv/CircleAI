@@ -62,9 +62,22 @@ public sealed class SkillContextBuilder
     /// </summary>
     /// <param name="userQuery">The user's current message or intent.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task<string> BuildContextAsync(
-        string userQuery,
-        CancellationToken cancellationToken = default)
+    public Task<string> BuildContextAsync(string userQuery, CancellationToken cancellationToken = default) =>
+        BuildContextAsync(userQuery, spoken: false, cancellationToken);
+
+    /// <summary>
+    /// The block for <paramref name="userQuery"/>, and when <paramref name="spoken"/> only what the
+    /// question is plainly about, kept short.
+    /// </summary>
+    /// <remarks>
+    /// A WORD IN COMMON IS NOT A SUBJECT IN COMMON, AND SOMEBODY IS STANDING THERE. On the P30 on
+    /// 2026-11-07 seventeen of 97 spoken turns were read notes first, half a minute's worth of silence
+    /// at worst, on the strength of one word: "I don't know how to tell my kids", said by somebody whose
+    /// dog had died, drew the skill on raising children and came back as registering a birth. The notes
+    /// cost 11,7 s at the median and were the answer's undoing as often as its help. A spoken turn takes
+    /// the one skill two of the question's own words name, and no more of it than a moment's reading.
+    /// </remarks>
+    public async Task<string> BuildContextAsync(string userQuery, bool spoken, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userQuery))
             return string.Empty;
@@ -107,6 +120,12 @@ public sealed class SkillContextBuilder
         var terms = CircleAI.Core.SearchTerms.Significant(userQuery);
         var subject = SubjectOf(terms, matches);
         var candidates = AboutTheSubject(terms, subject, HeadFirst(terms, subject, matches).ToList()).Take(_maxSkills).ToList();
+        if (spoken)
+        {
+            candidates = candidates.Where(c => NamedBy(c, terms) >= SpokenTerms).Take(1).ToList();
+            if (candidates.Count == 0) return string.Empty;
+        }
+        var budget = spoken ? Math.Min(_maxChars, SpokenChars) : _maxChars;
 
         // NEVER THE QUESTION ITSELF: this line used to print it whole, and a composed
         // question carries a person's remembered facts. Its length is enough to debug.
@@ -133,7 +152,7 @@ public sealed class SkillContextBuilder
             // can crowd out the actual conversation, which is how this block
             // silently degraded answer quality AND speed on-device. Nothing is said
             // about what was left out: every character here is prefill.
-            if (sb.Length >= _maxChars) break;
+            if (sb.Length >= budget) break;
 
             var detail = await _store.GetAsync(summary.Id, cancellationToken).ConfigureAwait(false);
             if (detail is null) continue;
@@ -145,7 +164,7 @@ public sealed class SkillContextBuilder
             // id stays because asking by it is how the body is looked back up. A skill with
             // no body has only its description to give, so it keeps it - within the budget.
             var hasBody = !string.IsNullOrWhiteSpace(detail.Instructions);
-            var room = _maxChars - sb.Length - detail.Id.Length - 2;
+            var room = budget - sb.Length - detail.Id.Length - 2;
             var part = hasBody ? RelevantPart(detail.Instructions, terms, subject, Math.Max(0, room)) : string.Empty;
             var described = hasBody ? string.Empty : Within(Plain(detail.Description).Trim(), room - 3);
 
@@ -437,6 +456,18 @@ public sealed class SkillContextBuilder
             : ordered;
     }
 
+    // How many of the question's words a skill must be named by for a spoken turn, and how long its note may be.
+    private const int SpokenTerms = 2;
+    private const int SpokenChars = 240;
+
+    /// <summary>How many of <paramref name="terms"/> are in the skill's own id, name or tags: what it is called, not what it mentions.</summary>
+    private static int NamedBy(SkillSummary skill, IReadOnlyList<string> terms)
+    {
+        var words = string.Join(' ', skill.Id, skill.Name, string.Join(' ', skill.Tags ?? Array.Empty<string>()))
+            .Split(WordBreaks, StringSplitOptions.RemoveEmptyEntries);
+        return terms.Count(t => words.Any(w => SameWord(w, t)));
+    }
+
     /// <summary>Whether a skill's id, name, tags or description carry <paramref name="term"/>.</summary>
     /// <remarks>
     /// "meal" finds "meals", "plant" finds "planting": one word may start the other, when
@@ -445,14 +476,14 @@ public sealed class SkillContextBuilder
     private static bool Mentions(SkillSummary skill, string term)
     {
         var text = string.Join(' ', skill.Id, skill.Name, skill.Description, string.Join(' ', skill.Tags ?? Array.Empty<string>()));
-        foreach (var word in text.Split(WordBreaks, StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (string.Equals(word, term, StringComparison.OrdinalIgnoreCase)) return true;
-            if (word.Length < 4 || term.Length < 4 || Math.Abs(word.Length - term.Length) > 3) continue;
-            if (word.StartsWith(term, StringComparison.OrdinalIgnoreCase) || term.StartsWith(word, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
+        return text.Split(WordBreaks, StringSplitOptions.RemoveEmptyEntries).Any(word => SameWord(word, term));
+    }
+
+    private static bool SameWord(string word, string term)
+    {
+        if (string.Equals(word, term, StringComparison.OrdinalIgnoreCase)) return true;
+        if (word.Length < 4 || term.Length < 4 || Math.Abs(word.Length - term.Length) > 3) return false;
+        return word.StartsWith(term, StringComparison.OrdinalIgnoreCase) || term.StartsWith(word, StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly char[] WordBreaks =

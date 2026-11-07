@@ -266,6 +266,24 @@ public sealed class EffortRouterTests : IDisposable
     }
 
     [Fact]
+    public async Task A_spoken_question_never_thinks_before_its_first_word_however_hard_it_is()
+    {
+        var brain = new RecordingBrain();
+        await using var front = new RequestCoordinator(Store(), brain, Quick, effort: Router(FormFactor.Phone, speed: 1.47));
+        front.Start();
+
+        var admission = front.Submit(new AskSubmission("internal:assistant", Guid.NewGuid().ToString("N"), "s", AskLane.Assistant,
+            "Why is the sky blue?", "Why is the sky blue?", Spoken: true));
+        Assert.True(admission.Accepted);
+        await front.WaitAsync("internal:assistant", admission.Record!.Id, Patience, CancellationToken.None);
+
+        var job = Assert.Single(brain.Jobs);
+        Assert.True(job.Spoken);
+        Assert.Equal(ReasoningEffort.Off, job.Effort);
+        Assert.Equal(0, job.ThinkingBudget);
+    }
+
+    [Fact]
     public async Task Without_a_router_the_brain_keeps_its_own_default()
     {
         var brain = new RecordingBrain();
@@ -431,5 +449,11 @@ public sealed class EffortRouterTests : IDisposable
 
         // An older worker's job carries none of it, and reads as it always did.
         Assert.Equal(((ReasoningEffort?)null, 0, false), WorkerWire.GetJobSettings(new Dictionary<string, string>()));
+
+        // A READ AHEAD SAYS SO ACROSS THE WIRE: a worker that lost the flag would answer half a question.
+        var reading = new Dictionary<string, string>();
+        WorkerWire.PutJobSettings(reading, job with { JustRead = true });
+        Assert.True(WorkerWire.Flag(reading, WorkerWire.JustRead));
+        Assert.False(WorkerWire.Flag(map, WorkerWire.JustRead));
     }
 }

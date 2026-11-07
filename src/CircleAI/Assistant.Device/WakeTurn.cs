@@ -46,14 +46,37 @@ public static class WakeTurn
     /// </remarks>
     public static ILinkSpeech? Speech { get; set; }
 
+    /// <summary>Keeps this process on all the cores at full speed until disposed; null where the host has no way to. Set by the host at process start.</summary>
+    public static Func<IDisposable?>? HoldCores { get; set; }
+
     /// <summary>How long a question may run before the turn gives up on it.</summary>
     /// <remarks>
     /// A CEILING, NOT A TARGET. The detector ends the turn on silence; this only
     /// catches the case where silence never comes - a television in the room, a
     /// pocket - and it has to exist, because the alternative is a microphone held
     /// open until the process dies.
+    /// <para>
+    /// AND IT WAS FIFTEEN SECONDS, WHICH IS A SENTENCE OR TWO. On the P30 on 2026-11-07 somebody explaining
+    /// their situation was cut off before they had asked anything. Forty lets a person tell it; a room that
+    /// is only loud is ended sooner, by the words stopping (<see cref="WordsStillFor"/>).
+    /// </para>
     /// </remarks>
-    private static readonly TimeSpan Longest = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan Longest = TimeSpan.FromSeconds(40);
+
+    /// <summary>The quiet that ends a question.</summary>
+    /// <remarks>
+    /// LONGER THAN A SENTENCE BREAK, AND IT COSTS NOTHING. The brain starts on what was said at a fifth of
+    /// a second's quiet and takes about two seconds to reach the voice, so a gate that shuts at a second
+    /// was only ever waiting for the answer to catch up. On the P30 on 2026-11-07 that second cut people
+    /// off at the end of a first sentence: "Answer in one word." and then nothing of the question.
+    /// </remarks>
+    private static readonly TimeSpan EndOfQuestion = TimeSpan.FromSeconds(1.7);
+
+    /// <summary>How much longer it waits when the words stop on one that cannot end a sentence.</summary>
+    private static readonly TimeSpan Unfinished = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>How many updates of the ears with nothing new end a question the gate will not end: about two seconds of a loud room.</summary>
+    private const int WordsStillFor = 4;
 
     /// <summary>How long it waits for somebody to START, having said hello.</summary>
     /// <remarks>
@@ -69,14 +92,39 @@ public static class WakeTurn
     /// </remarks>
     private static readonly TimeSpan FirstWord = TimeSpan.FromSeconds(6);
 
+    /// <summary>How long it goes on listening after an answer: somebody carrying on needs no name and hears no hello.</summary>
+    /// <remarks>
+    /// A CONVERSATION IS NOT A STRING OF WAKES. Every turn was the name, a tone, "Hi.", a second tone and
+    /// the answer, and then two and a half seconds of hearing nothing while the listener came back. The
+    /// owner on 2026-11-07, listening to it: "feels repetitive".
+    /// </remarks>
+    private static readonly TimeSpan FollowUp = TimeSpan.FromSeconds(4);
+
+
+    /// <summary>How long a quiet lasts before the ears start on what has been said so far.</summary>
+    /// <remarks>
+    /// THE EARS WAITED OUT THE WHOLE HANGOVER, AND THEN STARTED. The gate has to hold a second to
+    /// be sure somebody has finished; the ears do not, because a pause that turns out not to be
+    /// the end only costs the work they had started, and that work is thrown away while the person
+    /// is still talking. So the second of waiting is spent transcribing.
+    /// </remarks>
+    private static readonly TimeSpan EarsStartAfter = TimeSpan.FromMilliseconds(200);
 
     /// <summary>One turn at a time; a second wake while one is running is ignored.</summary>
     private static readonly SemaphoreSlim One = new(1, 1);
 
+    // A TEST RECORDING IS NOT A PERSON. Its words are a script we wrote, and a test that can only
+    // count an answer's letters cannot say whether the answer was right. From the real microphone
+    // this stays false, and the words stay out of the log.
+    private static bool _recording;
+
     /// <summary>Hear the question, answer it, say the answer.</summary>
     /// <param name="phrase">What was heard, for the log.</param>
     /// <param name="ct">Cancelled when the service is going away.</param>
-    public static async Task RunAsync(string phrase, CancellationToken ct = default)
+    /// <param name="microphone">What to listen to; null is the phone's own microphone.</param>
+    /// <param name="thenHear">With <paramref name="microphone"/>, what to listen to for each turn after the first.</param>
+    public static async Task RunAsync(string phrase, CancellationToken ct = default, CircleAI.Voice.IAudioCapture? microphone = null,
+        IReadOnlyList<CircleAI.Voice.IAudioCapture>? thenHear = null)
     {
         if (!await One.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
         {
@@ -84,10 +132,18 @@ public static class WakeTurn
             return;
         }
 
+        _recording = microphone is not null;
         var took = false;
+        SpokenAnswer? early = null;
+        IDisposable? cores = null;
 
         try
         {
+            // FIRST, BECAUSE EVERYTHING AFTER IT RUNS ON WHAT THIS GETS: with nothing of ours on the
+            // screen the phone keeps this process and the brain's off the big cores, and with the
+            // screen off it runs every core at half speed.
+            cores = HoldCores?.Invoke();
+
             Log.Info(Tag, "woke on \"" + phrase + "\" - taking the microphone");
 
             // THE TONE FIRST, AND BEFORE THE MICROPHONE CHANGES HANDS. It is the only
@@ -119,12 +175,12 @@ public static class WakeTurn
             catch (Exception ex) { Log.Warn(Tag, "could not start the brain early: " + ex.Message); }
 
             took = true;
-            await CircleNeuronService.StopListeningAsync(ct).ConfigureAwait(false);
 
-            // The tail of the wake phrase is still in the air. Without this it lands
-            // at the front of the question and the recogniser reads "Hey B what is".
-            try { await Task.Delay(TimeSpan.FromMilliseconds(700), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
+            // THE MICROPHONE CHANGES HANDS WHILE IT SAYS HELLO, because hello does not need it. This
+            // used to be stop, wait 700 ms for the end of the name to leave the room, say hello and only
+            // then listen: two seconds on the P30 on 2026-11-07, with whatever was said in them lost. The
+            // hello is what the end of the name now waits behind.
+            var handing = CircleNeuronService.StopListeningAsync(ct);
 
             // AND THEN IT ANSWERS, BEFORE IT EXPECTS ANYTHING.
             //
@@ -145,6 +201,10 @@ public static class WakeTurn
             // answered without a hello beats no answer.
             try
             {
+                // AND THE BRAIN READS WHAT IT CAN WHILE IT DOES: what was said earlier in this
+                // conversation is all known by now, and there is no point in anybody waiting for it.
+                ReadAhead(string.Empty);
+
                 // FROM THE WARMED COPY - see WarmAsync for the seven seconds this
                 // used to cost on the first wake after the service started.
                 await GreetAsync(ct).ConfigureAwait(false);
@@ -152,62 +212,94 @@ public static class WakeTurn
             catch (OperationCanceledException) { return; }
             catch (Exception ex) { Log.Warn(Tag, "could not greet: " + ex.Message); }
 
-            var question = await HearAsync(ct).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(question))
+            await handing.ConfigureAwait(false);
+
+            var mic = microphone;
+            for (var goingOn = 0; ; goingOn++)
             {
-                Log.Info(Tag, "nothing was said");
+                var clock = new SpokenTurnClock();
 
-                // IT SAID HELLO AND THEN WENT QUIET, which is the same defect the
-                // greeting exists to fix, one step later: the person is left with no
-                // idea whether it is still listening, gave up, or broke.
-                try { await SayAsync(AssistantPersona.NothingHeard, ct).ConfigureAwait(false); }
-                catch (Exception ex) { Log.Warn(Tag, "could not say so: " + ex.Message); }
+                // THE ANSWER STARTS WHEN THE WORDS LOOK FINISHED, NOT WHEN THE MICROPHONE IS SURE. The gate
+                // holds a good while of quiet in case it was only a pause, and it is right to. Nothing
+                // says the brain has to sit that out: it starts on what the ears have, the voice is
+                // held back until the gate agrees, and if they carry on it is stopped and nobody ever knew.
+                // Both of these run on the ears' own thread, one at a time, and none after HearAsync.
+                void Settled(string words)
+                {
+                    if (CircleAI.Assistant.Opener.IsNothingButHello(words)) return;
+                    clock.Heard();
+                    early = new SpokenAnswer(words, clock, ct);
+                }
 
-                return;
+                void WentOn()
+                {
+                    early?.Stop();
+                    early = null;
+                }
+
+                var question = await HearAsync(clock, mic, Settled, WentOn, goingOn == 0 ? FirstWord : FollowUp, ct).ConfigureAwait(false);
+                if (early is null) clock.Heard();
+
+                if (string.IsNullOrWhiteSpace(question))
+                {
+                    early?.Stop();
+                    Log.Info(Tag, "nothing was said");
+
+                    // NOBODY TOOK IT UP, WHICH IS HOW A CONVERSATION ENDS: nothing to apologise for.
+                    if (goingOn > 0) return;
+
+                    // IT SAID HELLO AND THEN WENT QUIET, which is the same defect the
+                    // greeting exists to fix, one step later: the person is left with no
+                    // idea whether it is still listening, gave up, or broke.
+                    try { await SayAsync(AssistantPersona.NothingHeard, ct).ConfigureAwait(false); }
+                    catch (Exception ex) { Log.Warn(Tag, "could not say so: " + ex.Message); }
+
+                    return;
+                }
+
+                // NEVER THE WORDS THEMSELVES. What a person says to their phone is not a
+                // log line; its length is enough to tell a question from nothing.
+                Log.Info(Tag, "heard: " + question!.Length + " chars");
+                if (_recording) Log.Info(Tag, "the recording was heard as: " + question);
+
+                // AND IF ALL THEY SAID WAS THE NAME AGAIN, IT HAS ALREADY ANSWERED. The
+                // greeting went out before the microphone opened; saying it twice is
+                // better than putting "Hey B" to a language model for thirty seconds.
+                if (CircleAI.Assistant.Opener.IsNothingButHello(question))
+                {
+                    early?.Stop();
+                    Log.Info(Tag, "that was a greeting, not a question");
+                    return;
+                }
+
+                if (goingOn == 0)
+                {
+                    try { Earcon.Heard(); } catch { /* as above */ }
+                }
+
+                // WHAT THE BRAIN STARTED ON IS THE QUESTION, AS OFTEN AS NOT. When the last pass of the
+                // ears heard it differently, what it has is an answer to something nobody asked.
+                if (early is not null && !SameWords(early.Question, question!))
+                {
+                    Log.Info(Tag, "the words moved after the brain started; asking again");
+                    await early.StopAsync().ConfigureAwait(false);
+                    early = null;
+                    clock.Heard();
+                }
+
+                var answer = early ?? new SpokenAnswer(question!, clock, ct);
+                early = null;
+                answer.Go();
+                await HearItOutAsync(answer, watch: microphone is null, ct).ConfigureAwait(false);
+
+                // AND THEY CAN GO ON, with the microphone already theirs.
+                if (microphone is not null)
+                {
+                    if (thenHear is null || goingOn >= thenHear.Count) return;
+                    mic = thenHear[goingOn];
+                }
+                ReadAhead(string.Empty);
             }
-
-            // NEVER THE WORDS THEMSELVES. What a person says to their phone is not a
-            // log line; its length is enough to tell a question from nothing.
-            Log.Info(Tag, "heard: " + question!.Length + " chars");
-
-            // AND IF ALL THEY SAID WAS THE NAME AGAIN, IT HAS ALREADY ANSWERED. The
-            // greeting went out before the microphone opened; saying it twice is
-            // better than putting "Hey B" to a language model for thirty seconds.
-            if (CircleAI.Assistant.Opener.IsNothingButHello(question))
-            {
-                Log.Info(Tag, "that was a greeting, not a question");
-                return;
-            }
-
-            try { Earcon.Heard(); } catch { /* as above */ }
-
-            // SPOKEN AS IT IS WRITTEN, ONE SENTENCE AT A TIME - AND THIS PATH WAS
-            // THE ONE THAT NEVER GOT IT.
-            //
-            // SpokenReply was built in September for exactly this complaint ("big
-            // gaps between speech input and Circle AI response") and wired into the
-            // app's turn loop only. The screen-off turn - the one somebody uses
-            // without picking the phone up - still generated the WHOLE answer, then
-            // synthesised the WHOLE of it, then played it: measured on a P30 at 21,7
-            // s of thinking followed by a render before any sound. The first
-            // sentence now costs its own render instead of the paragraph's, and the
-            // voice works through the rest while the model is still writing.
-            //
-            // AND THE HOLDING LINE GOES THROUGH THE SAME MOUTH, which is the only
-            // arrangement in which it cannot talk over the answer: one queue, one
-            // reader, strict order. Two players on one speaker is worse than
-            // silence.
-            await using var mouth = new SpokenReply(
-                (sentence, tok) => SayAsync(PlainReply.Clean(sentence), tok), ct);
-
-            var answer = await AskAsync(question!, mouth, ct).ConfigureAwait(false);
-
-            if (!string.IsNullOrWhiteSpace(answer))
-                Log.Info(Tag, "answer: " + answer!.Length + " chars");
-
-            // The sentences are already in flight; this waits for the last word to
-            // finish rather than for the text to.
-            await mouth.CompleteAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -222,6 +314,9 @@ public static class WakeTurn
         }
         finally
         {
+            // AN ANSWER THE TURN NEVER GOT TO WOULD WAIT FOR ITS GO FOR EVER, with the brain.
+            early?.Stop();
+
             if (took)
             {
                 try
@@ -235,7 +330,156 @@ public static class WakeTurn
                 }
             }
 
+            cores?.Dispose();
             One.Release();
+        }
+    }
+
+    // The answer, to its last word or until somebody talks over it.
+    private static async Task HearItOutAsync(SpokenAnswer answer, bool watch, CancellationToken ct)
+    {
+        using var over = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var watching = watch ? WatchForThemAsync(answer, over.Token) : Task.CompletedTask;
+        try { await answer.Finished.ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { /* they talked over it */ }
+
+        over.Cancel();
+        try { await watching.ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { /* the answer is over either way */ }
+    }
+
+    // THE PERSON CAN TALK OVER IT. This turn held on to the floor until the last word: nothing listened
+    // while it spoke, so "stop" did nothing, and DeviceConversation's watcher never came here with it.
+    private static async Task WatchForThemAsync(SpokenAnswer answer, CancellationToken over)
+    {
+        try
+        {
+            await answer.Sounding.WaitAsync(over).ConfigureAwait(false);
+
+            // And a beat after that, so the first syllable of its own voice is not what it hears.
+            await Task.Delay(TimeSpan.FromMilliseconds(700), over).ConfigureAwait(false);
+
+            await using var mic = new AndroidAudioCapture();
+            if (await new SpeechOnset().WaitAsync(mic, over).ConfigureAwait(false))
+            {
+                Log.Info(Tag, "talked over: stopping the answer");
+                answer.Stop();
+            }
+        }
+        catch (OperationCanceledException) { /* the answer finished first */ }
+        catch (Exception ex) { Log.Warn(Tag, "could not listen for being talked over: " + ex.Message); }
+    }
+
+    // The same words, however the ears punctuated them this time.
+    private static bool SameWords(string one, string other) =>
+        Letters(one).SequenceEqual(Letters(other));
+
+    private static IEnumerable<char> Letters(string text) =>
+        text.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant);
+
+    /// <summary>One answer on its way: asked, written and rendered, and kept from the speaker until told.</summary>
+    private sealed class SpokenAnswer
+    {
+        private readonly CancellationTokenSource _stop;
+        private readonly TaskCompletionSource _go = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _sounding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly SpokenTurnClock _clock;
+
+        public SpokenAnswer(string question, SpokenTurnClock clock, CancellationToken ct)
+        {
+            Question = question;
+            _clock = clock;
+            _stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Finished = Task.Run(() => RunAsync(_stop.Token), CancellationToken.None);
+        }
+
+        /// <summary>What it is the answer to.</summary>
+        public string Question { get; }
+
+        /// <summary>Done when the last word has been said, or it was stopped.</summary>
+        public Task Finished { get; }
+
+        /// <summary>Done when the first sound has gone out; never, if none does.</summary>
+        public Task Sounding => _sounding.Task;
+
+        /// <summary>The person has finished: the voice may start.</summary>
+        public void Go() => _go.TrySetResult();
+
+        /// <summary>That was not the question after all.</summary>
+        public void Stop()
+        {
+            _stop.Cancel();
+            _ = Finished.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        /// <summary>Stops it and waits until the brain has let go.</summary>
+        public async Task StopAsync()
+        {
+            Stop();
+            try { await Finished.ConfigureAwait(false); }
+            catch (OperationCanceledException) { /* what was asked for */ }
+        }
+
+        // SPOKEN AS IT IS WRITTEN, ONE SENTENCE AT A TIME - AND THIS PATH WAS
+        // THE ONE THAT NEVER GOT IT.
+        //
+        // SpokenReply was built in September for exactly this complaint ("big
+        // gaps between speech input and Circle AI response") and wired into the
+        // app's turn loop only. The screen-off turn - the one somebody uses
+        // without picking the phone up - still generated the WHOLE answer, then
+        // synthesised the WHOLE of it, then played it: measured on a P30 at 21,7
+        // s of thinking followed by a render before any sound. The first
+        // sentence now costs its own render instead of the paragraph's, and the
+        // voice works through the rest while the model is still writing.
+        //
+        // AND THE HOLDING LINE GOES THROUGH THE SAME MOUTH, which is the only
+        // arrangement in which it cannot talk over the answer: one queue, one
+        // reader, strict order. Two players on one speaker is worse than
+        // silence.
+        //
+        // AND THE VOICE RENDERS AHEAD. One step per sentence meant the next one was not
+        // started until the last had finished playing: measured on the P30 on 2026-11-06, the
+        // pieces of one answer came out of a phone that went quiet for seconds between them.
+        //
+        // AND ALL OF IT THROUGH ONE OPEN TRACK, so the pieces join up: a track built, played and
+        // waited out for each piece is a pause in every sentence that nobody wrote.
+        private async Task RunAsync(CancellationToken ct)
+        {
+            AndroidSpeechStream? speaker = null;
+            try
+            {
+                await using var mouth = new SpokenReply(
+                    (sentence, tok) => RenderAsync(sentence, _clock, tok),
+                    async (pcm, tok) =>
+                    {
+                        await _go.Task.WaitAsync(tok).ConfigureAwait(false);
+                        speaker ??= new AndroidSpeechStream(LinkAudioFormat.SampleRate);
+                        _clock.FirstSound();
+                        _sounding.TrySetResult();
+                        _clock.Playing(TimeSpan.FromSeconds(pcm.Length / (double)(LinkAudioFormat.SampleRate * 2)));
+                        await speaker.WriteAsync(pcm, tok).ConfigureAwait(false);
+                    }, ct)
+                { FirstWords = FirstWords, NextWords = NextWords };
+
+                var answer = await AskAsync(Question, mouth, _clock, ct).ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(answer))
+                {
+                    Log.Info(Tag, "answer: " + answer!.Length + " chars");
+                    if (_recording) Log.Info(Tag, "the recording was answered: " + answer);
+                }
+
+                // The sentences are already in flight; this waits for the last word to
+                // finish rather than for the text to.
+                await mouth.CompleteAsync().ConfigureAwait(false);
+
+                // ONE THAT WAS STOPPED SAID NOTHING BECAUSE IT WAS MEANT TO, and the turn's own line is to come.
+                if (!ct.IsCancellationRequested) CircleAI.Voice.VoiceTrace.Write(_clock.Report());
+            }
+            finally
+            {
+                if (speaker is not null) await speaker.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -246,7 +490,8 @@ public static class WakeTurn
     /// it; EnergyVadDetector's thresholds were tuned on this phone and are the same
     /// ones the app's spoken turn uses.
     /// </remarks>
-    private static async Task<string?> HearAsync(CancellationToken ct)
+    private static async Task<string?> HearAsync(
+        SpokenTurnClock turn, CircleAI.Voice.IAudioCapture? microphone, Action<string> settled, Action wentOn, TimeSpan firstWord, CancellationToken ct)
     {
         var speech = Speech;
         if (speech is null)
@@ -260,6 +505,18 @@ public static class WakeTurn
 
         var spoken = new List<byte>();
         var clock = Stopwatch.StartNew();
+        Task<string>? early = null;
+        CancellationTokenSource? earlyStop = null;
+
+        // THE EARS THAT WORK WHILE THEY TALK, when there are some for this language. What follows
+        // keeps the whole question all the same: those ears failing is no reason to lose it.
+        var live = speech.BeginHearing(null);
+        if (live is not null)
+        {
+            live.HeldStill += ReadAhead;
+            live.Settled += settled;
+            live.WentOn += wentOn;
+        }
 
         // THE QUESTION IS NOW CAPTURED BY THE GATE THE WAKE WORD USES, AND KEPT
         // WHOLE. Both halves of that were wrong, and they were found from the one
@@ -297,10 +554,10 @@ public static class WakeTurn
         // hangover is a full second, so a pause to think is not an ending.
         try
         {
-            await using var mic = new AndroidAudioCapture();
+            await using var mic = microphone ?? new AndroidAudioCapture();
             // LearnsWhileOpen = false: a fresh gate that learned from the question
             // would take the question as the room and shut mid-sentence. See it.
-            var gate = new CircleAI.Voice.SpeechGate { MostOpen = Longest, LearnsWhileOpen = false };
+            var gate = new CircleAI.Voice.SpeechGate { MostOpen = Longest, LearnsWhileOpen = false, Hangover = EndOfQuestion };
 
             // The last few blocks before the gate opened. A gate opens on the
             // block that clears its bar, and the attack of the first word is
@@ -317,7 +574,14 @@ public static class WakeTurn
                 // after the phone has spoken, and the tail of its own sentence
                 // reaches the microphone off the walls - which this gate would
                 // otherwise open on, and call the question.
-                if (CircleAI.Voice.OutLoud.Now) continue;
+                //
+                // ONLY UNTIL THE QUESTION STARTS. After that nothing of ours is playing: the answer's voice
+                // waits for this gate. But a render marks the mouth open for as long as its audio will last,
+                // for the app that plays it at once, so an answer ready early shut these ears on the very
+                // quiet that closes the gate: on the P30 on 2026-11-06 the microphone stayed open two seconds
+                // past the end of a question the capitals table answered, and the turn's clock, which takes
+                // the gate's word for how long the quiet was, called a real 3,1 s 1,15 s.
+                if (!started && CircleAI.Voice.OutLoud.Now) continue;
 
                 var bytes = chunk.ToArray();
                 var samples = bytes.Length / 2;
@@ -325,15 +589,41 @@ public static class WakeTurn
                 for (var i = 0; i < samples; i++)
                     pcm[i] = (short)(bytes[i * 2] | (bytes[i * 2 + 1] << 8)) / 32768f;
 
+                gate.Hold = live is not null && CircleAI.Voice.TurnEnd.LooksUnfinished(live.Words) ? Unfinished : TimeSpan.Zero;
+
                 if (gate.Wants(pcm.AsSpan(0, samples)))
                 {
                     if (!started)
                     {
                         started = true;
-                        foreach (var b in before) spoken.AddRange(b);
+                        foreach (var b in before)
+                        {
+                            spoken.AddRange(b);
+                            live?.Hear(b, TimeSpan.Zero);
+                        }
                         before.Clear();
                     }
                     spoken.AddRange(bytes);
+                    live?.Hear(bytes, gate.QuietFor);
+
+                    if (live is not null)
+                    {
+                        // They have it in hand; nothing to start on the quiet.
+                    }
+                    else if (early is null && gate.QuietFor >= EarsStartAfter)
+                    {
+                        earlyStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        early = speech.TranscribeAsync(spoken.ToArray(), null, earlyStop.Token);
+                    }
+                    else if (early is not null && gate.QuietFor < EarsStartAfter)
+                    {
+                        // THEY WENT ON. What the ears have is not the whole question.
+                        earlyStop!.Cancel();
+                        earlyStop.Dispose();
+                        earlyStop = null;
+                        _ = early.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                        early = null;
+                    }
                 }
                 else if (!started)
                 {
@@ -344,24 +634,89 @@ public static class WakeTurn
                 // The gate closing after something was said is the end of the
                 // question. Not "else if": a stretch that reaches Longest ends
                 // on a block that WAS kept, and that is still an ending.
-                if (started && gate.Closed) break;
+                if (started && gate.Closed)
+                {
+                    turn.MicrophoneClosed(gate.Hangover + gate.Hold);
+                    break;
+                }
+
+                // A LOUD ROOM NEVER GOES QUIET, BUT IT DOES NOT WRITE WORDS EITHER.
+                if (started && live is { SameWordsFor: >= WordsStillFor, Words.Length: > 0 })
+                {
+                    turn.MicrophoneClosed(TimeSpan.FromSeconds(WordsStillFor * LiveHearing.BytesPerUpdate / (double)(2 * LinkAudioFormat.SampleRate)));
+                    Log.Info(Tag, "the words stopped with the room still loud: taking that as the end");
+                    break;
+                }
 
                 // AND SILENCE THAT NEVER BECOMES ANYTHING IS ITS OWN ANSWER. Without
                 // this the loop runs the full Longest deadline on a room where nobody
                 // spoke, which is fifteen seconds of a phone doing nothing visible
                 // after it has just said hello.
-                if (!started && clock.Elapsed > FirstWord) break;
+                if (!started && clock.Elapsed > firstWord) break;
             }
         }
         catch (OperationCanceledException)
         {
             // Deadline or shutdown. Whatever was said up to here is still worth asking.
+            turn.MicrophoneClosed(TimeSpan.Zero);
+        }
+        catch
+        {
+            // The ears have a thread of their own, waiting for audio that is not coming.
+            if (live is not null) await live.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
 
         Log.Info(Tag, "captured " + spoken.Count + " bytes in " + clock.ElapsedMilliseconds + " ms");
-        if (spoken.Count == 0) return null;
+        if (spoken.Count == 0)
+        {
+            if (live is not null) await live.DisposeAsync().ConfigureAwait(false);
+            return null;
+        }
+
+        if (live is not null)
+        {
+            await using (live.ConfigureAwait(false))
+            {
+                try
+                {
+                    var words = await live.FinishAsync(ct).ConfigureAwait(false);
+                    Log.Info(Tag, "the live ears: " + live.Spent);
+                    return words;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Log.Warn(Tag, "the live ears failed, hearing it again: " + ex.GetType().Name + " " + ex.Message);
+                }
+            }
+        }
+
+        // WHAT THE EARS STARTED ON THE QUIET HAS THE WHOLE QUESTION: only quiet has come in since.
+        if (early is not null)
+        {
+            try { return await early.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { /* heard again below */ }
+            finally { earlyStop?.Dispose(); }
+        }
 
         return await speech.TranscribeAsync(spoken.ToArray(), null, ct).ConfigureAwait(false);
+    }
+
+    // Hands the brain what has been said so far: a head start on the question, and only that.
+    private static void ReadAhead(string words)
+    {
+        try
+        {
+            CircleNeuronService.Asks?.ReadAhead(new CircleAI.Assistant.Requests.AskSubmission(
+                CallerKey: CallerKey,
+                ClientRequestId: null,
+                SessionId: SpokenSession(),
+                Lane: CircleAI.Assistant.Requests.AskLane.Assistant,
+                Message: words,
+                Question: words,
+                Spoken: true));
+        }
+        catch (Exception ex) { Log.Warn(Tag, "could not read ahead: " + ex.GetType().Name); }
     }
 
     /// <summary>Put the question to the brain, starting and waiting for it if need be.</summary>
@@ -380,14 +735,14 @@ public static class WakeTurn
     /// </para>
     /// </remarks>
     private static async Task<string?> AskAsync(
-        string question, SpokenReply mouth, CancellationToken ct)
+        string question, SpokenReply mouth, SpokenTurnClock turn, CancellationToken ct)
     {
         // THROUGH THE QUEUE, LIKE EVERY OTHER QUESTION, when the host has one. The wake
         // turn used to ask the in-process node directly and contend for its lock with
         // every app's question, with no record and no priority. Now it is an ask in the
         // Assistant lane - first in line - and it is spoken as it is written.
         if (CircleNeuronService.Asks is { } front)
-            return await AskThroughQueueAsync(front, question, mouth, ct).ConfigureAwait(false);
+            return await AskThroughQueueAsync(front, question, mouth, turn, ct).ConfigureAwait(false);
 
         var result = await ColdTurn.AnswerAsync(
             ready:   () => CircleNeuronService.Node?.IsReady == true,
@@ -428,6 +783,9 @@ public static class WakeTurn
     /// The conversation a spoken question belongs to: the same one for five minutes, so
     /// "Hey B, and how far is that?" follows on from the question before it.
     /// </summary>
+    /// <summary>The next spoken question starts a conversation of its own, as it would after five quiet minutes.</summary>
+    public static void NewConversation() => _lastSpoken = DateTimeOffset.MinValue;
+
     internal static string SpokenSession()
     {
         var now = DateTimeOffset.UtcNow;
@@ -437,7 +795,7 @@ public static class WakeTurn
     }
 
     private static async Task<string?> AskThroughQueueAsync(
-        CircleAI.Assistant.Requests.IAskFront front, string question, SpokenReply mouth, CancellationToken ct)
+        CircleAI.Assistant.Requests.IAskFront front, string question, SpokenReply mouth, SpokenTurnClock turn, CancellationToken ct)
     {
         var admission = front.Submit(new CircleAI.Assistant.Requests.AskSubmission(
             CallerKey: CallerKey,
@@ -456,6 +814,13 @@ public static class WakeTurn
 
         var id = admission.Record.Id;
         long seq = admission.Record.Seq;
+
+        // STOPPED MEANS THE BRAIN STOPS TOO: an answer nobody wants is the next question's wait.
+        using var stopping = ct.Register(() =>
+        {
+            try { front.Cancel(CallerKey, id); } catch { /* going away */ }
+        });
+
         var pushed = string.Empty;
         var held = false;
         var waiting = Stopwatch.StartNew();
@@ -470,6 +835,7 @@ public static class WakeTurn
             // and speaks it a sentence at a time, as it did when this streamed itself.
             if (ask.Text.Length > pushed.Length && ask.Text.StartsWith(pushed, StringComparison.Ordinal))
             {
+                turn.FirstText();
                 mouth.Push(ask.Text[pushed.Length..]);
                 pushed = ask.Text;
             }
@@ -490,6 +856,7 @@ public static class WakeTurn
                 // THE FINAL TEXT IS CLEANED, THE PARTIAL WAS NOT. Whatever of it has not
                 // been spoken yet is the part after what was pushed - in either form.
                 var cleanPushed = PlainReply.Clean(pushed);
+                turn.FirstText();
                 if (pushed.Length == 0) mouth.Push(ask.Text);
                 else if (ask.Text.StartsWith(pushed, StringComparison.Ordinal)) mouth.Push(ask.Text[pushed.Length..]);
                 else if (cleanPushed.Length > 0 && ask.Text.StartsWith(cleanPushed, StringComparison.Ordinal))
@@ -504,7 +871,6 @@ public static class WakeTurn
             return null;
         }
 
-        try { front.Cancel(CallerKey, id); } catch { /* going away */ }
         return null;
     }
 
@@ -546,6 +912,10 @@ public static class WakeTurn
     /// </remarks>
     /// <summary>The greeting, already rendered, so a wake never waits for a voice to load.</summary>
     private static byte[]? _greeting;
+
+    // The other ways of saying it, rendered with it: the same word on every wake is a machine.
+    private static readonly List<byte[]> OtherGreetings = [];
+    private static int _greeted;
 
     /// <summary>Whether the voice has been opened and the greeting rendered (Step 4: the voice primed).</summary>
     public static bool GreetingWarmed => _greeting is { Length: > 0 };
@@ -599,11 +969,75 @@ public static class WakeTurn
                 return;
             }
 
+            // AND SAID AGAIN, BECAUSE THE FIRST TIME OPENED THE MODEL AND PROVED NOTHING ABOUT ITS
+            // PACE (VoicePace). A voice that cannot keep up is passed over on the next render, so
+            // this goes round until the voice that answers is the voice that greeted: a render to
+            // measure one voice and a render to open the next, until a pair finds nothing wrong.
+            for (var pair = 0; pair < 3; pair++)
+            {
+                var verdicts = CircleAI.Voice.VoicePace.Verdicts;
+                pcm = await speech.SpeakAsync(AssistantPersona.Greeting, null, ct).ConfigureAwait(false);
+                pcm = await speech.SpeakAsync(AssistantPersona.Greeting, null, ct).ConfigureAwait(false);
+                if (CircleAI.Voice.VoicePace.Verdicts == verdicts) break;
+            }
+
             _greeting = pcm;
+            foreach (var line in AssistantPersona.OtherGreetings)
+            {
+                var other = await speech.SpeakAsync(line, null, ct).ConfigureAwait(false);
+                if (other.Length > 0) lock (OtherGreetings) OtherGreetings.Add(other);
+            }
             Log.Info(Tag, $"greeting warmed in {clock.ElapsedMilliseconds} ms - a wake will not wait for the voice to load");
+
+            await RehearseAsync(ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { Log.Warn(Tag, "greeting could not be warmed: " + ex.Message); }
+    }
+
+    /// <summary>
+    /// Walks a turn's own path once with nobody waiting, so the first real one is not the one to pay for it.
+    /// </summary>
+    /// <remarks>
+    /// THE FIRST QUESTION AFTER A START TOOK A SECOND AND A HALF LONGER THAN THE NEXT, and on this phone
+    /// a start is every hour or so, so the first is most of them. Measured on the P30 on 2026-11-06:
+    /// a second of it between the question going in and the brain being told, code running for the
+    /// first time. A greeting is answered by the queue itself, so this costs no brain, leaves
+    /// nothing in anybody's memory and says nothing out loud; the track is opened and shut for the
+    /// same reason.
+    /// </remarks>
+    private static async Task RehearseAsync(CancellationToken ct)
+    {
+        try
+        {
+            await new AndroidSpeechStream(LinkAudioFormat.SampleRate).DisposeAsync().ConfigureAwait(false);
+
+            if (CircleNeuronService.Asks is not { } front) return;
+            var admission = front.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                CallerKey: "internal:rehearsal",
+                ClientRequestId: Guid.NewGuid().ToString("N"),
+                SessionId: string.Empty,
+                Lane: CircleAI.Assistant.Requests.AskLane.Assistant,
+                Message: AssistantPersona.Greeting,
+                Question: AssistantPersona.Greeting,
+                Spoken: true));
+            if (admission is { Accepted: true, Record: { } record })
+                await front.WaitForChangeAsync("internal:rehearsal", record.Id, record.Seq, TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+
+            await front.RehearseAsync(new CircleAI.Assistant.Requests.AskSubmission(
+                CallerKey: "internal:rehearsal",
+                ClientRequestId: null,
+                SessionId: string.Empty,
+                Lane: CircleAI.Assistant.Requests.AskLane.Assistant,
+                Message: "Name one kind of bird.",
+                Question: "Name one kind of bird.",
+                Spoken: true), ct).ConfigureAwait(false);
+            ReadAhead(string.Empty);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log.Warn(Tag, "could not rehearse a turn: " + ex.GetType().Name);
+        }
     }
 
     /// <summary>Says hello, from the warmed copy when there is one.</summary>
@@ -616,10 +1050,38 @@ public static class WakeTurn
             return;
         }
 
+        lock (OtherGreetings)
+        {
+            var turn = _greeted++ % (OtherGreetings.Count + 1);
+            if (turn > 0) warm = OtherGreetings[turn - 1];
+        }
+
         await using var player = new AndroidAudioPlayer();
         await player.PlayAsync(
             warm, LinkAudioFormat.SampleRate, LinkAudioFormat.Channels, LinkAudioFormat.BitsPerSample, ct)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>The words the voice starts on, before the first sentence is finished.</summary>
+    public static int FirstWords { get; set; } = 1;
+
+    /// <summary>The most words a later piece may wait for, short of the end of a sentence.</summary>
+    private const int NextWords = 8;
+
+    // One piece of an answer as samples, for the stage that plays them; null when there is nothing
+    // to say or the voice could not. A thrown render is a piece lost, not the reply (SpokenReply).
+    private static async Task<byte[]?> RenderAsync(string piece, SpokenTurnClock turn, CancellationToken ct)
+    {
+        var speech = Speech;
+        var words = PlainReply.ForTheEar(piece);
+        if (speech is null || string.IsNullOrWhiteSpace(words)) return null;
+
+        turn.FirstPiece(words.Length);
+        var pcm = await speech.SpeakAsync(words, null, ct).ConfigureAwait(false);
+        if (pcm.Length > 0) return pcm;
+
+        Log.Warn(Tag, "the voice produced nothing");
+        return null;
     }
 
     private static async Task SayAsync(string answer, CancellationToken ct)

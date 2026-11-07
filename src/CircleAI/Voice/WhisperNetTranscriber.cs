@@ -83,7 +83,7 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     /// host that has measured its own.
     /// </remarks>
     public int Threads { get; init; } =
-        Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
+        Math.Clamp(CircleAI.Core.DeviceContext.AllCores / 2, 1, 4);
 
     /// <summary>
     /// Widest encoder window, in states. 1500 is whisper's full 30 seconds.
@@ -151,20 +151,62 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     /// Sizing the window to the audio is whisper.cpp's own <c>audio_ctx</c>
     /// knob. The cost is not free of consequence: too narrow a window truncates
     /// the tail of what was said, so this asks for a fifth more than the audio
-    /// needs and never goes below 256 states — about five seconds — however
-    /// short the clip.
+    /// needs and never goes below 128 states — about two and a half seconds —
+    /// however short the clip.
     /// </para>
     /// <para>
-    /// Rounded to 128s so that utterances of similar length land on the same
-    /// window and reuse the same processor instead of rebuilding for every
-    /// slightly-different question.
+    /// Rounded to 64s so that utterances of similar length land on the same
+    /// window and reuse the same processor. THE FLOOR WAS 256 AND THE ROUNDING
+    /// 128, and a spoken question is two or three seconds: the encoder's second
+    /// on the P30 was most of what the ears cost, spent on a window half empty.
+    /// A rebuild costs tens of milliseconds, a window step a quarter of that.
     /// </para>
     /// </remarks>
     internal static int AudioContextFor(double seconds, int max = 1500)
     {
         var needed = (int)Math.Ceiling(seconds * StatesPerSecond * 1.2);
-        var bucketed = (needed + 127) / 128 * 128;
-        return Math.Clamp(bucketed, 256, max);
+        var bucketed = (needed + 63) / 64 * 64;
+        return Math.Clamp(bucketed, 128, max);
+    }
+
+    /// <summary>The widest window treated as a spoken question rather than a recording.</summary>
+    private const int QuestionWindow = 384;
+
+    /// <summary>
+    /// The transcript with a sentence said over and over said once.
+    /// </summary>
+    /// <remarks>
+    /// THE SMALL MODEL REPEATS ITSELF INTO A WINDOW IT HAS NOT FILLED, AND A BRAIN READS IT ALL.
+    /// Measured on the P30 on 2026-11-06, a recording of "Why is the sky blue?" came back as that
+    /// sentence five times over, and a real question in a real turn was read twice by the brain at
+    /// a tenth of a second a token. A loop is the same sentence back to back; a person who says
+    /// "No. No." is two words and is left alone, and so is anything said once. What a cut-off
+    /// loop leaves at the end, the start of the sentence again, goes with it.
+    /// </remarks>
+    internal static string WithoutRepeats(string text)
+    {
+        var sentences = new List<string>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] is not ('.' or '?' or '!')) continue;
+            if (i + 1 < text.Length && !char.IsWhiteSpace(text[i + 1])) continue;
+            sentences.Add(text[start..(i + 1)].Trim());
+            start = i + 1;
+        }
+        var tail = text[start..].Trim();
+
+        var kept = new List<string>();
+        foreach (var sentence in sentences)
+        {
+            var again = kept.Count > 0 && sentence.Contains(' ')
+                && string.Equals(kept[^1], sentence, StringComparison.OrdinalIgnoreCase);
+            if (!again) kept.Add(sentence);
+        }
+        var cutOff = kept.Count > 0 && kept.Count < sentences.Count
+            && kept[^1].StartsWith(tail, StringComparison.OrdinalIgnoreCase);
+        if (tail.Length > 0 && !cutOff) kept.Add(tail);
+        return string.Join(' ', kept);
     }
 
     /// <param name="modelPath">Path to a whisper.cpp ggml model (e.g. ggml-tiny.bin).</param>
@@ -253,7 +295,7 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
                                                    seg.Start, seg.End));
             }
 
-            var result = text.ToString().Trim();
+            var result = WithoutRepeats(text.ToString().Trim());
 
             // WHAT THE CALLER COULD NOT SEE. A stopwatch around this method gives
             // one number; these are the four that say what to do about it —
@@ -380,6 +422,11 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             .WithProbabilities()
 
             ;
+
+        // A QUESTION IS ONE SEGMENT OF A FEW WORDS, so a loop is stopped where a question has to
+        // be over: an eighth of a state per token is seven and a half tokens a second of audio,
+        // faster than anybody talks. A longer window is a recording, with segments to keep.
+        if (window <= QuestionWindow) builder.WithSingleSegment().WithMaxTokensPerSegment(window / 8);
 
         // NAMES AND MONEY, WHICH IS WHAT A SMALL MODEL ACTUALLY GETS WRONG. See
         // Vocabulary: a prompt only when the caller has one, because priming with

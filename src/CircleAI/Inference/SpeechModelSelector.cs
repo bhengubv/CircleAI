@@ -430,6 +430,18 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
             .Where(e => ModelFit.Fits(e, ramGb, storageGb))
             .ToList();
 
+        // THE BEST VOICE IS THE BEST ONE THAT CAN SPEAK HERE (VoicePace). When none has kept up, the
+        // one nearest to it is the nearest thing to speech, and the highest rank may be the furthest.
+        if (modality == ModelModality.Tts && deviceOk.Count > 1)
+        {
+            var speaking = deviceOk.Where(e => CircleAI.Voice.VoicePace.CanSpeak(e.Name)).ToList();
+            if (speaking.Count > 0) deviceOk = speaking;
+            var keepingUp = deviceOk.Where(e => CircleAI.Voice.VoicePace.KeepsUp(e.Name)).ToList();
+            deviceOk = keepingUp.Count > 0
+                ? keepingUp
+                : [deviceOk.OrderBy(e => CircleAI.Voice.VoicePace.Of(e.Name) ?? double.MaxValue).ThenBy(e => e.TotalBytes).First()];
+        }
+
         var somethingFits = deviceOk.Count > 0;
         var winner = somethingFits
             ? deviceOk.OrderByDescending(e => e.QualityRank).ThenBy(e => e.MinRamGb).First()

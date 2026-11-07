@@ -39,7 +39,8 @@ public static class WorkerWire
                         Since = "since", WaitMs = "wait", Text = "text", Length = "len", Final = "final",
                         Pid = "pid", StartedMs = "started", Phase = "phase", Step = "step", RetryS = "retry",
                         RssKb = "rss", MemAvailKb = "memavail", MemTotalKb = "memtotal", Trim = "trim",
-                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain", Tools = "tools",
+                        Engine = "engine", Effort = "effort", Think = "think", Plain = "plain", Tools = "tools", JustRead = "justread",
+                        Conversation = "talk",
                         // THE BALANCE'S SHAPE FOR A LOAD (Step 4): the working memory's bits and the
                         // share of the context. Absent means the brain as built.
                         KvMode = "kv", ContextShare = "ctxshare",
@@ -62,6 +63,8 @@ public static class WorkerWire
         if (job.ThinkingBudget > 0) map[Think] = I(job.ThinkingBudget);
         if (job.Plain) map[Plain] = "1";
         if (job.Tools) map[Tools] = "1";
+        if (job.JustRead) map[JustRead] = "1";
+        if (job.Conversation is { Length: > 0 } talk) map[Conversation] = talk;
     }
 
     /// <summary>Whether the job allows tools (OPEN-GAPS A16), read back.</summary>

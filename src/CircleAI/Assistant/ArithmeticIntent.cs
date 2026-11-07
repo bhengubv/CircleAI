@@ -58,6 +58,10 @@ public static class ArithmeticIntent
         "what is", "what's", "whats", "what does", "how much is", "how many is",
         "work out", "the answer to", "tell me", "give me", "calculate", "compute",
         "please",
+
+        // A CORRECTION IS THE SAME SUM. "No, I meant eight times nine." went to the brain on the P30 on
+        // 2026-11-07 and came back as a call to a calculator nobody could run.
+        "no", "sorry", "actually", "i meant", "i mean", "i said", "make that", "and",
     };
 
     private static readonly string[] LeadOuts =

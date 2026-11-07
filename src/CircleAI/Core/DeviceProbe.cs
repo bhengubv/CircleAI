@@ -409,7 +409,7 @@ public sealed record DeviceProbe(
             RamAvailableBytes: ram,
             StorageFreeBytes:  storage,
             Gpu:               gpuOverride ?? GpuKind.None,
-            CpuCores:          Math.Max(1, Environment.ProcessorCount),
+            CpuCores:          DeviceContext.AllCores,
             Thermal:           thermal,
             Connectivity:      conn)
         {
