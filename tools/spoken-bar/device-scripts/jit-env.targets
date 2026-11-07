@@ -1,0 +1,6 @@
+<Project>
+  <!-- Scratch only: has the phone's JIT write out what it makes of the kernels. -->
+  <ItemGroup>
+    <AndroidEnvironment Include=".\jit\jit-env.txt" />
+  </ItemGroup>
+</Project>
