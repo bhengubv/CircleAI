@@ -53,9 +53,14 @@ public sealed class CueExtractor : IAtomExtractor
     /// always wins", "I would never have guessed". Being told again is the
     /// opposite: "dude, I told you this" is mid-sentence every time.
     /// </remarks>
+    /// <param name="Brief">
+    /// Whether a short sentence counts. "I live in Durban" is the whole of a fact,
+    /// where "never mind" is a reaction: see <see cref="ShortestWorthKeeping"/>.
+    /// </param>
+    /// <param name="Also">Words the sentence must hold as well: "my" is nothing without "is".</param>
     private sealed record Cue(
         string Phrase, AtomKind Kind, double Confidence,
-        bool Failed = false, bool AtStart = false);
+        bool Failed = false, bool AtStart = false, bool Brief = false, string? Also = null);
 
     private static readonly Cue[] Cues =
     [
@@ -93,6 +98,25 @@ public sealed class CueExtractor : IAtomExtractor
         new("dont forget ",      AtomKind.Fact,       0.95),
         new("keep in mind ",     AtomKind.Fact,       0.94),
         new("note that ",        AtomKind.Fact,       0.93),
+
+        // WHO THEY ARE, IN THEIR OWN WORDS. Nothing here asked for this for as
+        // long as the link filed every sentence anybody typed: "My name is Thabo"
+        // was kept because "Name one red fruit" was kept too, and on the P30 on
+        // 2026-11-07 the second kind came back in front of the next question as
+        // something known about the person, and the 2B answered those as well.
+        // Fact, because these are true rather than wanted. Narrow, because the
+        // sentence a person did not mean to leave behind is the failure above.
+        new("my name is ",       AtomKind.Fact,       0.92, Brief: true),
+        new("my name's ",        AtomKind.Fact,       0.92, Brief: true),
+        new("my ",               AtomKind.Fact,       0.82, AtStart: true, Also: " is "),
+        new("i live ",           AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i work ",           AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i am a ",           AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i am an ",          AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i'm a ",            AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i'm an ",           AtomKind.Fact,       0.84, AtStart: true, Brief: true),
+        new("i am allergic ",    AtomKind.Fact,       0.90, AtStart: true, Brief: true),
+        new("i'm allergic ",     AtomKind.Fact,       0.90, AtStart: true, Brief: true),
 
         // A rule, stated. The least ambiguous thing a person says - as long as
         // it is the sentence's first word. See Cue.AtStart.
@@ -178,7 +202,7 @@ public sealed class CueExtractor : IAtomExtractor
         // assistant's lets the thing that was corrected file its own version.
         foreach (var sentence in Sentences(episode.UserText))
         {
-            if (sentence.Length is < ShortestWorthKeeping or > LongestWorthKeeping) continue;
+            if (sentence.Length > LongestWorthKeeping) continue;
 
             var lowered = sentence.ToLowerInvariant();
 
@@ -187,6 +211,8 @@ public sealed class CueExtractor : IAtomExtractor
             // like a pattern.
             var cue = Cues
                 .Where(c => Position(lowered, c.Phrase) is var at && at >= 0 && (!c.AtStart || at == 0))
+                .Where(c => c.Brief || sentence.Length >= ShortestWorthKeeping)
+                .Where(c => c.Also is null || lowered.Contains(c.Also, StringComparison.Ordinal))
                 .OrderByDescending(c => c.Confidence)
                 .ThenByDescending(c => c.Phrase.Length)
                 .FirstOrDefault();

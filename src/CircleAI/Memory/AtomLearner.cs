@@ -166,4 +166,21 @@ public sealed class AtomLearner
     /// </remarks>
     public IReadOnlyList<AtomCandidate> Read(EpisodicMemoryEntry episode, string? subject = null) =>
         _extractor.Extract(episode, subject);
+
+    /// <summary>Whether an atom would be kept if it were said today.</summary>
+    /// <remarks>
+    /// FOR WHAT THE LINK LET IN BEFORE ANYBODY JUDGED IT. Every sentence typed to an
+    /// app went straight to the log as a bare atom - no kind of its own, no episode,
+    /// no outcome - and on the P30 on 2026-11-07 "Name one yellow fruit" came back
+    /// as something known about the person. It is still there, because nothing here
+    /// is deleted; this is how it stays out of an answer. An atom with anything to
+    /// say for itself stands: only one of those bare ones is read again.
+    /// </remarks>
+    public bool Stands(MemoryAtom atom)
+    {
+        ArgumentNullException.ThrowIfNull(atom);
+
+        var bare = atom is { Kind: AtomKind.Decision, SourceEpisode: null, Outcome: null, Challenge: null };
+        return !bare || _extractor.Extract(new EpisodicMemoryEntry { UserText = atom.Text }).Any(c => c.Certain);
+    }
 }

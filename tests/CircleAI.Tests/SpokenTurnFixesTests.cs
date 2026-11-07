@@ -79,11 +79,56 @@ public sealed class SpokenTurnFixesTests
     [InlineData("What is the tallest?", true)]
     [InlineData("Who was the first person to walk on", true)]
     [InlineData("Um,", true)]
+    [InlineData("My name is", true)]
+    [InlineData("The capital of Peru is", true)]
+    [InlineData("What is", true)]
+    [InlineData("What time is", true)]
+    [InlineData("How old is", true)]
+    [InlineData("What is her", true)]
+    [InlineData("Is that", true)]
+    [InlineData("It will be", true)]
+    [InlineData("How do I get to", true)]
+    [InlineData("What is the weather in", true)]
+    [InlineData("What's the Zulu word for", true)]
+    [InlineData("I would like", true)]
+    [InlineData("I live in", true)]
+    [InlineData("Tell me what", true)]
+    [InlineData("I want to know how", true)]
+    [InlineData("And so", true)]
     [InlineData("Name one kind of bird.", false)]
     [InlineData("What is the capital of Peru?", false)]
     [InlineData("", false)]
     public void Words_that_stop_on_a_word_that_cannot_end_a_sentence_look_unfinished(string words, bool open) =>
         Assert.Equal(open, TurnEnd.LooksUnfinished(words));
+
+    // Measured on the P30 on 2026-11-07: the first held the microphone 1,5 s past its last word, 3,24 s to the first
+    // sound. Each of these ends on a word the list held because some other sentence goes on from it.
+    [Theory]
+    [InlineData("What could I get her?")]
+    [InlineData("What should I do?")]
+    [InlineData("What does a plumber do?")]
+    [InlineData("What could it be?")]
+    [InlineData("What's going on?")]
+    [InlineData("What is that?")]
+    [InlineData("Why is that?")]
+    [InlineData("Where are you from?")]
+    [InlineData("What are you looking at?")]
+    [InlineData("Who should I talk to?")]
+    [InlineData("What is it for?")]
+    [InlineData("What is it like?")]
+    [InlineData("What's the weather like?")]
+    [InlineData("Give it to her.")]
+    [InlineData("Turn it on.")]
+    [InlineData("Go on.")]
+    [InlineData("Hold on")]
+    [InlineData("Yes it is.")]
+    [InlineData("I think so.")]
+    [InlineData("Why?")]
+    [InlineData("How?")]
+    [InlineData("But why?")]
+    [InlineData("Tell me why.")]
+    public void A_sentence_that_ends_on_a_word_that_sometimes_goes_on_is_finished(string words) =>
+        Assert.False(TurnEnd.LooksUnfinished(words));
 
     [Fact]
     public void The_gate_waits_longer_when_it_is_told_to()
@@ -191,7 +236,6 @@ public sealed class SpokenTurnFixesTests
         var builder = new SkillContextBuilder(new OneSkill());
 
         Assert.Empty(await builder.BuildContextAsync("I don't know how to tell my kids.", spoken: true, CancellationToken.None));
-        Assert.NotEmpty(await builder.BuildContextAsync("I don't know how to tell my kids.", spoken: false, CancellationToken.None));
     }
 
     [Fact]

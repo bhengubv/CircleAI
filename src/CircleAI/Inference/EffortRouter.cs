@@ -148,12 +148,15 @@ public sealed class EffortRouter
 
     /// <summary>
     /// Whether <paramref name="next"/> asks the same thing again as <paramref name="previous"/>:
-    /// the same words once case and punctuation are gone, or most of them in common.
+    /// the same words once case and punctuation are gone, with a word or two around them at most.
     /// </summary>
     /// <remarks>
-    /// SAID AGAIN, NOT MERELY ON THE SAME SUBJECT. Two thirds of the words in common, over the
-    /// longer of the two, is a repetition with a word changed ("why is the sky blue" -> "but why
-    /// is the sky blue"), where a follow-up shares a subject and little else.
+    /// SAID AGAIN, NOT MERELY ON THE SAME SUBJECT, AND A WORD CHANGED IS ANOTHER QUESTION. All of one
+    /// inside the other is a repetition ("why is the sky blue" -> "but why is the sky blue"). This
+    /// took two thirds of the words in common for one, and on the P30 on 2026-11-07 "Name one yellow
+    /// fruit" then "Name one red fruit" and "My test word is mango" then "What is my test word?" were
+    /// two re-asks: every quick typed question after them thought first, 1,9 s to the first word
+    /// became 17,6 s, and it would have stayed that way.
     /// </remarks>
     public static bool Again(string? previous, string? next)
     {
@@ -162,9 +165,12 @@ public sealed class EffortRouter
         if (a.Count == 0 || b.Count == 0) return false;
         if (a.SequenceEqual(b)) return true;
         if (Math.Min(a.Count, b.Count) < 3) return false;
-        var shared = a.Intersect(b, StringComparer.Ordinal).Count();
-        return shared * 3 >= Math.Max(a.Distinct().Count(), b.Distinct().Count()) * 2;
+        var (fewer, more) = a.Count <= b.Count ? (a, b) : (b, a);
+        return more.Count - fewer.Count <= WordsAround && fewer.All(more.Contains);
     }
+
+    // How many words may be said around a question that is still the same question: "but", "tell me".
+    private const int WordsAround = 2;
 
     /// <summary>The effort a device gives a question before anything has been learned.</summary>
     public static ReasoningEffort Basis(TurnWeight weight, FormFactor form) =>

@@ -38,6 +38,12 @@ public sealed class InProcessBrainWorker : IBrainWorker
     // costs nothing, so a live conversation keeps its history; what it would have to read again goes.
     private static readonly TimeSpan ReadingLimit = TimeSpan.FromSeconds(3);
 
+    // LONGER FOR A CONVERSATION, WHICH ONLY COSTS ANYTHING WHEN THE BRAIN HAS LOST IT. One it holds has the
+    // new turn to read. One it lost has all of it to read again, and on the P30 on 2026-11-07 a killed
+    // brain came back to 103 tokens and three seconds for them: the talk about a dripping tap went,
+    // and "Can I fix it myself?" was answered "I need to know what specific issue you are facing".
+    private static readonly TimeSpan ThreadLimit = TimeSpan.FromSeconds(15);
+
     private readonly Func<CancellationToken, Task<InProcessBrain>> _start;
     private readonly TimeProvider _clock;
     private readonly Action<string> _log;
@@ -212,7 +218,9 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 JustRead = job.JustRead,
                 Conversation = job.Conversation,
                 Spoken = job.Spoken,
-                ReadWithin = left > TimeSpan.Zero ? TimeSpan.FromTicks(Math.Min((left * ReadingShare).Ticks, ReadingLimit.Ticks)) : null,
+                ReadWithin = left > TimeSpan.Zero
+                    ? TimeSpan.FromTicks(Math.Min((left * ReadingShare).Ticks, (job.Conversation is null ? ReadingLimit : ThreadLimit).Ticks))
+                    : null,
             };
             var clock = Stopwatch.StartNew();
             long ttft = -1;

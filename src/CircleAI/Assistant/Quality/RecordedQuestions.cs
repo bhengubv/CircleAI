@@ -138,6 +138,7 @@ public static partial class AnswerExpectation
     private static readonly string[] Always =
     {
         "<think>", "</think>", "<|im_", "Thinking Process", "**", "IT! >", "Things you already know about them",
+        "What I have told you before",
         "Background for you", "Facts for you", "What may help", "Available Skills",
         // The notes quoted back as the person's own (2026-10-17, the meal and health tiles).
         "the background", "your background", "facts provided", "summary of the facts",

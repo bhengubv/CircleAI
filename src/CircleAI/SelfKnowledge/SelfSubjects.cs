@@ -87,9 +87,14 @@ public static class SelfSubjects
     /// <remarks>
     /// APPENDED, LIKE A TRIP: the router learns from the most recent few, so each one is kept, and
     /// the kind and the signal are in the subject - read back from there, never from the prose.
+    /// <para>
+    /// "SAID-AGAIN", AND "ASKED-AGAIN" IS NO LONGER READ. Those were counted by a comparison that took
+    /// "Name one red fruit" for "Name one yellow fruit" (EffortRouter.Again), and on a phone two of them
+    /// are every quick question thinking first. They stay in the log; they just stop being lessons.
+    /// </para>
     /// </remarks>
     public static string Effort(CircleAI.Inference.TurnWeight weight, CircleAI.Inference.EffortSignal signal) =>
-        $"{Prefix}effort:{Normalise(weight.ToString())}:{(signal == CircleAI.Inference.EffortSignal.Cancelled ? "cancelled" : "asked-again")}";
+        $"{Prefix}effort:{Normalise(weight.ToString())}:{(signal == CircleAI.Inference.EffortSignal.Cancelled ? "cancelled" : "said-again")}";
 
     /// <summary>The kind of question and the signal out of an effort subject, or null.</summary>
     public static (CircleAI.Inference.TurnWeight Weight, CircleAI.Inference.EffortSignal Signal)? EffortOf(string? subject)
@@ -99,9 +104,9 @@ public static class SelfSubjects
         if (parts.Length != 2 || !Enum.TryParse<CircleAI.Inference.TurnWeight>(parts[0], ignoreCase: true, out var weight)) return null;
         return parts[1] switch
         {
-            "cancelled"   => (weight, CircleAI.Inference.EffortSignal.Cancelled),
-            "asked-again" => (weight, CircleAI.Inference.EffortSignal.AskedAgain),
-            _             => null,
+            "cancelled"  => (weight, CircleAI.Inference.EffortSignal.Cancelled),
+            "said-again" => (weight, CircleAI.Inference.EffortSignal.AskedAgain),
+            _            => null,
         };
     }
 

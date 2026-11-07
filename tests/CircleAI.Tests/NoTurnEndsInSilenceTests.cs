@@ -137,7 +137,7 @@ public sealed class NoTurnEndsInSilenceTests
         var text = WakeTurn();
         var woke = text.IndexOf("Earcon.Woke()", StringComparison.Ordinal);
         var started = text.IndexOf("CircleNeuronService.Start(", StringComparison.Ordinal);
-        var heard = text.IndexOf("HearAsync(ct)", StringComparison.Ordinal);
+        var heard = text.IndexOf("await HearAsync(", StringComparison.Ordinal);
 
         Assert.True(woke > 0 && started > 0 && heard > 0, "the turn has been restructured");
         Assert.True(started > woke, "the brain is started before the tone that says it heard you");
@@ -151,7 +151,7 @@ public sealed class NoTurnEndsInSilenceTests
         // "**Joke:** Why did the lobster..." on 2026-10-02, and the voice would
         // have said the stars. The cleaning moved to the sentence when the answer
         // started streaming, because there is no later moment at which to do it.
-        Assert.Contains("PlainReply.Clean(sentence)", WakeTurn(), StringComparison.Ordinal);
+        Assert.Contains("PlainReply.ForTheEar(piece)", WakeTurn(), StringComparison.Ordinal);
     }
 
     [Fact]

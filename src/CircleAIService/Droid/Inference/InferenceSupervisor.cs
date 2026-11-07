@@ -60,6 +60,8 @@ public sealed class InferenceSupervisor : IBrainWorker
     private string? _pendingCandidate;
     private bool _nothingRunnable;
     private DateTimeOffset _lastUse = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastTurn = DateTimeOffset.MinValue;      // the last time it was asked anything
+    private DateTimeOffset _loadedAgainFor = DateTimeOffset.MinValue; // the turn the last LoadAgainIfInUse was for
     private BalanceShape _shape = BalanceShape.Full;
 
     /// <summary>A supervisor over a worker connection.</summary>
@@ -228,7 +230,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         }
         finally
         {
-            lock (_gate) _lastUse = DateTimeOffset.UtcNow;
+            lock (_gate) _lastUse = _lastTurn = DateTimeOffset.UtcNow;
             watch.Cancel();
             await stream.DisposeAsync().ConfigureAwait(false);
         }
@@ -740,8 +742,28 @@ public sealed class InferenceSupervisor : IBrainWorker
                 Set(new BrainWorkerStatus(BrainPhase.Installed, LoadStep.None, death.ModelId, failure, null, null, DateTimeOffset.UtcNow));
                 Report(BrainPhase.Installed, LoadStep.None, death.ModelId, failure.Kind, ReadinessSentences.For(failure.Kind));
                 _log($"the idle brain's process ended ({failure.Kind}); it loads again on the next question");
+                LoadAgainIfInUse();
             });
         }
+    }
+
+    /// <summary>Starts the load the next question would wait for, when one is likely to come.</summary>
+    /// <remarks>
+    /// SOMEBODY IN THE MIDDLE OF A CONVERSATION IS ABOUT TO ASK. On the P30 on 2026-11-07 a brain killed
+    /// between two turns came back only once the next question had reached it, 13,6 s after that. ONCE
+    /// PER TURN, and a load is not a turn: a phone that keeps taking the brain back for memory is
+    /// not fed another, and the next question decides as it always did.
+    /// </remarks>
+    private void LoadAgainIfInUse()
+    {
+        lock (_gate)
+        {
+            if (_lastTurn == _loadedAgainFor || DateTimeOffset.UtcNow - _lastTurn > TimeSpan.FromMinutes(2)) return;
+            _loadedAgainFor = _lastTurn;
+        }
+
+        _log("it was asked something a moment ago: loading it again now");
+        _ = EnsureReadyAsync(CancellationToken.None).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private async Task<Failure> ClassifyDeathAsync(WorkerDeath death)

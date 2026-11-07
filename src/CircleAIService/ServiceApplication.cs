@@ -1624,7 +1624,8 @@ public sealed partial class ServiceApplication : Application
             const string autonomyKey = "service.selfheal.autonomy";   // the key DeviceSettings keeps it under
 
             // THE BRAIN IS ASKED ONLY ABOUT A FAULT NO RULE KNOWS, and through the one door for
-            // questions, in the background lane - so an analysis never takes the brain from somebody.
+            // questions, in the background lane - so an analysis never takes the brain from somebody:
+            // a person's ask stops it and it goes back in line (RequestCoordinator.Submit).
             CircleAI.Hosting.SelfHealing.IFailureAnalyst? analyst = asks is null
                 ? null
                 : new CircleAI.Hosting.SelfHealing.FailureAnalyst((system, user, ct) => AskAsideAsync(asks, system, user, ct));

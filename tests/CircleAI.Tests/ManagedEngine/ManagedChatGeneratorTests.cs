@@ -522,6 +522,36 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
     }
 
     [Fact]
+    public async Task A_tool_the_kept_conversation_was_not_offered_starts_it_again_and_one_it_was_goes_on()
+    {
+        var g = Generator();
+        if (g is null) return;
+
+        const string persona = "You are B!, a helpful assistant on this phone. Answer in one sentence.";
+        var talk = Guid.NewGuid().ToString("N");
+        ChatMessage[] Said(string words) => [new("system", persona), new("user", words)];
+        var calculate = new CircleAI.Tools.ToolDefinition
+        {
+            Name = "calculate", Description = "Works out a sum", RequiredParameters = [],
+            Parameters = new Dictionary<string, CircleAI.Tools.ToolParameter>(),
+        };
+
+        await g.GenerateAsync(Said("My sister's name is Thandi."), Talking(talk, 12));
+        var next = Said("What is two plus two?");
+
+        // THE TOOLS ARE IN THE SYSTEM TURN, WHICH THE BRAIN READ LONG AGO: a call there is no way to offer goes from the words.
+        var offered = g.Unread(next, [calculate], talk);
+        var without = g.Unread(next, null, talk);
+        Assert.True(offered > without, $"{offered} with the tool, {without} without");
+
+        await g.GenerateAsync(next, Talking(talk, 12).WithTools([calculate]));
+
+        // AND ONE WITH THE TOOLS ALREADY IN IT GOES ON, offered them or not.
+        var after = Said("And three plus three?");
+        Assert.Equal(g.Unread(after, null, talk), g.Unread(after, [calculate], talk));
+    }
+
+    [Fact]
     public async Task Another_conversation_is_read_from_its_own_messages()
     {
         var g = Generator();

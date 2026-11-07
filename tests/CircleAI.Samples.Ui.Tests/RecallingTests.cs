@@ -24,9 +24,9 @@ public class RecallingTests
     [Fact]
     public void Nothing_known_leaves_the_question_exactly_as_asked()
     {
-        // NOT AN EMPTY HEADING. "Things you already know about them:" followed
-        // by nothing invites a small model to fill the gap, and inventing a fact
-        // about somebody is the one failure this feature must not cause.
+        // NOT AN EMPTY HEADING. A heading followed by nothing invites a small
+        // model to fill the gap, and inventing a fact about somebody is the one
+        // failure this feature must not cause.
         Assert.Equal("what is my name?", Recalling.Ask("what is my name?", []));
         Assert.Equal("what is my name?", Recalling.Ask("what is my name?", null));
     }
@@ -36,7 +36,7 @@ public class RecallingTests
     {
         var asked = Recalling.Ask("what is my name?", [new Remembered("their name is Thabo")]);
 
-        Assert.StartsWith("Things you already know about them:", asked);
+        Assert.StartsWith("What I have told you before", asked);
         Assert.Contains("- their name is Thabo", asked);
 
         // THE QUESTION IS STILL LAST. A model reads to the end and answers what

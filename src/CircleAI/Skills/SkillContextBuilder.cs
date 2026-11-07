@@ -76,6 +76,12 @@ public sealed class SkillContextBuilder
     /// dog had died, drew the skill on raising children and came back as registering a birth. The notes
     /// cost 11,7 s at the median and were the answer's undoing as often as its help. A spoken turn takes
     /// the one skill two of the question's own words name, and no more of it than a moment's reading.
+    /// <para>
+    /// AND SOMEBODY IS WAITING AT THE KEYBOARD TOO. On the same phone that day "Give me three names for a
+    /// black cat" drew 592 characters of animal care on the strength of "cat": 15,3 s to the first word,
+    /// for notes on vets and rabies. A typed turn may have the longer note, and more than one, but what
+    /// it takes has to be named by half of what was asked (<see cref="TypedTerms"/>).
+    /// </para>
     /// </remarks>
     public async Task<string> BuildContextAsync(string userQuery, bool spoken, CancellationToken cancellationToken)
     {
@@ -123,8 +129,13 @@ public sealed class SkillContextBuilder
         if (spoken)
         {
             candidates = candidates.Where(c => NamedBy(c, terms) >= SpokenTerms).Take(1).ToList();
-            if (candidates.Count == 0) return string.Empty;
         }
+        else
+        {
+            var need = TypedTerms(terms);
+            candidates = candidates.Where(c => NamedBy(c, terms) >= need).ToList();
+        }
+        if (candidates.Count == 0) return string.Empty;
         var budget = spoken ? Math.Min(_maxChars, SpokenChars) : _maxChars;
 
         // NEVER THE QUESTION ITSELF: this line used to print it whole, and a composed
@@ -460,12 +471,22 @@ public sealed class SkillContextBuilder
     private const int SpokenTerms = 2;
     private const int SpokenChars = 240;
 
+    // Words that say when and not what: "Help me plan meals today" is as much about meals as without it.
+    private static readonly HashSet<string> SayWhen = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "now", "today", "tonight", "tomorrow", "yesterday", "week", "weekend", "month", "year",
+    };
+
+    /// <summary>How many of <paramref name="terms"/> a skill must be named by for a typed turn: half of those that say what it is about.</summary>
+    private static int TypedTerms(IReadOnlyList<string> terms) => Math.Max(1, (terms.Count(t => !SayWhen.Contains(t)) + 1) / 2);
+
     /// <summary>How many of <paramref name="terms"/> are in the skill's own id, name or tags: what it is called, not what it mentions.</summary>
+    /// <remarks>The id whole as well as in its words: asking by the id is how the body is looked back up.</remarks>
     private static int NamedBy(SkillSummary skill, IReadOnlyList<string> terms)
     {
         var words = string.Join(' ', skill.Id, skill.Name, string.Join(' ', skill.Tags ?? Array.Empty<string>()))
             .Split(WordBreaks, StringSplitOptions.RemoveEmptyEntries);
-        return terms.Count(t => words.Any(w => SameWord(w, t)));
+        return terms.Count(t => string.Equals(t, skill.Id, StringComparison.OrdinalIgnoreCase) || words.Any(w => SameWord(w, t)));
     }
 
     /// <summary>Whether a skill's id, name, tags or description carry <paramref name="term"/>.</summary>

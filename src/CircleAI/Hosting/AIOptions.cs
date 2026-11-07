@@ -558,10 +558,9 @@ public sealed class AIOptions
     /// <remarks>
     /// RETRIEVAL IS NOT PROMPTING, AND ONE STRING WAS DOING BOTH. The prompt a
     /// head builds can carry material that belongs to the MODEL and not to a
-    /// search: CircleAI.Assistant's Recalling.Ask puts "Things you already know
-    /// about them:" and a few remembered facts in front of the question, and
-    /// every one of those words was being fed to the skill store and the RAG
-    /// index as a search term.
+    /// search: CircleAI.Assistant's Recalling.Ask puts a heading and a few
+    /// remembered facts in front of the question, and every one of those words
+    /// was being fed to the skill store and the RAG index as a search term.
     /// <para>
     /// Measured on a P30 on 2026-09-13: a phone that had remembered one note
     /// about deploying searched 1,378 skills for that note alongside the real

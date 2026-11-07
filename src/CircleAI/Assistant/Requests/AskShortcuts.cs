@@ -164,7 +164,7 @@ public sealed partial class DeviceClockShortcut(TimeProvider? clock = null, Func
 
     // TO THE END OF THE SENTENCE. Left open, "What day does Christmas fall on this year?" was this
     // question with some words after it, and on the P30 on 2026-11-07 it got today's date.
-    [GeneratedRegex(@"\b(?:what(?:'s| is)?\s+(?:the\s+)?(?:date|day)(?:\s+(?:is it|today|it is))?|what\s+day\s+is\s+(?:it|today)|today'?s\s+date|which\s+day\s+is\s+(?:it|today))\s*[\?\.!]*\s*$",
+    [GeneratedRegex(@"\b(?:what(?:'s| is)?\s+(?:the\s+)?(?:date|day)(?:\s+(?:is it|it is))?(?:\s+today)?|what\s+day\s+is\s+(?:it|today)|today'?s\s+date|which\s+day\s+is\s+(?:it|today))\s*[\?\.!]*\s*$",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DateQuestion();
 

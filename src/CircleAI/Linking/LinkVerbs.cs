@@ -23,7 +23,7 @@ public enum LinkVerb
     /// <summary>Read the person's long-term memory for a situation. Needs <see cref="LinkScope.Memory"/>.</summary>
     Recall,
 
-    /// <summary>Write a fact into the person's long-term memory. Needs <see cref="LinkScope.Memory"/>.</summary>
+    /// <summary>Hand the person's long-term memory what they said, for it to keep what is worth keeping. Needs <see cref="LinkScope.Memory"/>.</summary>
     Remember,
 
     /// <summary>Search or list the skill library. Needs <see cref="LinkScope.Skills"/>.</summary>
@@ -281,7 +281,7 @@ public enum LinkVerb
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
 /// <param name="Verb">Which verb.</param>
 /// <param name="Query">Recall: the situation text. Skills: the search text (null lists all).</param>
-/// <param name="Text">Remember: the fact to store.</param>
+/// <param name="Text">Remember: what was said.</param>
 /// <param name="Subject">Remember: the situation key to file it under (optional).</param>
 /// <param name="Limit">Recall: the most atoms to return.</param>
 /// <param name="Args">

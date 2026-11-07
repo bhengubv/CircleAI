@@ -187,6 +187,160 @@ public sealed class DurableQuestionsTests : IDisposable
 
     // ── the coordinator ──────────────────────────────────────────────────────
 
+    private sealed class HiShortcut : IAskShortcut
+    {
+        public string Name => "hi";
+
+        public ValueTask<string?> TryAnswerAsync(AskRecord ask, CancellationToken ct) =>
+            ValueTask.FromResult<string?>(ask.Asked == "Hi." ? "Hello." : null);
+    }
+
+    private static async Task Until(Func<bool> done)
+    {
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (!done() && DateTimeOffset.UtcNow < deadline) await Task.Delay(5);
+        Assert.True(done(), "it never happened");
+    }
+
+    [Fact]
+    public async Task A_person_takes_the_brain_from_a_background_ask_and_it_goes_back_in_line()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { HoldAnswer = new TaskCompletionSource() };
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var analysis = front.Submit(Ask("Why did the brain stop?", caller: "internal:wolverine", lane: AskLane.Background)).Record!;
+        await Until(() => brain.Jobs.Count == 1);
+        brain.HoldAnswer = null;
+
+        var person = front.Submit(Ask("What is the capital of Kenya?", lane: AskLane.Assistant)).Record!;
+
+        Assert.Equal(AskState.Succeeded, (await Final(front, "app:1", person.Id)).State);
+        var done = await Final(front, "internal:wolverine", analysis.Id);
+
+        Assert.Equal(AskState.Succeeded, done.State);
+        Assert.Equal(1, done.Attempts);   // giving way is not a failure, and is not counted as a try
+        Assert.Equal(["Why did the brain stop?", "What is the capital of Kenya?", "Why did the brain stop?"],
+                     brain.Jobs.Select(j => j.Messages[^1].Content));
+    }
+
+    [Theory]
+    [InlineData(AskLane.Assistant)]
+    [InlineData(AskLane.Foreground)]
+    public async Task A_question_is_not_kept_waiting_by_a_background_ask_for_a_brain_still_loading(AskLane lane)
+    {
+        using var store = Store();
+        var brain = new FakeBrain { Loading = new TaskCompletionSource() };
+        await using var front = new RequestCoordinator(store, brain, Quick, shortcuts: [new HiShortcut()]);
+        front.Start();
+
+        var analysis = front.Submit(Ask("Why did the brain stop?", caller: "internal:wolverine", lane: AskLane.Background)).Record!;
+        await Until(() => store.Get(analysis.Id)!.State == AskState.WaitingForModel);
+
+        // Measured on the P30 on 2026-11-07: "Hi." waited 37 s for this, behind the analysis of a crash.
+        var hello = front.Submit(Ask("Hi.", lane: lane)).Record!;
+        Assert.Equal("Hello.", (await Final(front, "app:1", hello.Id)).Text);
+        Assert.Empty(brain.Jobs);
+
+        brain.Loading.SetResult();
+        Assert.Equal(AskState.Succeeded, (await Final(front, "internal:wolverine", analysis.Id)).State);
+    }
+
+    [Fact]
+    public async Task Somebody_who_asked_while_the_brain_came_up_goes_before_the_background_ask_that_was_waiting_for_it()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { Loading = new TaskCompletionSource() };
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var analysis = front.Submit(Ask("Why did the brain stop?", caller: "internal:wolverine", lane: AskLane.Background)).Record!;
+        await Until(() => store.Get(analysis.Id)!.State == AskState.WaitingForModel);
+
+        var person = front.Submit(Ask("What is the capital of Kenya?", lane: AskLane.Assistant)).Record!;
+        await Until(() => store.Get(person.Id)!.State == AskState.WaitingForModel);
+        brain.Loading.SetResult();
+
+        await Final(front, "app:1", person.Id);
+        await Final(front, "internal:wolverine", analysis.Id);
+
+        Assert.Equal("What is the capital of Kenya?", brain.Jobs[0].Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task What_streams_is_what_it_ends_on_so_a_reader_by_offset_gets_the_answer()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { Answer = "A yellow fruit is a **yellow apple**." };
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        var streamed = new List<string>();
+        front.Changed += (_, r) => { if (r.State == AskState.Running && r.Text.Length > 0) lock (streamed) streamed.Add(r.Text); };
+        front.Start();
+
+        var done = await Final(front, "app:1", front.Submit(Ask("Name one yellow fruit")).Record!.Id);
+
+        Assert.Equal("A yellow fruit is a yellow apple.", done.Text);
+        Assert.NotEmpty(streamed);
+        Assert.All(streamed, partial => Assert.StartsWith(partial, done.Text, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task One_background_ask_does_not_stop_another()
+    {
+        using var store = Store();
+        var brain = new FakeBrain { HoldAnswer = new TaskCompletionSource() };
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var first = front.Submit(Ask("Why did the brain stop?", caller: "internal:wolverine", lane: AskLane.Background)).Record!;
+        await Until(() => brain.Jobs.Count == 1);
+        var other = front.Submit(Ask("And why again?", caller: "internal:wolverine", lane: AskLane.Background)).Record!;
+
+        brain.HoldAnswer.SetResult();
+
+        await Final(front, "internal:wolverine", first.Id);
+        await Final(front, "internal:wolverine", other.Id);
+        Assert.Equal(2, brain.Jobs.Count);   // one background ask never stops another
+    }
+
+    [Theory]
+    [InlineData("s1", false, "app:1|s1")]
+    [InlineData("s1", true, null)]
+    [InlineData("", false, null)]
+    public async Task A_typed_talk_is_kept_in_the_brain_as_a_spoken_one_is_and_a_tool_turn_is_not(string session, bool agentic, string? kept)
+    {
+        using var store = Store();
+        var brain = new FakeBrain();
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var ask = front.Submit(Ask("Name three cat names.", session: session) with { Agentic = agentic }).Record!;
+        await Final(front, "app:1", ask.Id);
+
+        Assert.Equal(kept, brain.Jobs[^1].Conversation);
+    }
+
+    [Fact]
+    public async Task What_it_was_too_soon_to_read_is_read_when_the_brain_is_back()
+    {
+        using var store = Store();
+        var brain = new FakeBrain();
+        brain.Set(BrainPhase.Installed);
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        front.ReadAhead(Ask(string.Empty, session: "talk") with { Spoken = true });
+        await Task.Delay(50);
+        Assert.Empty(brain.Jobs);
+
+        brain.Set(BrainPhase.Ready);
+
+        await Until(() => brain.Jobs.Count == 1);
+        Assert.True(brain.Jobs[0].JustRead);
+        Assert.Equal("app:1|talk", brain.Jobs[0].Conversation);
+    }
+
     [Fact]
     public async Task A_question_is_stored_before_submit_returns_and_answered()
     {

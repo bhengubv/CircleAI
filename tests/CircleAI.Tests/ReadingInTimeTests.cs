@@ -238,7 +238,7 @@ public sealed class ReadingInTimeTests : IDisposable
         Assert.NotEmpty(brain.Calls[^1].Options!.Tools!);
     }
 
-    private async Task<(TimeSpan Within, List<ChatMessage> Handed)> Queued(TimeSpan left)
+    private async Task<(TimeSpan Within, List<ChatMessage> Handed)> Queued(TimeSpan left, string? conversation = null)
     {
         var brain = new ReadingBrain();
         var service = Service(brain);
@@ -248,7 +248,7 @@ public sealed class ReadingInTimeTests : IDisposable
             return new InProcessBrain(service, "Ternary-Bonsai-2-2B");
         });
 
-        var job = new BrainJob("ask-1", Conversation(), Question, 64, false, DateTimeOffset.UtcNow.Add(left));
+        var job = new BrainJob("ask-1", Conversation(), Question, 64, false, DateTimeOffset.UtcNow.Add(left), Conversation: conversation);
         await foreach (var _ in worker.GenerateAsync(job, CancellationToken.None)) { }
         return (brain.Calls[^1].Options!.ReadWithin!.Value, brain.Calls[^1].Messages);
     }
@@ -261,6 +261,19 @@ public sealed class ReadingInTimeTests : IDisposable
         // Three seconds at a second a token: the question goes in whatever it costs, and history goes.
         Assert.Equal(TimeSpan.FromSeconds(3), within);
         Assert.Equal(["Name"], Said(handed));
+    }
+
+    [Fact]
+    public async Task A_conversation_the_brain_has_lost_is_read_again_as_far_as_a_moment_goes()
+    {
+        var (within, handed) = await Queued(TimeSpan.FromMinutes(2), "internal:assistant|talk");
+
+        // Fifteen seconds at a second a token, and nine of them are the question and the system turn.
+        Assert.Equal(TimeSpan.FromSeconds(15), within);
+        Assert.Equal(["Name"], Said(handed));
+
+        // On a phone at 128 ms a token, the 103 that came back after a kill on 2026-11-07 fit.
+        Assert.True(TimeSpan.FromMilliseconds(128 * 103) < within);
     }
 
     [Fact]

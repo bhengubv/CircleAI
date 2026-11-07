@@ -192,11 +192,23 @@ public sealed class EffortRouterTests : IDisposable
         Assert.Equal((TurnWeight.Hard, EffortSignal.Cancelled), SelfSubjects.EffortOf(SelfSubjects.Effort(TurnWeight.Hard, EffortSignal.Cancelled)));
     }
 
+    [Fact]
+    public void What_was_learned_from_the_old_comparison_is_no_lesson()
+    {
+        Assert.Null(SelfSubjects.EffortOf("self:effort:quick:asked-again"));
+        Assert.Equal((TurnWeight.Quick, EffortSignal.AskedAgain), SelfSubjects.EffortOf(SelfSubjects.Effort(TurnWeight.Quick, EffortSignal.AskedAgain)));
+        Assert.Equal((TurnWeight.Quick, EffortSignal.Cancelled), SelfSubjects.EffortOf("self:effort:quick:cancelled"));
+    }
+
     [Theory]
     [InlineData("Why is the sky blue?", "why is the sky blue", true)]
     [InlineData("Why is the sky blue?", "But why is the sky blue?", true)]
+    [InlineData("Why is the sky blue?", "Tell me why the sky is blue", true)]
     [InlineData("Why is the sky blue?", "What colour is the sea?", false)]
     [InlineData("Hi", "Hi there", false)]
+    [InlineData("Name one yellow fruit", "Name one red fruit", false)]
+    [InlineData("My test word is mango", "What is my test word?", false)]
+    [InlineData("What is the capital of Kenya?", "What is the capital of Peru?", false)]
     public void Asked_again_means_said_again(string first, string second, bool again) =>
         Assert.Equal(again, EffortRouter.Again(first, second));
 

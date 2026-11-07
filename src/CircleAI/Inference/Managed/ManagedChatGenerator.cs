@@ -200,6 +200,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private string? _talk;
     private string? _talkAsked;     // the question of its last finished turn, as the messages hold it
     private readonly List<int> _talkTokens = [];
+    private readonly HashSet<string> _talkTools = new(StringComparer.Ordinal); // the tools its system turn offers
 
     // Speculative decoding with the file's MTP head (S5): null for a file without one, or when the
     // options ask for plain decoding.
@@ -1050,6 +1051,8 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _talkAsked = options.RetrievalQuery ?? messages.LastOrDefault(m => IsPerson(m))?.Content;
         _talkTokens.Clear();
         _talkTokens.AddRange(_history);
+        _talkTools.Clear();
+        foreach (var tool in options.Tools ?? []) _talkTools.Add(tool.Name);
         _state.MarkTalk();
     }
 
@@ -1057,13 +1060,14 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // The prompt of a turn going on the conversation the brain is keeping: what it holds, the last turn's
     // end, and what has been said since as the template writes it. Null when the turn is to be read from
-    // its messages: a conversation it is not keeping, a state that has since gone to somebody else, or no
-    // room left.
+    // its messages: a conversation it is not keeping, a state that has since gone to somebody else, no room
+    // left, or a tool its system turn does not offer: the tools are written there, and that was read long ago.
     private List<int>? GoingOn(string? conversation, IReadOnlyList<ChatMessage> messages, PromptIds built,
         IReadOnlyList<CircleAI.Tools.ToolDefinition>? tools, bool thinking, ReasoningEffort? effort, int room)
     {
         if (conversation is null || conversation != _talk || built.Slots is not null || _turnEnd.Length == 0) return null;
         if (_state.TalkPosition != _talkTokens.Count) return null;
+        if (tools is not null && !tools.All(t => _talkTools.Contains(t.Name))) return null;
 
         // WHAT WAS SAID SINCE THE BRAIN LAST SPOKE, WHICH IS MORE THAN THE QUESTION WHEN A TABLE ANSWERED ONE
         // IN BETWEEN: "What's the capital of Australia?" never reaches it, and "How many people live there?"

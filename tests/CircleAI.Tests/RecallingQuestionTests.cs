@@ -92,9 +92,8 @@ public class RecallingQuestionTests
     public void Text_that_merely_mentions_the_heading_is_not_treated_as_composed()
     {
         // The heading has to be at the START. Somebody asking about the feature
-        // itself - "what does Things you already know about them: mean" - must
-        // not have their question cut in half.
-        const string asking = "What does Things you already know about them: mean?";
+        // itself must not have their question cut in half.
+        const string asking = "What does What I have told you before: mean?";
         Assert.Equal(asking, Recalling.Question(asking));
     }
 }

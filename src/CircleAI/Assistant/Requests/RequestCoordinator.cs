@@ -75,6 +75,10 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     private AskSubmission? _readNext;
     private Task? _reading;
     private CancellationTokenSource? _runningCts;
+
+    // WHAT A BACKGROUND ASK IS DOING WITH THE BRAIN, for a person's ask to stop (Submit), and whether one did.
+    private CancellationTokenSource? _backgroundCts;
+    private bool _gaveWay;
     private bool _runningCancelledByCaller;
     private EffortChoice? _runningChoice;
     private Task? _loop;
@@ -162,6 +166,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             return AskAdmission.Refused(FailureKind.Rejected, AskSentences.TooLong);
 
         AskRecord stored;
+        CancellationTokenSource? inTheWay = null;
         lock (_gate)
         {
             // THE SAME REQUEST ID IS THE SAME ASK. A client that lost the reply to its
@@ -192,13 +197,31 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 return AskAdmission.Of(stored, duplicate: true, PositionLocked(stored.Id));
 
             _open[stored.Id] = new Entry { Id = stored.Id, Caller = stored.CallerKey, Lane = stored.Lane, CreatedAt = stored.CreatedAt };
+
+            if (stored.Lane != AskLane.Background) inTheWay = TakeFromBackground();
         }
 
         _log($"ask {stored.Id} accepted lane={stored.Lane} spoken={(stored.Spoken ? 1 : 0)}{(stored.Plain ? " plain" : string.Empty)} chars={stored.Message.Length}");
         if (!stored.Plain) LearnIfAskedAgain(stored);
         Raise(stored);
+
+        // AFTER IT IS IN THE QUEUE, AND OUTSIDE THE LOCK: stopping can run the loop on this very thread (see Cancel).
+        try { inTheWay?.Cancel(); } catch (ObjectDisposedException) { }
         _signal.Release();
         lock (_gate) return AskAdmission.Of(stored, duplicate: false, PositionLocked(stored.Id));
+    }
+
+    /// <summary>What has to stop for a person's ask, marked as giving way; null when no background ask has the brain.</summary>
+    /// <remarks>
+    /// THE LANES CHOSE WHAT WENT NEXT AND NOTHING STOPPED WHAT WAS GOING. On the P30 on 2026-11-07 Wolverine's
+    /// analysis of a crash read its 426 tokens for 33 s after the restart, and "Hi." waited 37 s behind it
+    /// for an answer the queue had to hand. Called under the gate.
+    /// </remarks>
+    private CancellationTokenSource? TakeFromBackground()
+    {
+        if (_backgroundCts is not { } background) return null;
+        _gaveWay = true;
+        return background;
     }
 
     /// <summary>
@@ -392,8 +415,14 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         {
             var now = _clock.GetUtcNow();
             lock (_gate)
+            {
                 foreach (var e in _open.Values)
                     if (e.ResumeAt > now) e.ResumeAt = now;
+
+                // WHAT IT WAS TOO SOON TO READ: a brain coming back has a conversation to catch up on.
+                if (status.Phase == BrainPhase.Ready && _readNext is not null && _open.Count == 0 && _reading is not { IsCompleted: false })
+                    _reading = Task.Run(ReadingAheadAsync);
+            }
             _signal.Release();
         }
     }
@@ -528,17 +557,24 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             {
                 using var budget = CancellationTokenSource.CreateLinkedTokenSource(stop);
                 budget.CancelAfter(_limits.LoadWaitBudget);
+                lock (_gate) if (entry.Lane == AskLane.Background) _backgroundCts = budget;
                 await _worker.EnsureReadyAsync(budget.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!stop.IsCancellationRequested)
             {
-                Requeue(entry, TimeSpan.FromSeconds(5));
+                bool gaveWay;
+                lock (_gate) { gaveWay = _gaveWay; _gaveWay = false; }
+                Requeue(entry, gaveWay ? TimeSpan.Zero : TimeSpan.FromSeconds(5));
                 return;
             }
             catch (BrainWorkerException ex)
             {
                 OnLoadFailed(entry, ex.Failure);
                 return;
+            }
+            finally
+            {
+                lock (_gate) _backgroundCts = null;
             }
             loadWaitMs = Ms(_clock.GetUtcNow() - waitStarted);
         }
@@ -593,7 +629,16 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(_limits.GenerationDeadline);
-        lock (_gate) { _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; _runningChoice = choice; }
+        lock (_gate)
+        {
+            _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; _runningChoice = choice;
+            _gaveWay = false;
+
+            // AND IF SOMEBODY ASKED WHILE THE BRAIN CAME UP, THEY ARE ALREADY IN THE QUEUE, and nothing will call this again.
+            _backgroundCts = entry.Lane == AskLane.Background ? cts : null;
+            if (_backgroundCts is not null && _open.Values.Any(e => e.Lane != AskLane.Background && e.ResumeAt <= _clock.GetUtcNow()))
+                TakeFromBackground()?.Cancel();
+        }
 
         // THE BRAIN WORKING ON IT, AS THE WORKER NAMES IT (OPEN-GAPS E33). The main slot's brain is where a
         // turn starts, not always the one answering it: on the P30 on 2026-11-03 a picture went to SmolVLM,
@@ -630,7 +675,11 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 var now = _clock.GetUtcNow();
                 if ((ask.Spoken || now - lastWrite >= _limits.TextWriteInterval) && text.Length > 0)
                 {
-                    var partial = text.ToString();
+                    // WHAT STREAMS IS WHAT IT WILL END ON. The link hands an answer out by where a reader
+                    // has got to, and only the final text was cleaned, so an answer in bold came apart: on
+                    // the P30 on 2026-11-07 "**yellow a" and then what lay past that point in "yellow
+                    // apple." reached the chat as "**yellowpple.", and every bold answer kept its asterisks.
+                    var partial = PlainReply.Clean(text.ToString());
                     Save(ask.Id, r => r.State == AskState.Running ? r with { Text = partial, UpdatedAt = now } : r);
                     lastWrite = now;
                 }
@@ -668,9 +717,21 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            bool byCaller;
-            lock (_gate) byCaller = _runningCancelledByCaller;
+            bool byCaller, gaveWay;
+            lock (_gate) { byCaller = _runningCancelledByCaller; gaveWay = _gaveWay; }
             if (byCaller) return;   // Cancel already made it final
+
+            // SOMEBODY NEEDED THE BRAIN. It goes back in line behind them, as if it had never started.
+            if (gaveWay)
+            {
+                _log($"ask {ask.Id} gave way to a person");
+                Save(ask.Id, r => r.IsFinal ? r : r with
+                {
+                    State = AskState.Queued, Attempts = Math.Max(0, r.Attempts - 1), Text = string.Empty, UpdatedAt = _clock.GetUtcNow(),
+                });
+                Requeue(entry, TimeSpan.Zero);
+                return;
+            }
 
             // THE DEADLINE. What was said so far is still an answer; nothing at all is not.
             var finished = _clock.GetUtcNow();
@@ -687,7 +748,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         finally
         {
             _worker.AnsweringChanged -= Named;
-            lock (_gate) { _runningId = null; _runningCts = null; _runningCancelledByCaller = false; _runningChoice = null; }
+            lock (_gate) { _runningId = null; _runningCts = null; _backgroundCts = null; _gaveWay = false; _runningCancelledByCaller = false; _runningChoice = null; }
         }
     }
 
@@ -855,10 +916,12 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
     // ── records ──────────────────────────────────────────────────────────────
 
-    // A SPOKEN CONVERSATION IS KEPT IN THE BRAIN, the one kind that goes on turn after turn with somebody
-    // waiting on each. A picture is read by itself, and an app's turn may be anywhere in its own talk.
+    // A CONVERSATION IS KEPT IN THE BRAIN, SPOKEN OR TYPED: turn after turn, with somebody waiting on each. Only
+    // the spoken kind was, and on the P30 on 2026-11-07 the typed chat lost its earlier messages to the three
+    // seconds a turn has to read in, so "Which of those three?" was answered from a list with a new name on it.
+    // A picture is read by itself, and a tool turn is the tool loop's, with messages of its own.
     private static string? Kept(AskRecord ask) =>
-        ask.Spoken && !string.IsNullOrEmpty(ask.SessionId) ? ask.CallerKey + "|" + ask.SessionId : null;
+        !ask.Agentic && !string.IsNullOrEmpty(ask.SessionId) ? ask.CallerKey + "|" + ask.SessionId : null;
 
     private IReadOnlyList<ChatMessage> Conversation(AskRecord ask)
     {
@@ -947,7 +1010,13 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 if (next is null || _open.Count > 0) return;
             }
 
-            if (_worker.Status.Phase != BrainPhase.Ready) return;
+            if (_worker.Status.Phase != BrainPhase.Ready)
+            {
+                // KEPT FOR WHEN IT IS: a brain that went away in the middle of a conversation comes back
+                // to a turn with all of it to read, and nobody has to be asking yet (OnWorkerStatus).
+                lock (_gate) _readNext ??= next;
+                return;
+            }
 
             try
             {

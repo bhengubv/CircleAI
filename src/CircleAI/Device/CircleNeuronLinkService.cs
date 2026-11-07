@@ -62,6 +62,11 @@ public sealed class CircleNeuronLinkService : Service
     /// </summary>
     public static IMemoryService? Memory { get; set; }
 
+    // What decides whether something a person said long ago still counts, and how many times
+    // over the limit a recall looks, for those that do not (LinkVerb.Recall).
+    private static readonly AtomLearner Judge = new();
+    private const int RecallOffers = 4;
+
     /// <summary>
     /// The skill library for the skills verb. Defaults to the built-in consumer pack
     /// (a prebuilt database, no model), so the verb works with zero host wiring; a
@@ -1081,10 +1086,17 @@ public sealed class CircleNeuronLinkService : Service
             {
                 var memory = Memory;
                 if (memory is null) return LinkRowsReply.Failure("memory not available");
+
+                // MORE THAN WERE ASKED FOR, because what stands is taken from what comes back,
+                // and a store this door once filled with every typed sentence can spend the
+                // whole answer on them. What has been corrected, or failed its own check, is
+                // no more known than they are: this door passed those on too.
                 var result = await memory.RecallAsync(
                     new Situation(Text: req.Query ?? string.Empty),
-                    new RecallBudget(MaxAtoms: req.Limit)).ConfigureAwait(false);
+                    new RecallBudget(MaxAtoms: req.Limit * RecallOffers, MaxCharacters: RecallBudget.Default.MaxCharacters * RecallOffers)).ConfigureAwait(false);
                 var rows = result.Atoms
+                    .Where(a => a.IsCurrent && !a.IsStale && Judge.Stands(a))
+                    .Take(req.Limit)
                     .Select(a => (IReadOnlyList<string>)new[] { a.Text })
                     .ToList();
                 return LinkRowsReply.Success(rows);
@@ -1095,8 +1107,13 @@ public sealed class CircleNeuronLinkService : Service
                 var memory = Memory;
                 if (memory is null) return LinkRowsReply.Failure("memory not available");
                 if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("nothing to remember");
-                await memory.RememberAsync(new MemoryAtom { Text = req.Text!, Subject = req.Subject })
-                    .ConfigureAwait(false);
+
+                // WHAT WAS SAID, FOR THE MEMORY TO JUDGE, AS IT IS FROM THE PHONE'S OWN TURN. This
+                // wrote every sentence straight to the log, questions and all, so what a person
+                // asked one day came back the next as something known about them: on the P30 on
+                // 2026-11-07 "Name one red fruit" reached the 2B with three old questions in front
+                // of it, as facts, and it answered all four.
+                await memory.LearnAsync(req.Text!, req.Subject).ConfigureAwait(false);
                 return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
             }
 

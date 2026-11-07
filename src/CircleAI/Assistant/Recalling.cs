@@ -13,12 +13,21 @@
 // turn, so the two paths cannot drift into two different answers. The
 // composition is pure and testable without a phone, a microphone or a model,
 // which is the whole reason it is a separate function.
+//
+// AND WHAT RIDES ALONG HAS TO BEAR ON WHAT WAS SAID. On the P30 on 2026-11-07 the
+// 2B was told "The test code is blue 7" in front of "My test word is mango", on
+// the strength of "test", and answered that it did not know what "things you
+// already know about them" meant. A fact it cannot place is not a help: it is
+// the next thing it talks about.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Assistant.Requests;
+using CircleAI.Core;
+using CircleAI.Memory;
 
 namespace CircleAI.Assistant;
 
@@ -51,23 +60,45 @@ public static class Recalling
     /// SWALLOWS EVERYTHING, INCLUDING THE TIMEOUT. This sits directly in front of
     /// an answer somebody is waiting for; a store that could not answer must not
     /// fail a turn that otherwise works.
+    /// <para>
+    /// NOTHING WHEN THEY ARE THE ONE TELLING IT SOMETHING: nothing was asked, and
+    /// what it knew before is only in the way of what it is being told.
+    /// </para>
     /// </remarks>
     public static async Task<IReadOnlyList<Remembered>> AboutAsync(
         IRemembers? memory, string heard, CancellationToken ct = default)
     {
-        if (memory is null || string.IsNullOrWhiteSpace(heard)) return [];
+        if (memory is null || string.IsNullOrWhiteSpace(heard) || Telling(heard)) return [];
 
         try
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
             budget.CancelAfter(Budget);
-            return await memory.RecallAsync(heard, Keep, budget.Token).ConfigureAwait(false);
+            var found = await memory.RecallAsync(heard, Keep, budget.Token).ConfigureAwait(false);
+            return [.. found.Where(f => Bears(f.Text, heard))];
         }
         catch
         {
             // Nothing remembered; the answer still happens.
             return [];
         }
+    }
+
+    // Whether this is something the memory would keep: then it is news, not a question.
+    private static bool Telling(string heard) =>
+        new AtomLearner().Read(new EpisodicMemoryEntry { UserText = heard }).Any(c => c.Certain);
+
+    /// <summary>Whether a remembered fact is about what was said: half of its words are in it.</summary>
+    /// <remarks>
+    /// A WORD IN COMMON IS NOT A SUBJECT IN COMMON, as with a skill's notes. A recall
+    /// finds on any word, and "My name is Thabo" is not something to know before
+    /// "Name one red fruit".
+    /// </remarks>
+    internal static bool Bears(string fact, string heard)
+    {
+        var words = Said.Words(fact);
+        var terms = SearchTerms.Significant(heard);
+        return terms.Count(t => words.Any(w => Said.SameWord(w, t))) >= Math.Max(1, (terms.Count + 1) / 2);
     }
 
     /// <summary>The question, with what is already known put in front of it.</summary>
@@ -79,9 +110,9 @@ public static class Recalling
     /// tokens.
     /// <para>
     /// Returns <paramref name="heard"/> UNCHANGED when nothing is known, rather
-    /// than an empty heading. "Things you already know about them:" followed by
-    /// nothing invites a small model to fill the gap, and inventing a fact about
-    /// somebody is the one failure this whole feature must not cause.
+    /// than an empty heading: a heading followed by nothing invites a small model
+    /// to fill the gap, and inventing a fact about somebody is the one failure
+    /// this whole feature must not cause.
     /// </para>
     /// </remarks>
     /// <summary>The question again, with the remembered facts taken back off.</summary>
@@ -125,7 +156,18 @@ public static class Recalling
     }
 
     /// <summary>The one line that marks a composed prompt, written once.</summary>
-    private const string Heading = "Things you already know about them:";
+    /// <remarks>
+    /// IN THE PERSON'S OWN VOICE, because the whole turn is theirs and so are the
+    /// sentences under it: "Things you already know about them:" over "My name is
+    /// Thabo" left a small model looking for who "them" was, and saying so.
+    /// <para>
+    /// AND NO RULE, as the notes carry (AIService.NotesTemplate). These are the
+    /// person's own facts, and they may be what is being asked: under "never repeat
+    /// or mention it", "What is the test code?" on the P30 on 2026-11-07 was a
+    /// thought about how to answer without answering.
+    /// </para>
+    /// </remarks>
+    private const string Heading = "What I have told you before:";
 
     public static string Ask(string heard, IReadOnlyList<Remembered>? known)
     {
