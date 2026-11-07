@@ -87,6 +87,17 @@
     <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' == '32'">android-arm</RuntimeIdentifiers>
     <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">android-arm64</RuntimeIdentifiers>
 
+    <!-- CORECLR ON THE 64-BIT APK, BECAUSE THE SPEED LIVES THERE. Mono has no vector instructions, so
+         every kernel, the delta rule, the Hadamard and the quantiser fall back to scalar on it: measured
+         on the P30 in November 2026, about 2 tokens a second against 5,5 and a first sound nowhere near
+         2 s. The build warns (XA1040) that CoreCLR on Android is experimental; the owner's decision is
+         that a fast assistant is the point. Ready-to-run stays off because crossgen2 refuses android,
+         and tiering off so a kernel is compiled once, fully, instead of running slow first. The 32-bit
+         APK stays on Mono: CoreCLR has no android-arm. -->
+    <UseMonoRuntime Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">false</UseMonoRuntime>
+    <PublishReadyToRun Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">false</PublishReadyToRun>
+    <TieredCompilation Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">false</TieredCompilation>
+
     <!-- The apps version themselves; 3.9.x in Directory.Build.props is the package's.
          This is what the Windows EXE reports as its file and product version. -->
     <Version>1.1.0</Version>

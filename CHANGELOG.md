@@ -4,6 +4,86 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — **A C# engine of our own, and an assistant you can talk to on a cheap phone**
+
+Since 3.9.2 CircleAI has its own language model engine, written in C#, and the spoken assistant on top of
+it runs on a P30 Lite: the first sound after a question went from 71 s to about 2.6 s, and the answer
+holds the thread of the conversation.
+
+### Added — the C# engine (`ModelEngine.Managed`)
+
+- **Runs a model with no native code on the engine path:** a GGUF reader, a byte-level BPE tokenizer, the
+  model's own chat template rendered byte for byte, the qwen35 network, the Hadamard rotation, PTQ1_0 and
+  PQ2_0 kernels, the card's sampling profiles. Held to the pinned fork: 384 of 384 greedy tokens, 205 of
+  205 tokenizer texts.
+- **The Bonsai 2 fleet** through `IChatGenerator`, with lossless MTP speculative decoding on the files
+  that carry a head.
+- **Sight:** the 2B describes a picture through its vision tower.
+- **Tool calls** in Qwen3.5's own form, held to each tool's signature while they are written.
+- **An effort router:** how hard to think, per question, learned per device.
+- **Translation** through the device's own brain.
+- **TurboQuant working memory** with its second stage, and primed starts kept on disk.
+
+### Added — it runs itself
+
+- **Chooses its own brain** from what the device can do, through one factory.
+- **Wolverine on the device,** with an outbox to WolverineAPI, and one log for every process.
+- **Every brain on by default:** one setup board for every download, primed before it says Ready, and a
+  balance that steps down under pressure.
+- **The person's settings** over the link: each ability on or off, and what it can do right now.
+
+### Added — elsewhere
+
+- Search by meaning, and a memory store scored on its compressed codes.
+- Domain packs, and who said what in a transcribed recording.
+- A Kokoro Italian voice.
+- A selector that chooses transports by the stated cascade.
+- Both engines for 32-bit Windows, and GGUF on armeabi-v7a.
+
+### Added — the spoken assistant
+
+- **Speed on the P30 Lite:** eight tokens read at a time through lookup-table kernels, the rest of the
+  network vectorised and spread over every core. About 5,5 tokens a second written beside the voice,
+  from about 2.
+- **Ears that work while you talk:** Moonshine streaming, and the brain starts on settled words before
+  the microphone closes.
+- **Full speed with the app off the screen,** through a private MIDI device, and the screen lit for a
+  turn from dark.
+- **One kept conversation:** a spoken talk stays in the brain's state and only the new turn is read, so
+  nothing said is cut to fit a re-read.
+- **A conversation, not a string of wakes:** carry on for four seconds with no name and no hello, and
+  talk over it to stop it. The hello varies.
+- **Room to talk:** a pause of up to 1,7 s, longer when the words stop on one that cannot end a sentence,
+  and 40 s in one go. A loud room ends a turn when the words stop.
+- `SpokenTurnClock` times every turn from the last word to the first sound; `ClipCapture` puts a recording
+  in the microphone's place; `tools/spoken-bar` holds the scripts, recordings' maker, driver and scoring.
+
+### Changed
+
+- **The 64-bit service APK runs on CoreCLR,** which the speed depends on. The build warns (XA1040) that it
+  is experimental on Android. The 32-bit APK stays on Mono.
+- **Intel ABIs are gone** from both Android APKs.
+- **Whisper is not held ready** when the live ears hear: a second recogniser is what the phone kills the
+  service for.
+
+### Fixed
+
+- A sentence with no sound in it condemned a working voice until the process ended, and every answer
+  after it was silent: 350 failed renders in one run. Code and tool calls are no longer read out, and sums
+  are said in words.
+- A spoken turn was offered tools it had no way to run, and said the call.
+- One word in common put a skill's notes in front of a question: 11,7 s of reading at the median, and the
+  answer's undoing. A spoken turn now takes one skill two of its words name, and a moment's worth of it.
+- What the assistant cannot do it now says it cannot, instead of answering something else.
+- "What day does Christmas fall on?" got today's date; a correction such as "No, I meant eight times nine"
+  reached the brain instead of the sum; "Stop." got a paragraph.
+
+### Known limits
+
+- Timers, alarms, reminders, music and calls are not there yet, and it says so.
+- The voice is a small model and sounds it.
+- The live ears are English only, and their model is not in the catalogue yet: it is side-loaded.
+
 ## [3.9.2] — 2026-10-25 — **A publish says what it cannot do, and Wolverine says green or red**
 
 ### Fixed — a RID-specific desktop publish shipped every other platform's natives
