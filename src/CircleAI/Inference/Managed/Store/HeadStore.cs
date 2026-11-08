@@ -82,7 +82,13 @@ public sealed class HeadStore
     public const int DefaultChunkRows = 512;
 
     private const string Embedding = "token_embd.weight";
+    private const string Untied = "output.weight";
     private const int EntryBytes = 16;
+
+    // THE TABLE THE HEAD SCORES WITH: its own where the model keeps one (the 27B's output.weight, untied), else the
+    // embedding table read forward (the 2B, tied). The header records the head's offset, bytes and SHA-256, so a store
+    // cut from one cannot pass for the other's.
+    private static string HeadName(GgufFile model) => model.Tensor(Untied) is not null ? Untied : Embedding;
 
     /// <summary>A script's rows: how many, and the chunks that hold them.</summary>
     public sealed record Group(Script Script, int Rows, int FirstChunk, int Chunks);
@@ -246,11 +252,11 @@ public sealed class HeadStore
     public static string? Unreadable(GgufFile model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        var tensor = model.Tensor(Embedding);
-        if (tensor is null) return $"the model has no {Embedding}";
-        if (model.Tensor("output.weight") is not null) return "the model's head is a table of its own";
-        if (tensor.Type is not (GgmlType.PTQ1_0 or GgmlType.PQ2_0)) return $"{Embedding} is {tensor.Type}";
-        return tensor.RowLength % Ptq1.BlockWeights == 0 && tensor.ByteCount > 0 ? null : $"{Embedding} is not whole 128-weight blocks";
+        var name = HeadName(model);
+        var tensor = model.Tensor(name);
+        if (tensor is null) return $"the model has no {name}";
+        if (tensor.Type is not (GgmlType.PTQ1_0 or GgmlType.PQ2_0)) return $"{name} is {tensor.Type}";
+        return tensor.RowLength % Ptq1.BlockWeights == 0 && tensor.ByteCount > 0 ? null : $"{name} is not whole 128-weight blocks";
     }
 
     /// <summary>
@@ -260,7 +266,7 @@ public sealed class HeadStore
     public static unsafe bool ReleaseMapped(GgufFile model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        var tensor = model.Tensor(Embedding);
+        var tensor = model.Tensor(HeadName(model));
         return tensor is { ByteCount: > 0 } && FlashFile.Release(model.Pointer(tensor), tensor.ByteCount, model.FilePath, tensor.Offset);
     }
 
@@ -489,15 +495,15 @@ public sealed class HeadStore
 
     private static (GgufTensor Tensor, GgmlType Packing, int BlockBytes) HeadOf(GgufFile model)
     {
-        var tensor = model.Tensor(Embedding) ?? throw new InvalidDataException($"The model has no {Embedding}.");
-        if (model.Tensor("output.weight") is not null) throw new NotSupportedException("The model's head is a table of its own; only a tied head is stored by script.");
+        var name = HeadName(model);
+        var tensor = model.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
         var blockBytes = tensor.Type switch
         {
             GgmlType.PTQ1_0 => Ptq1.BlockBytes,
             GgmlType.PQ2_0 => Pq2.BlockBytes,
-            _ => throw new NotSupportedException($"{Embedding} is {tensor.Type}; the head is stored for PTQ1_0 and PQ2_0."),
+            _ => throw new NotSupportedException($"{name} is {tensor.Type}; the head is stored for PTQ1_0 and PQ2_0."),
         };
-        if (tensor.RowLength % Ptq1.BlockWeights != 0 || tensor.ByteCount < 0) throw new InvalidDataException($"{Embedding} is not whole 128-weight blocks.");
+        if (tensor.RowLength % Ptq1.BlockWeights != 0 || tensor.ByteCount < 0) throw new InvalidDataException($"{name} is not whole 128-weight blocks.");
         return (tensor, tensor.Type, blockBytes);
     }
 

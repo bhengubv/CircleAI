@@ -28,6 +28,7 @@
 // by part (TakeTimes), so a phone can say where a token's second goes.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
@@ -49,6 +50,7 @@ public sealed class Qwen35Model
     private readonly Layer[] _layers;
     private readonly float[] _outputNorm;
     private readonly TernaryMatrix _embedding; // the lookup table and, tied, the head
+    private readonly TernaryMatrix? _output;   // an untied head's own table (the 27B's output.weight)
     private readonly MtpHead? _mtp;            // a PQ2_0-MTP file's draft head
 
     // One turned buffer, one quantisation and one lookup table per product width.
@@ -59,6 +61,7 @@ public sealed class Qwen35Model
 
     // Working buffers, sized once.
     private readonly float[] _x, _h, _qkv, _z, _conv, _o, _beta, _alpha;
+    private readonly float[] _hRounded; // h rounded to BF16 for a BF16 gate's product, as the fork rounds it
     private readonly float[] _qg, _q, _k, _v, _gate, _attn, _cos, _sin;
     private readonly float[] _mixOut, _ffnGate, _ffnUp, _ffnOut;
     private readonly sbyte[] _weights = new sbyte[Ptq1.BlockWeights]; // one decoded embedding block (both packings hold 128)
@@ -96,7 +99,6 @@ public sealed class Qwen35Model
         _hadamard = PrismHadamard.FromGguf(file);
         _pool = pool;
 
-        if (file.Tensor("output.weight") is not null) throw new NotSupportedException("An untied output head is not read in this pass.");
         Packing = PackingOf(file);
 
         // THE WEIGHTS REPACKED FOR THE VECTORS, WHERE THE RUNTIME HAS THEM (Ptq1Pair): the embedding's
@@ -107,8 +109,18 @@ public sealed class Qwen35Model
         if (ffnFromStore && !paired) throw new ArgumentException("The feed-forward is read from its store only in the vector kernel's tiles.", nameof(ffnFromStore));
         FfnFromStore = ffnFromStore;
         var packingStarted = Stopwatch.GetTimestamp();
+
+        // AN UNTIED HEAD (the 27B): the head is a table of its own, its input turned as prism.hadamard lists it, and the
+        // embedding table is only looked up - a token's row at a time, from the file - so nothing of it is kept for a
+        // product.
+        var untied = file.Tensor("output.weight") is not null;
         _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing,
-            paired ? pool : null, paired && !headFromStore, lean: headFromStore);
+            paired ? pool : null, paired && !headFromStore && !untied, lean: headFromStore || untied);
+        if (untied)
+        {
+            _output = new TernaryMatrix(file, "output.weight", _hadamard, c.Embedding, c.Vocabulary, Packing,
+                paired ? pool : null, paired && !headFromStore, lean: headFromStore);
+        }
         _outputNorm = Floats(file, "output_norm.weight", c.Embedding);
 
         _layers = new Layer[c.Layers];
@@ -138,6 +150,7 @@ public sealed class Qwen35Model
         _o = new float[c.SsmInner];
         _beta = new float[c.SsmHeads];
         _alpha = new float[c.SsmHeads];
+        _hRounded = new float[c.Embedding];
         _qg = new float[2 * c.Heads * c.HeadDim];
         _q = new float[c.Heads * c.HeadDim];
         _k = new float[c.KvHeads * c.HeadDim];
@@ -410,7 +423,7 @@ public sealed class Qwen35Model
 
         RmsNorm(m.Cur, m.HeadNorm ?? _outputNorm, _h, c.RmsEps);
         if (hidden.Length != 0) _h.CopyTo(hidden);
-        if (logits.Length != 0) ScoreHead(Prepare(_h, _embedding.Input), logits);
+        if (logits.Length != 0) ScoreHead(Prepare(_h, HeadTable.Input), logits);
         _tMtp += Stopwatch.GetTimestamp() - started;
     }
 
@@ -527,7 +540,7 @@ public sealed class Qwen35Model
             var head = Stopwatch.GetTimestamp();
             RmsNorm(_x, _outputNorm, _h, c.RmsEps);
             if (nextn.Length != 0) _h.CopyTo(nextn);
-            if (logits.Length != 0) ScoreHead(Prepare(_h, _embedding.Input), logits);
+            if (logits.Length != 0) ScoreHead(Prepare(_h, HeadTable.Input), logits);
             _tHead += Stopwatch.GetTimestamp() - head;
         }
         _tTotal += Stopwatch.GetTimestamp() - started;
@@ -544,8 +557,14 @@ public sealed class Qwen35Model
         _faultsKnown = true;
     }
 
-    // THE HEAD: the whole table read forward (tied), or only the rows of the turn's surface (Head) - each
-    // chunk's rows through the same kernel and tables, their scores sent to their tokens, every other
+    // The table the head scores with: its own (untied), else the embedding table read forward (tied).
+    private TernaryMatrix HeadTable => _output ?? _embedding;
+
+    /// <summary>Whether the output head is a table of its own (output.weight) rather than the embedding table read forward.</summary>
+    public bool UntiedHead => _output is not null;
+
+    // THE HEAD: the whole table read forward (tied) or its own table (untied), or only the rows of the turn's surface
+    // (Head) - each chunk's rows through the same kernel and tables, their scores sent to their tokens, every other
     // token -inf. A row is summed block by block in the same order either way, so a token in the surface
     // gets the whole table's logit to the bit.
     private void ScoreHead(InputTables tables, Span<float> logits)
@@ -558,7 +577,7 @@ public sealed class Qwen35Model
                 throw new InvalidOperationException(head is null
                     ? "This model's head is read from its store on flash: a turn sets Head before it asks for logits."
                     : $"The head's rows are {head.Layout}, and this model computes {(_paired ? "paired" : "rows")}.");
-            _embedding.MatVec(tables, logits, _pool);
+            HeadTable.MatVec(tables, logits, _pool);
             return;
         }
         logits.Fill(float.NegativeInfinity);
@@ -681,11 +700,11 @@ public sealed class Qwen35Model
             }
             if (Head is not null || HeadFromStore)
             {
-                for (var j = 0; j < heads; j++) ScoreHead(Prepare(inputs[j], _embedding.Input), outputs[j]);
+                for (var j = 0; j < heads; j++) ScoreHead(Prepare(inputs[j], HeadTable.Input), outputs[j]);
             }
             else
             {
-                Products(inputs, heads, _embedding.Input, (_embedding, outputs));
+                Products(inputs, heads, HeadTable.Input, (HeadTable, outputs));
             }
         }
         _tHead += Stopwatch.GetTimestamp() - head;
@@ -941,8 +960,8 @@ public sealed class Qwen35Model
     {
         var c = Config;
         var started = Stopwatch.GetTimestamp();
-        F32MatVec(layer.Beta!, _h, _beta); // beta and alpha read h unturned: they are not folded
-        F32MatVec(layer.Alpha!, _h, _alpha);
+        layer.Beta!.MatVec(_h, _beta, _hRounded); // beta and alpha read h unturned: they are not folded
+        layer.Alpha!.MatVec(_h, _alpha, _hRounded);
 
         // The causal conv, on the pool's threads: a channel reads only its own past.
         _convWork.Set(layer.ConvKernel!, state.Conv[il]);
@@ -1643,7 +1662,8 @@ public sealed class Qwen35Model
             Lean = lean;
             if (lean)
             {
-                // ITS PRODUCT IS SERVED FROM A STORE ON FLASH: nothing of it is held here, only its lookups read the file.
+                // NOTHING OF IT IS HELD FOR A PRODUCT: a store on flash serves that, or it has none (an untied model's
+                // embedding table is only looked up). Its lookups read the file.
                 Scales = [];
             }
             else if (paired)
@@ -1694,6 +1714,45 @@ public sealed class Qwen35Model
         // The products with several PQ2_0 inputs at once, each equal to its own MatVec.
         public void MatVec(Pq2BatchLut tables, int n, float[][] outputs, WorkerPool? pool) =>
             tables.MatVec(Bytes, Scales, n, outputs, pool);
+    }
+
+    // A DeltaNet gate's weight (ssm_beta, ssm_alpha): F32, copied once (the 2B), or BF16, read where it lies in the mapped
+    // file and multiplied as the fork multiplies it (the 27B: its input rounded to BF16 first; Bf16).
+    private sealed class GateWeight
+    {
+        private readonly float[]? _f32;
+        private readonly GgufFile? _file;
+        private readonly GgufTensor? _bf16;
+
+        public GateWeight(GgufFile file, string name, int length)
+        {
+            var tensor = file.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
+            if (tensor.Elements != length) throw new InvalidDataException($"{name} holds {tensor.Elements} values, not {length}.");
+            switch (tensor.Type)
+            {
+                case GgmlType.F32:
+                    _f32 = file.Floats(tensor).ToArray();
+                    break;
+                case GgmlType.BF16:
+                    _file = file;
+                    _bf16 = tensor;
+                    break;
+                default:
+                    throw new NotSupportedException($"{name} is {tensor.Type}; it is read as F32 or BF16.");
+            }
+        }
+
+        // y = W x; a BF16 weight rounds x into `rounded` first.
+        public void MatVec(ReadOnlySpan<float> x, Span<float> y, Span<float> rounded)
+        {
+            if (_f32 is not null)
+            {
+                F32MatVec(_f32, x, y);
+                return;
+            }
+            Bf16.Round(x, rounded);
+            Bf16.MatVec(MemoryMarshal.Cast<byte, ushort>(_file!.Bytes(_bf16!)), rounded[..x.Length], y);
+        }
     }
 
     // A Q8_0 weight (the MTP head's block): its bytes stay in the mapped file; block scales decoded once.
@@ -1813,8 +1872,8 @@ public sealed class Qwen35Model
                 Qkv = Ternary("attn_qkv.weight", c.Embedding, c.ConvChannels);
                 Z = Ternary("attn_gate.weight", c.Embedding, c.SsmInner);
                 SsmOut = Ternary("ssm_out.weight", c.SsmInner, c.Embedding);
-                Beta = Floats(file, Name("ssm_beta.weight"), c.Embedding * c.SsmHeads);
-                Alpha = Floats(file, Name("ssm_alpha.weight"), c.Embedding * c.SsmHeads);
+                Beta = new GateWeight(file, Name("ssm_beta.weight"), c.Embedding * c.SsmHeads);
+                Alpha = new GateWeight(file, Name("ssm_alpha.weight"), c.Embedding * c.SsmHeads);
                 ConvKernel = Floats(file, Name("ssm_conv1d.weight"), c.ConvKernel * c.ConvChannels);
                 A = Floats(file, Name("ssm_a"), c.SsmHeads);
                 DtBias = Floats(file, Name("ssm_dt.bias"), c.SsmHeads);
@@ -1844,8 +1903,8 @@ public sealed class Qwen35Model
         public TernaryMatrix? Qkv { get; }
         public TernaryMatrix? Z { get; }
         public TernaryMatrix? SsmOut { get; }
-        public float[]? Beta { get; }
-        public float[]? Alpha { get; }
+        public GateWeight? Beta { get; }
+        public GateWeight? Alpha { get; }
         public float[]? ConvKernel { get; }
         public float[]? A { get; }
         public float[]? DtBias { get; }

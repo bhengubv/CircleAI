@@ -32,7 +32,12 @@ internal static class SyntheticQwen35
     /// <param name="seed">The weights: the same seed gives the same trits and scales in either packing.</param>
     /// <param name="mixedPacking">Writes one weight in the other packing, which the model must refuse.</param>
     /// <param name="mtp">Adds a multi-token-prediction head after the trunk (blk.2, Q8_0), as the fleet's PQ2_0-MTP files carry.</param>
-    public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false)
+    /// <param name="head">Whether the head is the embedding table read forward (tied, the 2B) or a table of its own (the 27B):
+    /// its own rows, or the embedding's rows copied into a table of its own. Written last, so the trunk is the tied model's.</param>
+    /// <param name="bf16Gates">Writes the DeltaNet gates (ssm_beta, ssm_alpha) in BF16, as the 27B keeps them: the same values,
+    /// rounded to BF16.</param>
+    public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false,
+        Head head = Head.Tied, bool bf16Gates = false)
     {
         var rng = new Random(seed);
         var b = new GgufBuilder()
@@ -57,7 +62,7 @@ internal static class SyntheticQwen35
             .Strings("tokenizer.ggml.tokens", Enumerable.Range(0, Vocabulary).Select(i => $"t{i}").ToArray());
 
         var mixedDone = false;
-        void Ternary(string name, int columns, int rows, float scale)
+        byte[] Ternary(string name, int columns, int rows, float scale)
         {
             var type = packing;
             if (mixedPacking && !mixedDone && name.StartsWith("blk.1.", StringComparison.Ordinal))
@@ -65,7 +70,9 @@ internal static class SyntheticQwen35
                 type = packing == GgmlType.PQ2_0 ? GgmlType.PTQ1_0 : GgmlType.PQ2_0;
                 mixedDone = true;
             }
-            b.Tensor(name, [columns, rows], (uint)type, Pack(rng, columns, rows, scale, type));
+            var bytes = Pack(rng, columns, rows, scale, type);
+            b.Tensor(name, [columns, rows], (uint)type, bytes);
+            return bytes;
         }
 
         void Floats(string name, long[] shape, Func<int, float> value)
@@ -76,9 +83,23 @@ internal static class SyntheticQwen35
             b.Tensor(name, shape, (uint)GgmlType.F32, MemoryMarshal.AsBytes(data.AsSpan()).ToArray());
         }
 
+        // A gate: F32, or BF16 from the same values (Bf16.Round, as the fork's converter rounds).
+        void Gate(string name, long[] shape, Func<int, float> value)
+        {
+            if (!bf16Gates)
+            {
+                Floats(name, shape, value);
+                return;
+            }
+            var count = (int)shape.Aggregate(1L, (a, d) => a * d);
+            var data = new ushort[count];
+            for (var i = 0; i < count; i++) data[i] = Bf16.Round(value(i));
+            b.Tensor(name, shape, (uint)GgmlType.BF16, MemoryMarshal.AsBytes(data.AsSpan()).ToArray());
+        }
+
         float Near(float centre, float spread) => centre + (float)(rng.NextDouble() * 2 - 1) * spread;
 
-        Ternary("token_embd.weight", Embedding, Vocabulary, 0.25f);
+        var embedding = Ternary("token_embd.weight", Embedding, Vocabulary, 0.25f);
         Floats("output_norm.weight", [Embedding], _ => Near(1f, 0.1f));
         for (var il = 0; il < Layers; il++)
         {
@@ -93,8 +114,8 @@ internal static class SyntheticQwen35
                 Ternary(p + "attn_qkv.weight", Embedding, ConvChannels, 0.05f);
                 Ternary(p + "attn_gate.weight", Embedding, SsmInner, 0.05f);
                 Ternary(p + "ssm_out.weight", SsmInner, Embedding, 0.05f);
-                Floats(p + "ssm_beta.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
-                Floats(p + "ssm_alpha.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
+                Gate(p + "ssm_beta.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
+                Gate(p + "ssm_alpha.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
                 Floats(p + "ssm_conv1d.weight", [ConvKernel, ConvChannels], _ => Near(0f, 0.5f));
                 Floats(p + "ssm_a", [SsmHeads], _ => Near(-1f, 0.2f));
                 Floats(p + "ssm_dt.bias", [SsmHeads], _ => Near(0.5f, 0.1f));
@@ -131,7 +152,29 @@ internal static class SyntheticQwen35
             Q8(p + "ffn_up.weight", Embedding, FeedForward);
             Q8(p + "ffn_down.weight", FeedForward, Embedding);
         }
+        switch (head)
+        {
+            case Head.Own:
+                Ternary("output.weight", Embedding, Vocabulary, 0.25f);
+                break;
+            case Head.EmbeddingsCopy:
+                b.Tensor("output.weight", [Embedding, Vocabulary], (uint)packing, embedding);
+                break;
+        }
         return b.Build();
+    }
+
+    /// <summary>The output head of a synthetic model.</summary>
+    public enum Head
+    {
+        /// <summary>The embedding table read forward, as the 2B's.</summary>
+        Tied,
+
+        /// <summary>A table of its own with its own rows, as the 27B's.</summary>
+        Own,
+
+        /// <summary>A table of its own holding the embedding's rows: an untied head that must score as the tied one.</summary>
+        EmbeddingsCopy,
     }
 
     // Q8_0 rows: per 32 weights an fp16 scale and 32 int8 values, weights of about 0.05.
