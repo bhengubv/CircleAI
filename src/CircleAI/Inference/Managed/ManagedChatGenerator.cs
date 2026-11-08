@@ -61,6 +61,7 @@ using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Model;
 using CircleAI.Inference.Managed.Runtime;
 using CircleAI.Inference.Managed.Sampling;
+using CircleAI.Inference.Managed.Store;
 using CircleAI.Inference.Managed.Text;
 using CircleAI.Inference.Managed.Vision;
 using CircleAI.Vision;
@@ -143,6 +144,14 @@ public sealed record ManagedGeneratorOptions
     /// kept, so at most (edge / 32)^2 tokens. <see cref="ImageBudget.VisionMaxEdge"/> unless given.
     /// </summary>
     public int VisionMaxEdge { get; init; } = ImageBudget.VisionMaxEdge;
+
+    /// <summary>
+    /// Where the head's store by script is kept: the output head's rows grouped by writing system, on
+    /// flash, so a turn streams in only the scripts its conversation writes in and lets them go when it
+    /// ends (<see cref="HeadStore"/>). The device's flash is measured there once, for the channels a turn
+    /// streams on. Null keeps it in the platform's cache folder beside the primed starts; empty turns it off.
+    /// </summary>
+    public string? StoreDirectory { get; init; }
 }
 
 /// <summary>Bonsai 2 (qwen35) run by CircleAI's own C# engine, behind <see cref="IChatGenerator"/>.</summary>
@@ -205,6 +214,30 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // Speculative decoding with the file's MTP head (S5): null for a file without one, or when the
     // options ask for plain decoding.
     private readonly Speculator? _speculator;
+
+    // THE HEAD'S STORE BY SCRIPT, ON FLASH: null until it is written and checked, and where it is off; the
+    // readers the device's flash takes at once; and the job that makes them, in the background at load.
+    private HeadStore? _headStore;
+    private int _channels = 4;
+    private int _readBytes = 1024 * 1024;
+    private readonly CancellationTokenSource _storeCancel = new();
+    private Task? _storeTask;
+
+    // THE FEED-FORWARD'S STORE, when this load reads its feed-forward from flash: armed warm before a token runs, kept
+    // while turns keep coming, and let go once the engine has been idle for the recipe's time (Stopwatch ticks).
+    private FfnStore? _ffnStore;
+    private FfnWarm? _ffnWarm;
+    private long _ffnUsed;
+    private long _ffnKeepTicks = (long)(180 * (double)Stopwatch.Frequency);
+    private System.Threading.Timer? _ffnTimer;
+
+    // STEP 3: WHAT EACH FEED-FORWARD GROUP HAS DONE in full turns, kept on flash, and the share of groups a word computes
+    // (100 is all) - set by a small file beside the stores, so a test can change it from outside the process.
+    private double[]? _ffnFired;
+    private long _ffnFiredTokens;
+    private long _ffnControlStamp = -1;
+    private const string FfnSurfaceFile = "ffn-surface.txt";
+    private const string FfnFidelityFile = "ffn-fidelity.txt";
 
     // Seeing: the tower beside the model (its shape read at load, its weights on the first picture),
     // the template's picture token, and the last few pictures' tokens by their hash.
@@ -351,7 +384,18 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 ThrowIfDisposed();
                 if (!File.Exists(file))
                 {
-                    await Task.Run(() => ReadInTheGap(prompt, length, state, progress, ct), ct).ConfigureAwait(false);
+                    await Task.Run(() =>
+                    {
+                        EnsureFfnWarm();
+                        try
+                        {
+                            ReadInTheGap(prompt, length, state, progress, ct);
+                        }
+                        finally
+                        {
+                            UsedFfn();
+                        }
+                    }, ct).ConfigureAwait(false);
                     if (state.Position < length) continue;
                     KeepPrimed(prompt, length, state);
                     CircleLog.Info(Area, Invariant($"{length - from} tokens read in the gaps in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s"));
@@ -466,7 +510,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var pool = new WorkerPool(threads);
             try
             {
-                var model = Qwen35Model.Load(file, pool);
+                // A HEAD STORE THAT FITS THIS MODEL, KEPT FROM AN EARLIER LOAD: then the head is read from flash
+                // and no copy of it is made in RAM (a paired model's would be ~140 MB for the 2B).
+                // AND THE FEED-FORWARD'S, ~255 MB more for the 2B: read from flash, warm only while turns keep coming.
+                // SPLIT BEFORE THE LOAD (download, split, store, then index): the stores are written from the file
+                // first, so the copy they replace never exists - a model that would not fit in RAM as a copy (the 4B
+                // on a P30) loads at all.
+                SplitBeforeLoad(ggufPath, file, options);
+                var store = ExistingHeadStore(ggufPath, file, options);
+                var ffn = ExistingFfnStore(ggufPath, file, options);
+                var model = Qwen35Model.Load(file, pool, headFromStore: store is not null && Qwen35Model.WouldPair(file), ffnFromStore: ffn is not null);
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
                 var tower = FindTower(ggufPath, options.VisionTowerPath, file, model.Config);
@@ -477,6 +530,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var drafting = generator._speculator is { } s ? $", the MTP head drafting {s.Drafts} ahead" : model.HasMtp ? ", its MTP head unused" : "";
                 var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
                 CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Packing}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}{drafting}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+                generator.StartStore(ggufPath, store, ffn);
                 return generator;
             }
             catch
@@ -707,6 +761,18 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _gate.Wait();
         try
         {
+            // The store's job reads the mapped file: it stops before the file goes.
+            _storeCancel.Cancel();
+            try
+            {
+                _storeTask?.Wait(TimeSpan.FromSeconds(30));
+            }
+            catch (AggregateException)
+            {
+                // It ended with an error it already logged.
+            }
+            _ffnTimer?.Dispose();
+            LetFfnGo("the generator is going");
             _pool.Dispose();
             _file.Dispose();
             _towerFile?.Dispose();
@@ -790,6 +856,41 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         // What comes after is their turn's end and the reply's opening, which have to follow the last word.
         var readTo = options.JustRead ? EndOfWhatWasSaid(prompt, lastTurn) : prompt.Count;
 
+        // THE FEED-FORWARD IS WARM BEFORE THE FIRST TOKEN RUNS: streamed in from flash when it is cold. A read ahead
+        // while someone is still talking warms it, so a spoken turn seldom waits for it.
+        EnsureFfnWarm();
+
+        // AND COMPUTES THE SURFACE OF NEURON GROUPS ASKED FOR, recording what fires only while it computes all of them.
+        ApplyFfnControl();
+        _model.RecordFfn = _model.Paired && _model.FfnGroups is null;
+
+        // THE HEAD STREAMS IN WHILE THE PROMPT IS READ: the groups of the head's store in the scripts the
+        // conversation writes in, on the device's channels. Armed before the first logits; let go at the end.
+        var headLoading = StartHead(prompt, options, built);
+        HeadSurface? surface = null;
+        void ArmHead()
+        {
+            if (headLoading is null || surface is not null) return;
+            try
+            {
+                surface = headLoading.GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                headLoading = null;
+                if (!_model.HeadFromStore || Volatile.Read(ref _headStore) is not { } store)
+                {
+                    CircleLog.Warn(Area, $"the head's surface did not stream in ({ex.GetType().Name}: {ex.Message}); this turn reads the whole head");
+                    return;
+                }
+                // NO COPY TO FALL BACK ON: the whole head from the store, once more, or the turn cannot answer.
+                CircleLog.Warn(Area, $"the head's surface did not stream in ({ex.GetType().Name}: {ex.Message}); streaming in all of it");
+                surface = store.Load(store.Groups, Volatile.Read(ref _channels));
+            }
+            _model.Head = surface;
+            CircleLog.Info(Area, Invariant($"head: {string.Join(", ", surface.Groups.Select(g => g.Script))} - {surface.Rows:N0} of {_model.Config.Vocabulary:N0} rows, {surface.Bytes / 1048576.0:F1} MB ({surface.Layout}), streamed in from flash in {surface.Elapsed.TotalMilliseconds:F0} ms on {surface.Channels} channel(s){(surface.Direct ? ", past the cache" : ", dropped from the cache")}"));
+        }
+
         try
         {
             var path = Resume(prompt, primed);
@@ -822,7 +923,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 if (together > 1)
                 {
                     var read = new float[]?[together];
-                    if (i + together == prompt.Count) read[together - 1] = _logits;
+                    if (i + together == prompt.Count)
+                    {
+                        read[together - 1] = _logits;
+                        ArmHead();
+                    }
                     _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together), _state, read);
                     _history.AddRange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together));
                     i += together - 1;
@@ -835,14 +940,17 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                     // it does not see this position (its drafts there may miss - the reply cannot).
                     var (image, index) = slots[i];
                     var tokens = Seen(built.Images[image]);
+                    if (i == prompt.Count - 1) ArmHead();
                     _model.ForwardImageToken(tokens.Token(index), index, tokens.Columns, tokens.Rows, _state, i == prompt.Count - 1 ? _logits : default);
                 }
                 else if (_speculator is null)
                 {
+                    if (i == prompt.Count - 1) ArmHead();
                     _model.Forward(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
                 }
                 else
                 {
+                    if (i == prompt.Count - 1) ArmHead();
                     _speculator.Run(prompt[i], _state, i == prompt.Count - 1 ? _logits : default);
                 }
                 _history.Add(prompt[i]);
@@ -1040,6 +1148,562 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             _history.Clear();
             if (timing is not null) timing.Finish ??= "error";
             throw;
+        }
+        finally
+        {
+            LetHeadGo(surface, headLoading, options.JustRead);
+            UsedFfn();
+            KeepFired();
+        }
+    }
+
+    // ---- step 3: what fires, and the surface of neuron groups ----
+
+    private string? FiredPath => StoreDirectoryOf(_options) is { } directory ? Path.Combine(directory, Path.GetFileName(_file.FilePath) + ".ffn-fired") : null;
+
+    // What fired this call, added to what fired before, and kept on flash beside the stores.
+    private void KeepFired()
+    {
+        if (!_model.Paired) return;
+        var (activity, tokens) = _model.TakeFfnActivity();
+        if (tokens == 0) return;
+        _ffnFired ??= new double[activity.Length];
+        if (_ffnFired.Length != activity.Length) return;
+        for (var i = 0; i < activity.Length; i++) _ffnFired[i] += activity[i];
+        _ffnFiredTokens += tokens;
+        if (FiredPath is not { } path) return;
+        try
+        {
+            using var stream = new FileStream(path + ".partial", FileMode.Create, FileAccess.Write, FileShare.None, 1 << 12);
+            using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+            {
+                writer.Write(_ffnFired.Length);
+                writer.Write(_ffnFiredTokens);
+                foreach (var value in _ffnFired) writer.Write(value);
+            }
+            stream.Close();
+            File.Move(path + ".partial", path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Kept next turn.
+        }
+    }
+
+    // What fired in earlier loads, read back.
+    private void ReadFired()
+    {
+        if (FiredPath is not { } path || !File.Exists(path)) return;
+        try
+        {
+            using var reader = new BinaryReader(File.OpenRead(path));
+            var count = reader.ReadInt32();
+            var tokens = reader.ReadInt64();
+            var expected = _model.Config.Layers * (_model.Config.FeedForward / _model.FfnGroupSize);
+            if (count != expected) return;
+            var fired = new double[count];
+            for (var i = 0; i < count; i++) fired[i] = reader.ReadDouble();
+            _ffnFired = fired;
+            _ffnFiredTokens = tokens;
+            CircleLog.Info(Area, Invariant($"what the feed-forward's {_model.FfnGroupSize}-neuron groups fired over {tokens:N0} tokens, read back"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EndOfStreamException)
+        {
+            // Recorded again from the next turn.
+        }
+    }
+
+    // The share of groups asked for in the control file, applied when the file changes. Under the gate.
+    private void ApplyFfnControl()
+    {
+        if (!_model.Paired || StoreDirectoryOf(_options) is not { } directory) return;
+        var file = Path.Combine(directory, FfnSurfaceFile);
+        long stamp;
+        try
+        {
+            stamp = File.Exists(file) ? File.GetLastWriteTimeUtc(file).Ticks : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        if (stamp == _ffnControlStamp) return;
+        _ffnControlStamp = stamp;
+        var percent = 100;
+        if (stamp != 0 && int.TryParse(File.ReadAllText(file).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var asked)) percent = Math.Clamp(asked, 1, 100);
+        if (percent >= 100 || _ffnFired is null)
+        {
+            _model.FfnGroups = null;
+            CircleLog.Info(Area, percent >= 100 ? "feed-forward: every neuron group computed" : $"feed-forward: {percent}% asked for, but nothing has fired yet to choose by; every group computed");
+            return;
+        }
+        var surface = SurfaceOf(percent);
+        _model.FfnGroups = surface;
+        CircleLog.Info(Area, Invariant($"feed-forward: {percent}% of the neuron groups computed - {surface.Layer(0).Kept} of {surface.Groups} a layer, the ones that fired most over {_ffnFiredTokens:N0} tokens"));
+    }
+
+    private FfnSurface SurfaceOf(int percent) =>
+        FfnSurface.Strongest(_ffnFired!, percent / 100.0, _model.Config.Layers, _model.FfnGroupSize, _model.Config.FeedForward);
+
+    // THE SURFACES AGAINST EVERY GROUP, on fixed text read token by token (teacher-forced): how often each gives the
+    // same top word, how far its distribution moves (KL), and what a word costs. Under the gate.
+    private void RunFidelity(int[] percents)
+    {
+        if (_ffnFired is null)
+        {
+            CircleLog.Info(Area, "feed-forward fidelity: nothing has fired yet to choose by - ask it something first");
+            return;
+        }
+        using var spinning = _pool.KeepSpinning();
+        EnsureFfnWarm();
+        HeadSurface? head = null;
+        var saved = _model.FfnGroups;
+        var recording = _model.RecordFfn;
+        try
+        {
+            if (_model.HeadFromStore && Volatile.Read(ref _headStore) is { } store)
+            {
+                head = store.Load(store.Surface([Script.Latin]), Volatile.Read(ref _channels));
+                _model.Head = head;
+            }
+            _model.RecordFfn = false;
+            var tokens = _tokenizer.Encode(FidelityText, parseSpecial: false);
+            var surfaces = percents.Select(SurfaceOf).ToArray();
+            var full = _model.NewState(tokens.Count + 1);
+            var states = surfaces.Select(_ => _model.NewState(tokens.Count + 1)).ToArray();
+            var vocabulary = _model.Config.Vocabulary;
+            var p = new float[vocabulary];
+            var q = new float[vocabulary];
+            var same = new int[surfaces.Length];
+            var kl = new double[surfaces.Length];
+            var ticks = new long[surfaces.Length];
+            long fullTicks = 0;
+            var words = tokens.Count - 1;
+            for (var i = 0; i < words; i++)
+            {
+                _model.FfnGroups = null;
+                var started = Stopwatch.GetTimestamp();
+                _model.Forward(tokens[i], full, p);
+                fullTicks += Stopwatch.GetTimestamp() - started;
+                var top = ArgMax(p);
+                for (var s = 0; s < surfaces.Length; s++)
+                {
+                    _model.FfnGroups = surfaces[s];
+                    started = Stopwatch.GetTimestamp();
+                    _model.Forward(tokens[i], states[s], q);
+                    ticks[s] += Stopwatch.GetTimestamp() - started;
+                    if (ArgMax(q) == top) same[s]++;
+                    kl[s] += Divergence(p, q);
+                }
+            }
+            double Ms(long t) => t * 1000.0 / Stopwatch.Frequency / Math.Max(1, words);
+            var lines = Enumerable.Range(0, surfaces.Length).Select(s => Invariant(
+                $"{percents[s]}% ({surfaces[s].Layer(0).Kept} of {surfaces[s].Groups} groups a layer): same top word {100.0 * same[s] / Math.Max(1, words):F1}%, KL {kl[s] / Math.Max(1, words):F3}, {Ms(ticks[s]):F1} ms a word"));
+            CircleLog.Info(Area, Invariant($"feed-forward fidelity over {words} words of fixed text, read token by token, against every group ({Ms(fullTicks):F1} ms a word): {string.Join("; ", lines)}"));
+        }
+        finally
+        {
+            _model.FfnGroups = saved;
+            _model.RecordFfn = recording;
+            _model.Head = null;
+            head?.Dispose();
+            UsedFfn();
+        }
+    }
+
+    private static int ArgMax(ReadOnlySpan<float> values)
+    {
+        var best = 0;
+        for (var i = 1; i < values.Length; i++)
+        {
+            if (values[i] > values[best]) best = i;
+        }
+        return best;
+    }
+
+    // KL(P || Q) over the tokens both can say (a token outside the head's surface is -inf in both).
+    private static double Divergence(ReadOnlySpan<float> p, ReadOnlySpan<float> q)
+    {
+        double maxP = double.NegativeInfinity, maxQ = double.NegativeInfinity;
+        for (var i = 0; i < p.Length; i++)
+        {
+            if (p[i] > maxP) maxP = p[i];
+            if (q[i] > maxQ) maxQ = q[i];
+        }
+        double sumP = 0, sumQ = 0;
+        for (var i = 0; i < p.Length; i++)
+        {
+            if (!float.IsNegativeInfinity(p[i])) sumP += Math.Exp(p[i] - maxP);
+            if (!float.IsNegativeInfinity(q[i])) sumQ += Math.Exp(q[i] - maxQ);
+        }
+        double logZp = maxP + Math.Log(sumP), logZq = maxQ + Math.Log(sumQ), kl = 0;
+        for (var i = 0; i < p.Length; i++)
+        {
+            if (float.IsNegativeInfinity(p[i])) continue;
+            var lp = p[i] - logZp;
+            var lq = float.IsNegativeInfinity(q[i]) ? -1e9 : q[i] - logZq;
+            kl += Math.Exp(lp) * (lp - lq);
+        }
+        return kl;
+    }
+
+    // Ordinary English the fidelity run reads: a day of errands, the kind of words a person says to it.
+    private const string FidelityText =
+        "Morning light came through the kitchen window while the kettle began to hum. Sipho checked the weather on his phone: " +
+        "light rain in the afternoon, clearing by evening. He packed an umbrella, a sandwich and the library book he had promised " +
+        "to return. On the bus he read about how bees find their way home, using the position of the sun and the smell of their hive. " +
+        "At work the printer jammed twice before lunch, so he opened the tray, removed a crumpled page and showed a colleague how to " +
+        "reset it. In the evening he called his mother, who asked whether he was eating properly and reminded him that his cousin's " +
+        "wedding was in three weeks. Before bed he set an alarm for six, plugged in his phone and wrote a short list for tomorrow: " +
+        "buy milk, pay the electricity bill, and fix the dripping tap in the bathroom.";
+
+    // ---- the head's store by script ----
+
+    // THE TURN IS OVER: RAM lets the head go. Its surface is freed; one still streaming in is freed when it
+    // lands; and a turn that read the whole head as it lies lets the OS take those pages back too.
+    private void LetHeadGo(HeadSurface? surface, Task<HeadSurface>? loading, bool justRead)
+    {
+        _model.Head = null;
+        if (surface is not null)
+        {
+            surface.Dispose();
+            return;
+        }
+        if (loading is not null)
+        {
+            _ = loading.ContinueWith(t =>
+            {
+                if (t.Status == TaskStatus.RanToCompletion) t.Result.Dispose();
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return;
+        }
+        if (!justRead && Volatile.Read(ref _headStore) is not null) HeadStore.ReleaseMapped(_file);
+    }
+
+    // The surface a turn streams in, started now. A model that keeps no copy of its head (HeadFromStore) streams
+    // one for every turn that wants logits, all of the head's groups when the conversation writes in that many
+    // scripts. Otherwise null - the turn reads the whole head as it lies - for no store yet, a read ahead (no
+    // logits), pictures, MTP drafting, or so many scripts that nearly all of the head would come in anyway.
+    private Task<HeadSurface>? StartHead(List<int> prompt, GenerationOptions options, PromptIds built)
+    {
+        var store = Volatile.Read(ref _headStore);
+        if (store is null || options.JustRead) return null;
+        var served = _model.HeadFromStore;
+        if (!served && (_speculator is not null || built.Slots is not null)) return null;
+        var scripts = new HashSet<Script>();
+        foreach (var token in prompt)
+        {
+            if ((uint)token < (uint)_tokenizer.Count) scripts.Add(ScriptOf(token));
+        }
+        var groups = store.Surface(scripts);
+        if (!served && groups.Sum(g => (long)g.Rows) >= store.Rows * 9L / 10)
+        {
+            CircleLog.Info(Area, $"head: the whole head as it lies this turn - the conversation writes in {string.Join(", ", scripts)}");
+            return null;
+        }
+        return LoadHead(store, groups);
+    }
+
+    // A surface streamed in on the device's channels, off the turn's thread.
+    private Task<HeadSurface> LoadHead(HeadStore store, IReadOnlyList<HeadStore.Group> groups)
+    {
+        var channels = Volatile.Read(ref _channels);
+        return Task.Factory.StartNew(() => store.Load(groups, channels), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    // A token's writing system, as the head's store groups it.
+    private Script ScriptOf(int token) => ScriptOf(_tokenizer, token);
+
+    private static Script ScriptOf(ByteLevelBpe tokenizer, int token) =>
+        TokenScripts.Of(tokenizer.Piece(token, special: true), tokenizer.Kind(token) is TokenKind.Control or TokenKind.UserDefined or TokenKind.Unknown);
+
+    // THE STORES WRITTEN STRAIGHT FROM THE FILE BEFORE THE MODEL IS BUILT, for a model the vector kernel repacks: its head
+    // by script and its feed-forward, each checked against the file, so the load that follows keeps neither as a copy.
+    // Once per model; a failure leaves the load as it was, with its copies.
+    private static void SplitBeforeLoad(string ggufPath, GgufFile file, ManagedGeneratorOptions options)
+    {
+        if (!Qwen35Model.WouldPair(file) || StoreDirectoryOf(options) is not { } directory) return;
+        if (file.TryGetValue("qwen35.nextn_predict_layers", out _) && options.Drafts > 0) return; // the MTP head drafts from the whole table
+        try
+        {
+            var headPath = StorePath(directory, ggufPath);
+            if (HeadStore.Unreadable(file) is null && HeadStore.Open(file, headPath, HeadLayout.Paired) is null)
+            {
+                var tokenizer = ByteLevelBpe.FromGguf(file);
+                var started = Stopwatch.GetTimestamp();
+                var head = HeadStore.Write(file, headPath, token => ScriptOf(tokenizer, token), layout: HeadLayout.Paired);
+                var written = Stopwatch.GetElapsedTime(started);
+                var wrong = head.Verify(file);
+                CircleLog.Info(Area, Invariant($"split before the load: the head's store written (Paired), {head.Bytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {head.Rows:N0} rows differ from the model"));
+                if (wrong != 0) File.Delete(headPath);
+            }
+            var ffnPath = FfnPath(directory, ggufPath);
+            if (FfnStore.Unreadable(file) is null && FfnStore.Open(file, ffnPath) is null)
+            {
+                var started = Stopwatch.GetTimestamp();
+                var ffn = FfnStore.Write(file, ffnPath);
+                var written = Stopwatch.GetElapsedTime(started);
+                var wrong = ffn.Verify(file);
+                CircleLog.Info(Area, Invariant($"split before the load: the feed-forward's store written, {ffn.Entries.Count} tensors, {ffn.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {ffn.Entries.Count} differ from the model"));
+                if (wrong != 0) File.Delete(ffnPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException or ArgumentException)
+        {
+            CircleLog.Warn(Area, $"the split before the load failed ({ex.GetType().Name}: {ex.Message}); the model loads with its copies");
+        }
+    }
+
+    // Where the head's store is kept: the option's folder, the platform's cache folder beside the primed starts
+    // when none is given, and null when the option turns it off.
+    private static string? StoreDirectoryOf(ManagedGeneratorOptions options) => options.StoreDirectory switch
+    {
+        null => Path.Combine(Path.GetTempPath(), "CircleAI", "store"),
+        "" => null,
+        var given => given,
+    };
+
+    private static string StorePath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".head");
+
+    // The head store an earlier load left that fits this model as it will run here - its shape the kernel's - so
+    // this load can keep no copy of the head; null when there is none, or it is off or another shape's.
+    private static HeadStore? ExistingHeadStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options)
+    {
+        if (StoreDirectoryOf(options) is not { } directory || HeadStore.Unreadable(file) is not null) return null;
+        if (file.TryGetValue("qwen35.nextn_predict_layers", out _) && options.Drafts > 0) return null; // the MTP head drafts from the whole table
+        var layout = Qwen35Model.WouldPair(file) ? HeadLayout.Paired : HeadLayout.Rows;
+        return HeadStore.Open(file, StorePath(directory, ggufPath), layout);
+    }
+
+    private static string FfnPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".ffn");
+
+    // The feed-forward store an earlier load left that fits this model, so this load keeps no copy of its feed-forward;
+    // null when there is none, it is off, or the model does not compute in the vector kernel's tiles here.
+    private static FfnStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
+        StoreDirectoryOf(options) is { } directory && Qwen35Model.WouldPair(file) ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null;
+
+    // Makes the stores ready in the background, once per model: the head's and the feed-forward's written and checked
+    // against the model if no earlier load left them, the device's flash measured if it never was, then turns may use
+    // them. Every reason one is not used is said.
+    private void StartStore(string ggufPath, HeadStore? existing, FfnStore? existingFfn)
+    {
+        // A model that keeps no copy of its feed-forward has its store from the first turn, and lets the warm one go
+        // when it has been idle long enough. The idle clock also does a fidelity run when one is asked for.
+        if (existingFfn is not null) _ffnStore = existingFfn;
+        if (StoreDirectoryOf(_options) is not null)
+        {
+            ReadFired();
+            _ffnTimer = new System.Threading.Timer(IdleCheck, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+        }
+        if (StoreDirectoryOf(_options) is not { } directory)
+        {
+            CircleLog.Info(Area, "no head store: turned off (StoreDirectory is empty); every turn reads the whole head");
+            return;
+        }
+        if (HeadStore.Unreadable(_file) is { } why)
+        {
+            CircleLog.Info(Area, $"no head store: {why}; every turn reads the whole head");
+            return;
+        }
+        if (_speculator is not null)
+            CircleLog.Info(Area, "the head store serves no turn the MTP head drafts: those read the whole head");
+
+        // A model that keeps no copy of its head has its store from the first turn: nothing else can score it.
+        if (existing is not null) Volatile.Write(ref _headStore, existing);
+        var ct = _storeCancel.Token;
+        _storeTask = Task.Factory.StartNew(() => PrepareStore(ggufPath, directory, existing, existingFfn, ct), ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    private void PrepareStore(string ggufPath, string directory, HeadStore? existing, FfnStore? existingFfn, CancellationToken ct)
+    {
+        FlashProfile? profile = null;
+        try
+        {
+            var path = StorePath(directory, ggufPath);
+            var layout = _model.Paired ? HeadLayout.Paired : HeadLayout.Rows;
+            var started = Stopwatch.GetTimestamp();
+            var store = existing ?? HeadStore.Open(_file, path, layout);
+            if (existing is not null)
+            {
+                CircleLog.Info(Area, Invariant($"the head is read from its store on flash ({layout}): {Scripts(store!)}; {store!.Bytes / 1048576.0:F0} MB, no copy of it in RAM"));
+            }
+            else if (store is null)
+            {
+                store = HeadStore.Write(_file, path, ScriptOf, layout: layout, ct: ct);
+                var written = Stopwatch.GetElapsedTime(started);
+                var wrong = store.Verify(_file);
+                var checkedIn = Stopwatch.GetElapsedTime(started) - written;
+                CircleLog.Info(Area, Invariant($"the head's store by script written ({layout}): {Scripts(store)}; {store.Bytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {checkedIn.TotalMilliseconds:F0} ms: {wrong} of {store.Rows:N0} rows differ from the model"));
+                if (wrong != 0)
+                {
+                    File.Delete(path);
+                    CircleLog.Warn(Area, "the head's store was wrong and is gone; every turn reads the whole head");
+                    return;
+                }
+                if (_model.Paired) CircleLog.Info(Area, "turns read their head from the store now; the head's copy in RAM goes at the next load");
+            }
+            else
+            {
+                HeadStore.ReleaseMapped(_file);
+                CircleLog.Info(Area, Invariant($"the head's store by script found ({layout}): {Scripts(store)}; {store.Bytes / 1048576.0:F0} MB"));
+            }
+
+            // THE DEVICE'S FLASH, measured once on the store, for the channels a turn streams on. A store that
+            // cannot be measured still serves, on the default channels.
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                profile = FlashProfile.Remembered(directory);
+                if (profile is null)
+                {
+                    var measuring = Stopwatch.GetTimestamp();
+                    profile = FlashProfile.Measure(path, directory, ct: ct);
+                    CircleLog.Info(Area, Invariant($"flash measured in {Stopwatch.GetElapsedTime(measuring).TotalMilliseconds:F0} ms: {profile}"));
+                }
+                else
+                {
+                    CircleLog.Info(Area, $"flash as measured before: {profile}");
+                }
+                Volatile.Write(ref _channels, profile.Channels);
+                Volatile.Write(ref _readBytes, profile.ChunkBytes);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                CircleLog.Warn(Area, $"the flash could not be measured ({ex.GetType().Name}: {ex.Message}); turns stream on {Volatile.Read(ref _channels)} channels");
+            }
+            if (existing is null) Volatile.Write(ref _headStore, store);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // the generator is going
+        }
+        catch (Exception ex)
+        {
+            CircleLog.Warn(Area, $"the head's store could not be made ({ex.GetType().Name}: {ex.Message}); every turn reads the whole head");
+        }
+
+        if (_model.Paired) PrepareFfn(ggufPath, directory, existingFfn, profile, ct);
+
+        static string Scripts(HeadStore store) =>
+            string.Join(", ", store.Groups.Select(g => g.Script.ToString() + " " + g.Rows.ToString("N0", CultureInfo.InvariantCulture)));
+    }
+
+    // THE FEED-FORWARD'S STORE, for a model that computes in the vector kernel's tiles: found, and its recipe set - how
+    // long a warm one stays after a turn - or written and checked for the next load, whose feed-forward is then read
+    // from flash and kept in RAM only while it is warm.
+    private void PrepareFfn(string ggufPath, string directory, FfnStore? existing, FlashProfile? profile, CancellationToken ct)
+    {
+        try
+        {
+            if (existing is not null)
+            {
+                // THE RECIPE: where the flash brings the feed-forward back in a fraction of a second it streams in every
+                // turn; where it takes longer, a warm one stays while turns keep coming.
+                var rate = profile?.Scattered.Where(p => p.Bytes == profile.ChunkBytes && p.Channels == profile.Channels).Select(p => p.MegabytesPerSecond).FirstOrDefault() ?? 0;
+                var bringBack = rate > 0 ? TimeSpan.FromSeconds(existing.DataBytes / (rate * 1024 * 1024)) : TimeSpan.FromSeconds(10);
+                var keep = bringBack < FfnStreamEveryTurnBelow ? TimeSpan.Zero : FfnKeptWarm;
+                Volatile.Write(ref _ffnKeepTicks, (long)(keep.TotalSeconds * Stopwatch.Frequency));
+                CircleLog.Info(Area, Invariant($"the feed-forward is read from its store on flash: {existing.DataBytes / 1048576.0:F0} MB, no copy of it in RAM; bringing it in takes about {bringBack.TotalMilliseconds:F0} ms here, so {(keep == TimeSpan.Zero ? "it streams in every turn" : $"a warm one stays {keep.TotalSeconds:F0} s after a turn")}"));
+                return;
+            }
+            if (FfnStore.Unreadable(_file) is { } why)
+            {
+                CircleLog.Info(Area, $"no feed-forward store: {why}; the feed-forward stays in RAM");
+                return;
+            }
+            var path = FfnPath(directory, ggufPath);
+            var started = Stopwatch.GetTimestamp();
+            var store = FfnStore.Open(_file, path);
+            if (store is null)
+            {
+                store = FfnStore.Write(_file, path, ct);
+                var written = Stopwatch.GetElapsedTime(started);
+                var wrong = store.Verify(_file);
+                CircleLog.Info(Area, Invariant($"the feed-forward's store written: {store.Entries.Count} tensors, {store.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {store.Entries.Count} differ from the model"));
+                if (wrong != 0)
+                {
+                    File.Delete(path);
+                    CircleLog.Warn(Area, "the feed-forward's store was wrong and is gone; the feed-forward stays in RAM");
+                    return;
+                }
+            }
+            CircleLog.Info(Area, "the feed-forward's store is ready; from the next load the feed-forward is read from flash, its copy in RAM gone");
+        }
+        catch (OperationCanceledException)
+        {
+            // The generator is going.
+        }
+        catch (Exception ex)
+        {
+            CircleLog.Warn(Area, $"the feed-forward's store could not be made ({ex.GetType().Name}: {ex.Message}); the feed-forward stays in RAM");
+        }
+    }
+
+    // Where the flash brings the feed-forward back faster than this, it streams in every turn; else a warm one stays this long.
+    private static readonly TimeSpan FfnStreamEveryTurnBelow = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan FfnKeptWarm = TimeSpan.FromMinutes(3);
+
+    // THE FEED-FORWARD IS ARMED BEFORE A TOKEN RUNS, streamed in from flash when it is cold. Under the gate.
+    private void EnsureFfnWarm()
+    {
+        if (!_model.FfnFromStore || _ffnWarm is not null) return;
+        var store = _ffnStore ?? throw new InvalidOperationException("The feed-forward is read from its store, and this load found none.");
+        var warm = store.Load(Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
+        _model.ArmFfn(warm);
+        _ffnWarm = warm;
+        CircleLog.Info(Area, Invariant($"feed-forward: {warm.Bytes / 1048576.0:F0} MB streamed in from flash in {warm.Elapsed.TotalMilliseconds:F0} ms on {warm.Channels} channel(s){(warm.Direct ? ", past the cache" : ", dropped from the cache")} - it was cold"));
+    }
+
+    // A call has used the feed-forward: the idle clock starts again, and where it streams every turn it goes now. Under the gate.
+    private void UsedFfn()
+    {
+        if (_ffnWarm is null) return;
+        Volatile.Write(ref _ffnUsed, Stopwatch.GetTimestamp());
+        if (Volatile.Read(ref _ffnKeepTicks) == 0) LetFfnGo("it streams in every turn here");
+    }
+
+    // The warm feed-forward goes: the layers let go of it, then its memory. Under the gate.
+    private void LetFfnGo(string why)
+    {
+        if (_ffnWarm is not { } warm) return;
+        _model.ReleaseFfn();
+        _ffnWarm = null;
+        warm.Dispose();
+        CircleLog.Info(Area, Invariant($"feed-forward let go ({why}): RAM holds none of its {warm.Bytes / 1048576.0:F0} MB"));
+    }
+
+    // The idle clock: an engine idle for the recipe's time lets its warm feed-forward go, and a fidelity run asked for
+    // in the control file is done - never while a call runs.
+    private void IdleCheck(object? state)
+    {
+        var request = StoreDirectoryOf(_options) is { } directory ? Path.Combine(directory, FfnFidelityFile) : null;
+        var fidelity = request is not null && File.Exists(request);
+        var idle = _ffnWarm is not null && Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed) >= Volatile.Read(ref _ffnKeepTicks);
+        if (!fidelity && !idle) return;
+        if (!_gate.Wait(0)) return;
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            if (fidelity)
+            {
+                var percents = File.ReadAllText(request!).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(s => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 1, 99) : 0)
+                    .Where(v => v > 0).Distinct().ToArray();
+                File.Delete(request!);
+                if (percents.Length > 0) RunFidelity(percents);
+                return;
+            }
+            var since = Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed);
+            if (since >= Volatile.Read(ref _ffnKeepTicks)) LetFfnGo(Invariant($"idle {since / (double)Stopwatch.Frequency:F0} s"));
+        }
+        catch (Exception ex)
+        {
+            // A timer's callback must never throw: that would end the process.
+            CircleLog.Warn(Area, $"the idle clock's work failed ({ex.GetType().Name}: {ex.Message})");
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 

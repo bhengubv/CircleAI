@@ -217,6 +217,7 @@ public sealed unsafe class Ptq1PairMatrix
     private readonly int _tiles;
     private readonly RowsWork _rows;
     private readonly BatchWork _batch;
+    private readonly SubsetWork _subset;
 
     /// <summary>
     /// Repacks <paramref name="matrix"/>, <paramref name="rows"/> rows of <paramref name="cols"/>
@@ -238,6 +239,7 @@ public sealed unsafe class Ptq1PairMatrix
         _scales = (float*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_blockScales));
         _rows = new RowsWork(this);
         _batch = new BatchWork(this);
+        _subset = new SubsetWork(this);
 
         fixed (byte* m = matrix)
         {
@@ -245,6 +247,33 @@ public sealed unsafe class Ptq1PairMatrix
             if (pool is null) pack.Execute(0, 1);
             else pool.Run(pack);
         }
+    }
+
+    // A matrix in this layout lying in memory this does not own: nothing is copied or repacked.
+    private Ptq1PairMatrix(byte* weights, float* scales, int blocks, int tiles)
+    {
+        _blocks = blocks;
+        _tiles = tiles;
+        _bytes = [];
+        _blockScales = [];
+        _weights = weights;
+        _scales = scales;
+        _rows = new RowsWork(this);
+        _batch = new BatchWork(this);
+        _subset = new SubsetWork(this);
+    }
+
+    /// <summary>
+    /// The <paramref name="rows"/> x <paramref name="cols"/> matrix already in this layout at <paramref name="weights"/>
+    /// and <paramref name="scales"/> - a store's, streamed in from flash - read where it lies, by every product this
+    /// class has. The memory must outlive the matrix.
+    /// </summary>
+    public static Ptq1PairMatrix Over(byte* weights, float* scales, int rows, int cols)
+    {
+        if (weights == null || scales == null) throw new ArgumentNullException(nameof(weights));
+        if (cols <= 0 || cols % Ptq1.BlockWeights != 0) throw new ArgumentOutOfRangeException(nameof(cols), cols, "PTQ1_0 rows are whole 128-weight blocks.");
+        if (rows <= 0 || rows % TileRows != 0) throw new ArgumentOutOfRangeException(nameof(rows), rows, $"A matrix is a whole number of {TileRows}-row tiles.");
+        return new Ptq1PairMatrix(weights, scales, cols / Ptq1.BlockWeights, rows / TileRows);
     }
 
     /// <summary>Whether this process can run the vector kernel, and is allowed to (<see cref="KernelChoice"/>).</summary>
@@ -308,11 +337,135 @@ public sealed unsafe class Ptq1PairMatrix
         }
     }
 
-    private void Tiles(Ptq1PairInput x, float* output, int first, int end)
+    private void Tiles(Ptq1PairInput x, float* output, int first, int end) => RunTiles(_weights, _scales, _blocks, x, output, first, end);
+
+    // Tiles [first, end) of a matrix in this layout wherever it lies - this one's copy, or a chunk a store
+    // streamed in (Ptq1PairView) - times x, into output[tile * 16 + lane]. With keep, only the blocks it marks
+    // are read: a block whose input is all zero adds exactly nothing, so leaving it out changes no bit.
+    internal static void RunTiles(byte* weights, float* scales, int blocks, Ptq1PairInput x, float* output, int first, int end, byte* keep = null)
     {
-        if (AdvSimd.Arm64.IsSupported) Vectors(x.Spread, x.Scales, x.Offsets, output, first, end);
-        else Scalar(x, output, first, end);
+        if (AdvSimd.Arm64.IsSupported) Vectors(weights, scales, blocks, x.Spread, x.Scales, x.Offsets, output, first, end, keep);
+        else Scalar(weights, scales, blocks, x, output, first, end, keep);
     }
+
+    /// <summary>
+    /// Only the rows of tiles in <paramref name="ranges"/> (tile numbers, each [First, End)) times <paramref name="x"/>,
+    /// into their places in <paramref name="output"/>; every other value of it is left as it was. Each row is its full
+    /// product's to the bit. A turn's feed-forward surface reads the gate and up rows of its neuron groups this way.
+    /// </summary>
+    public void MatVecRanges(Ptq1PairInput x, Span<float> output, ReadOnlySpan<(int First, int End)> ranges, WorkerPool? pool = null) =>
+        Subset(x, output, ranges, null, pool);
+
+    /// <summary>
+    /// Every row times <paramref name="x"/>, reading only the blocks <paramref name="keep"/> marks (one byte a block of a
+    /// row, nonzero to read it) - exactly the full product when the blocks left out see an input of zeros. A surface's
+    /// down product skips the neuron groups it did not compute this way.
+    /// </summary>
+    public void MatVecMasked(Ptq1PairInput x, Span<float> output, ReadOnlySpan<byte> keep, WorkerPool? pool = null)
+    {
+        if (keep.Length != _blocks) throw new ArgumentException($"The mask takes one byte for each of {_blocks} blocks.", nameof(keep));
+        fixed (byte* k = keep)
+        {
+            Span<(int, int)> all = [(0, _tiles)];
+            Subset(x, output, all, k, pool);
+        }
+    }
+
+    private void Subset(Ptq1PairInput x, Span<float> output, ReadOnlySpan<(int First, int End)> ranges, byte* keep, WorkerPool? pool)
+    {
+        ArgumentNullException.ThrowIfNull(x);
+        if (x.Length != _blocks * Ptq1.BlockWeights) throw new ArgumentException($"Expected {_blocks * Ptq1.BlockWeights} activations, got {x.Length}.", nameof(x));
+        if (output.Length != _tiles * TileRows) throw new ArgumentException($"Expected {_tiles * TileRows} outputs, got {output.Length}.", nameof(output));
+        foreach (var (first, end) in ranges)
+            if (first < 0 || end > _tiles || first > end) throw new ArgumentOutOfRangeException(nameof(ranges), $"Tiles [{first}, {end}) are not within {_tiles}.");
+        fixed (float* o = output)
+        {
+            if (pool is null)
+            {
+                foreach (var (first, end) in ranges) RunTiles(_weights, _scales, _blocks, x, o, first, end, keep);
+                return;
+            }
+            _subset.Set(x, o, ranges, keep, Math.Max(1, Math.Min(8, _tiles / (pool.Threads * 4))));
+            try
+            {
+                pool.Run(_subset);
+            }
+            finally
+            {
+                _subset.Clear();
+            }
+        }
+    }
+
+    // One pooled subset product: its ranges cut into pieces of a few tiles, each taken by whichever thread is free.
+    private sealed class SubsetWork(Ptq1PairMatrix matrix) : WorkerPool.IWork
+    {
+        private (int First, int End)[] _pieces = new (int, int)[64];
+        private int _count;
+        private Ptq1PairInput? _x;
+        private float* _output;
+        private byte* _keep;
+        private int _next;
+
+        public void Set(Ptq1PairInput x, float* output, ReadOnlySpan<(int First, int End)> ranges, byte* keep, int chunk)
+        {
+            _count = 0;
+            foreach (var (first, end) in ranges)
+            {
+                for (var at = first; at < end; at += chunk)
+                {
+                    if (_count == _pieces.Length) Array.Resize(ref _pieces, _pieces.Length * 2);
+                    _pieces[_count++] = (at, Math.Min(end, at + chunk));
+                }
+            }
+            _x = x;
+            _output = output;
+            _keep = keep;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _x = null;
+            _output = null;
+            _keep = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            int i;
+            while ((i = Interlocked.Increment(ref _next) - 1) < _count)
+                RunTiles(matrix._weights, matrix._scales, matrix._blocks, _x!, _output, _pieces[i].First, _pieces[i].End, _keep);
+        }
+    }
+
+    /// <summary>
+    /// Repacks <paramref name="count"/> PTQ1_0 rows of <paramref name="cols"/> - a whole number of tiles, laid end to
+    /// end in <paramref name="rows"/> - into this layout: their tiles into <paramref name="weights"/> and their block
+    /// scales into <paramref name="scales"/>. What a store keeps on flash, so the vector kernel reads it where it lands.
+    /// </summary>
+    public static void Repack(ReadOnlySpan<byte> rows, int count, int cols, Span<byte> weights, Span<float> scales)
+    {
+        if (cols <= 0 || cols % Ptq1.BlockWeights != 0) throw new ArgumentOutOfRangeException(nameof(cols), cols, "PTQ1_0 rows are whole 128-weight blocks.");
+        if (count <= 0 || count % TileRows != 0) throw new ArgumentOutOfRangeException(nameof(count), count, $"Rows come in whole {TileRows}-row tiles.");
+        var blocks = cols / Ptq1.BlockWeights;
+        var tiles = count / TileRows;
+        if (rows.Length < (long)count * blocks * Ptq1.BlockBytes) throw new ArgumentException("The rows are too short.", nameof(rows));
+        if (weights.Length < (long)tiles * blocks * TileBlockBytes) throw new ArgumentException("The weights are too short.", nameof(weights));
+        if (scales.Length < (long)tiles * blocks * TileRows) throw new ArgumentException("The scales are too short.", nameof(scales));
+        fixed (byte* source = rows)
+        fixed (byte* w = weights)
+        fixed (float* s = scales)
+        {
+            for (var tile = 0; tile < tiles; tile++) PackTile(source, blocks, tile, w, s);
+        }
+    }
+
+    /// <summary>Bytes of weights <paramref name="rows"/> rows of <paramref name="cols"/> take in this layout.</summary>
+    public static long WeightBytes(int rows, int cols) => (long)rows / TileRows * (cols / Ptq1.BlockWeights) * TileBlockBytes;
+
+    /// <summary>Block scales <paramref name="rows"/> rows of <paramref name="cols"/> take in this layout.</summary>
+    public static long ScaleCount(int rows, int cols) => (long)rows * (cols / Ptq1.BlockWeights);
 
     // One piece of a pooled product: tiles go out in chunks taken in turn.
     private sealed class RowsWork(Ptq1PairMatrix matrix) : WorkerPool.IWork
@@ -390,18 +543,21 @@ public sealed unsafe class Ptq1PairMatrix
 
     // ---- the repack ----
 
+    private void Pack(byte* source, int tile) => PackTile(source, _blocks, tile, _weights, _scales);
+
+    // One tile of rows laid end to end at source, repacked into weights and scales at that tile's place.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void Pack(byte* source, int tile)
+    private static void PackTile(byte* source, int blocks, int tile, byte* weights, float* scales)
     {
         var codes = stackalloc byte[Ptq1.BlockWeights];
-        var rowBytes = (long)_blocks * Ptq1.BlockBytes;
+        var rowBytes = (long)blocks * Ptq1.BlockBytes;
         fixed (byte* table = Codes)
         fixed (short* column = ColumnByte)
         fixed (short* shift = ColumnShift)
         {
-            for (var b = 0; b < _blocks; b++)
+            for (var b = 0; b < blocks; b++)
             {
-                var dst = _weights + ((long)tile * _blocks + b) * TileBlockBytes;
+                var dst = weights + ((long)tile * blocks + b) * TileBlockBytes;
                 new Span<byte>(dst, TileBlockBytes).Clear();
                 for (var lane = 0; lane < TileRows; lane++)
                 {
@@ -409,7 +565,7 @@ public sealed unsafe class Ptq1PairMatrix
                     Unpack(block, table, codes);
                     var row = dst + lane / 8 * 16 + lane % 8;
                     for (var col = 0; col < Ptq1.BlockWeights; col++) row[column[col]] |= (byte)(codes[col] << shift[col]);
-                    _scales[((long)tile * _blocks + b) * TileRows + lane] = Ptq1.Scale(new ReadOnlySpan<byte>(block, Ptq1.BlockBytes));
+                    scales[((long)tile * blocks + b) * TileRows + lane] = Ptq1.Scale(new ReadOnlySpan<byte>(block, Ptq1.BlockBytes));
                 }
             }
         }
@@ -460,7 +616,7 @@ public sealed unsafe class Ptq1PairMatrix
     // ---- the products ----
 
     // The layout read back one weight at a time: what the vectors do, on any processor.
-    private void Scalar(Ptq1PairInput x, float* output, int first, int end)
+    private static void Scalar(byte* weights, float* scales, int blocks, Ptq1PairInput x, float* output, int first, int end, byte* keep)
     {
         var spread = (ulong*)x.Spread;
         for (var tile = first; tile < end; tile++)
@@ -468,9 +624,10 @@ public sealed unsafe class Ptq1PairMatrix
             for (var lane = 0; lane < TileRows; lane++)
             {
                 var sum = 0f;
-                for (var b = 0; b < _blocks; b++)
+                for (var b = 0; b < blocks; b++)
                 {
-                    var src = _weights + ((long)tile * _blocks + b) * TileBlockBytes + lane / 8 * 16 + lane % 8;
+                    if (keep != null && keep[b] == 0) continue;
+                    var src = weights + ((long)tile * blocks + b) * TileBlockBytes + lane / 8 * 16 + lane % 8;
                     var parts = 0f;
                     for (var k = 0; k < 4; k++)
                     {
@@ -482,7 +639,7 @@ public sealed unsafe class Ptq1PairMatrix
                         }
                         parts = MathF.FusedMultiplyAdd(part, x.Scales[b * 4 + k], parts);
                     }
-                    sum = MathF.FusedMultiplyAdd(parts - x.Offsets[b], _scales[((long)tile * _blocks + b) * TileRows + lane], sum);
+                    sum = MathF.FusedMultiplyAdd(parts - x.Offsets[b], scales[((long)tile * blocks + b) * TileRows + lane], sum);
                 }
                 output[tile * TileRows + lane] = sum;
             }
@@ -661,14 +818,13 @@ public sealed unsafe class Ptq1PairMatrix
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void Vectors(sbyte* table, float* dx, float* offsets, float* output, int first, int end)
+    private static void Vectors(byte* weights, float* scales, int blocks, sbyte* table, float* dx, float* offsets, float* output, int first, int end, byte* keep)
     {
         var mask = Vector128.Create((byte)3);
         var second = Vector128.Create((byte)0x0C);
         var third = Vector128.Create((byte)0x30);
-        var blocks = _blocks;
-        var p = _weights + (long)first * blocks * TileBlockBytes;
-        var dw = _scales + (long)first * blocks * TileRows;
+        var p = weights + (long)first * blocks * TileBlockBytes;
+        var dw = scales + (long)first * blocks * TileRows;
         output += first * TileRows;
         for (var t = first; t < end; t++, output += TileRows)
         {
@@ -677,6 +833,14 @@ public sealed unsafe class Ptq1PairMatrix
             var db = dx;
             for (var b = 0; b < blocks; b++, dw += TileRows)
             {
+                if (keep != null && keep[b] == 0)
+                {
+                    // A block left out: its weights, its tables and its scales passed over, nothing added.
+                    p += TileBlockBytes;
+                    e += 4 * 4 * 64;
+                    db += 4;
+                    continue;
+                }
                 Vector128<float> g0 = default, g1 = default, g2 = default, g3 = default;
                 for (var s = 0; s < 4; s++, db++)
                 {
@@ -734,6 +898,90 @@ public sealed unsafe class Ptq1PairMatrix
             AdvSimd.Store(output + 4, f0);
             AdvSimd.Store(output + 8, f3);
             AdvSimd.Store(output + 12, f2);
+        }
+    }
+}
+
+/// <summary>
+/// Rows in <see cref="Ptq1PairMatrix"/>'s layout held in memory this does not own - a chunk a store streamed in
+/// from flash - multiplied where they lie. One product at a time; reused, so a word allocates nothing. A row's
+/// sum is its own lane's whatever rows share its tile, so each equals the whole matrix's for that row to the bit.
+/// </summary>
+public sealed unsafe class Ptq1PairView
+{
+    private readonly Work _work = new();
+
+    /// <summary>
+    /// <paramref name="output"/>[r] = row r of the <paramref name="rows"/> rows of <paramref name="cols"/> whose tiles
+    /// are <paramref name="weights"/> and block scales <paramref name="scales"/>, times <paramref name="x"/>.
+    /// </summary>
+    public void MatVec(ReadOnlySpan<byte> weights, ReadOnlySpan<float> scales, int rows, int cols, Ptq1PairInput x, Span<float> output, WorkerPool? pool = null)
+    {
+        ArgumentNullException.ThrowIfNull(x);
+        if (cols <= 0 || cols % Ptq1.BlockWeights != 0 || x.Length != cols) throw new ArgumentException($"Expected {cols} activations, got {x.Length}.", nameof(x));
+        if (rows < 0 || rows % Ptq1PairMatrix.TileRows != 0) throw new ArgumentOutOfRangeException(nameof(rows), rows, $"Rows come in whole {Ptq1PairMatrix.TileRows}-row tiles.");
+        if (weights.Length < Ptq1PairMatrix.WeightBytes(rows, cols) || scales.Length < Ptq1PairMatrix.ScaleCount(rows, cols) || output.Length < rows)
+            throw new ArgumentException("The weights, scales or output are too short for the rows.");
+        var blocks = cols / Ptq1.BlockWeights;
+        var tiles = rows / Ptq1PairMatrix.TileRows;
+        fixed (byte* w = weights)
+        fixed (float* s = scales)
+        fixed (float* o = output)
+        {
+            if (pool is null || tiles <= 1)
+            {
+                Ptq1PairMatrix.RunTiles(w, s, blocks, x, o, 0, tiles);
+                return;
+            }
+            _work.Set(w, s, blocks, tiles, x, o, Math.Max(1, tiles / (pool.Threads * 4)));
+            try
+            {
+                pool.Run(_work);
+            }
+            finally
+            {
+                _work.Clear();
+            }
+        }
+    }
+
+    // One pooled product: tiles go out in chunks taken in turn.
+    private sealed class Work : WorkerPool.IWork
+    {
+        private byte* _weights;
+        private float* _scales;
+        private Ptq1PairInput? _x;
+        private float* _output;
+        private int _blocks;
+        private int _tiles;
+        private int _chunk;
+        private int _next;
+
+        public void Set(byte* weights, float* scales, int blocks, int tiles, Ptq1PairInput x, float* output, int chunk)
+        {
+            _weights = weights;
+            _scales = scales;
+            _blocks = blocks;
+            _tiles = tiles;
+            _x = x;
+            _output = output;
+            _chunk = chunk;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _weights = null;
+            _scales = null;
+            _x = null;
+            _output = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            long first;
+            while ((first = (long)(Interlocked.Increment(ref _next) - 1) * _chunk) < _tiles)
+                Ptq1PairMatrix.RunTiles(_weights, _scales, _blocks, _x!, _output, (int)first, (int)Math.Min(_tiles, first + _chunk));
         }
     }
 }

@@ -37,6 +37,7 @@ using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Kernels;
 using CircleAI.Inference.Managed.Rotation;
 using CircleAI.Inference.Managed.Runtime;
+using CircleAI.Inference.Managed.Store;
 
 namespace CircleAI.Inference.Managed.Model;
 
@@ -79,7 +80,16 @@ public sealed class Qwen35Model
     private long _tTotal, _tTables, _tProducts, _tRecurrence, _tAttention, _tHead;
     private int _tokens;
 
-    private Qwen35Model(GgufFile file, WorkerPool? pool)
+    // The page faults of the same Forward calls: minor from RAM, major from flash.
+    private long _faultsMinor, _faultsMajor;
+    private bool _faultsKnown;
+
+    // One chunk of a head surface's scores, before they go to their tokens, and the vector kernel over a
+    // paired chunk where it lies.
+    private float[] _headScores = [];
+    private readonly Ptq1PairView _headView = new();
+
+    private Qwen35Model(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride)
     {
         Config = Qwen35Config.FromGguf(file);
         var c = Config;
@@ -90,18 +100,32 @@ public sealed class Qwen35Model
         Packing = PackingOf(file);
 
         // THE WEIGHTS REPACKED FOR THE VECTORS, WHERE THE RUNTIME HAS THEM (Ptq1Pair): the embedding's
-        // lookups still read the file; its product as the head reads the copy.
-        var paired = _paired = Packing == GgmlType.PTQ1_0 && (Ptq1PairMatrix.Usable || PairedForTest);
+        // lookups still read the file; its product as the head reads the copy - unless the head is read from
+        // its store on flash (HeadStore), and then there is no copy of it in RAM at all.
+        var paired = _paired = pairedOverride ?? WouldPair(file);
+        HeadFromStore = headFromStore;
+        if (ffnFromStore && !paired) throw new ArgumentException("The feed-forward is read from its store only in the vector kernel's tiles.", nameof(ffnFromStore));
+        FfnFromStore = ffnFromStore;
         var packingStarted = Stopwatch.GetTimestamp();
-        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing, paired ? pool : null, paired);
+        _embedding = new TernaryMatrix(file, "token_embd.weight", _hadamard, c.Embedding, c.Vocabulary, Packing,
+            paired ? pool : null, paired && !headFromStore, lean: headFromStore);
         _outputNorm = Floats(file, "output_norm.weight", c.Embedding);
 
         _layers = new Layer[c.Layers];
-        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing, paired ? pool : null, paired);
+        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing, paired ? pool : null, paired, ffnFromStore);
         if (c.MtpLayers == 1) _mtp = new MtpHead(file, c, c.Layers);
         if (paired)
+        {
+            var kept = (headFromStore, ffnFromStore) switch
+            {
+                (true, true) => "; the head and the feed-forward are read from their stores on flash, no copy of them in RAM",
+                (true, false) => "; the head is read from its store on flash, no copy of it in RAM",
+                (false, true) => "; the feed-forward is read from its store on flash, no copy of it in RAM",
+                _ => string.Empty,
+            };
             CircleAI.Core.Logging.CircleLog.Info("Engine", string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"the weights repacked for the vector kernel in {Stopwatch.GetElapsedTime(packingStarted).TotalMilliseconds:F0} ms"));
+                $"the weights repacked for the vector kernel in {Stopwatch.GetElapsedTime(packingStarted).TotalMilliseconds:F0} ms{kept}"));
+        }
 
         foreach (var width in new[] { c.Embedding, c.SsmInner, c.Heads * c.HeadDim, c.FeedForward }.Distinct())
             _inputs[width] = new InputTables(width, Packing, paired);
@@ -151,6 +175,118 @@ public sealed class Qwen35Model
     /// <summary>How the file packs its ternary weights: PTQ1_0 or PQ2_0, one packing throughout.</summary>
     public GgmlType Packing { get; }
 
+    /// <summary>Whether the weights were repacked into a copy for the vector kernel (Ptq1Pair) rather than read where they lie.</summary>
+    public bool Paired => _paired;
+
+    /// <summary>
+    /// Whether the head is read only from its store on flash: no copy of it is kept, so every call that wants
+    /// logits must give the rows to score (<see cref="Head"/>).
+    /// </summary>
+    public bool HeadFromStore { get; }
+
+    /// <summary>Whether a model loaded from <paramref name="file"/> here repacks its weights for the vector kernel.</summary>
+    public static bool WouldPair(GgufFile file) => TernaryPackingOf(file) == GgmlType.PTQ1_0 && (Ptq1PairMatrix.Usable || PairedForTest);
+
+    /// <summary>
+    /// Whether the feed-forward is read only from its store on flash (<see cref="FfnStore"/>): no copy of it is kept,
+    /// and no token runs until a warm one is armed (<see cref="ArmFfn"/>).
+    /// </summary>
+    public bool FfnFromStore { get; }
+
+    /// <summary>Whether a warm feed-forward is armed, so tokens can run.</summary>
+    public bool FfnArmed { get; private set; }
+
+    /// <summary>The layers read <paramref name="warm"/>'s feed-forward where it lies, until <see cref="ReleaseFfn"/>.</summary>
+    public void ArmFfn(FfnWarm warm)
+    {
+        ArgumentNullException.ThrowIfNull(warm);
+        if (!FfnFromStore) throw new InvalidOperationException("This model keeps its own feed-forward.");
+        for (var il = 0; il < _layers.Length; il++)
+        {
+            _layers[il].FfnGate.Pair = warm.View(il, 0);
+            _layers[il].FfnUp.Pair = warm.View(il, 1);
+            _layers[il].FfnDown.Pair = warm.View(il, 2);
+        }
+        FfnArmed = true;
+    }
+
+    /// <summary>The layers let go of the feed-forward they were reading; no token runs until one is armed again.</summary>
+    public void ReleaseFfn()
+    {
+        FfnArmed = false;
+        if (!FfnFromStore) return;
+        foreach (var layer in _layers)
+        {
+            layer.FfnGate.Pair = null;
+            layer.FfnUp.Pair = null;
+            layer.FfnDown.Pair = null;
+        }
+    }
+
+    /// <summary>
+    /// Which feed-forward neuron groups a word computes (<see cref="FfnSurface"/>); null for all of them. Read by single
+    /// tokens on the vector kernel - a prompt's batch computes every group.
+    /// </summary>
+    public FfnSurface? FfnGroups { get; set; }
+
+    /// <summary>
+    /// Neurons in a feed-forward group: the Hadamard block that turns ffn_down's input; where there is none, the widest of
+    /// 512, 256 and 128 that divides the feed-forward.
+    /// </summary>
+    public int FfnGroupSize => _layers[0].FfnDown.Input?.BlockSize
+        ?? (Config.FeedForward % 512 == 0 ? 512 : Config.FeedForward % 256 == 0 ? 256 : 128);
+
+    /// <summary>Whether each feed-forward group's activity is added up as tokens run (<see cref="TakeFfnActivity"/>).</summary>
+    public bool RecordFfn { get; set; }
+
+    private double[]? _ffnActivity;
+    private long _ffnActivityTokens;
+
+    /// <summary>
+    /// What each layer's feed-forward groups have done since the last call - the sum of the size of their activations,
+    /// layer by layer, group by group - and over how many tokens; the count starts again.
+    /// </summary>
+    public (double[] Activity, long Tokens) TakeFfnActivity()
+    {
+        var groups = Config.FeedForward / FfnGroupSize;
+        var taken = _ffnActivity ?? new double[Config.Layers * groups];
+        var tokens = _ffnActivityTokens;
+        _ffnActivity = null;
+        _ffnActivityTokens = 0;
+        return (taken, tokens);
+    }
+
+    // One token's feed-forward activations at layer il, added to its groups' activity.
+    private void RecordGroups(int il, float[] activations)
+    {
+        if (!RecordFfn) return;
+        var size = FfnGroupSize;
+        var groups = activations.Length / size;
+        _ffnActivity ??= new double[Config.Layers * groups];
+        for (var g = 0; g < groups; g++)
+        {
+            double sum = 0;
+            for (var i = g * size; i < (g + 1) * size; i++) sum += MathF.Abs(activations[i]);
+            _ffnActivity[il * groups + g] += sum;
+        }
+        if (il == Config.Layers - 1) _ffnActivityTokens++;
+    }
+
+    // No token runs on a feed-forward that is not there.
+    private void CheckFfn()
+    {
+        if (FfnFromStore && !FfnArmed)
+            throw new InvalidOperationException("This model's feed-forward is read from its store on flash: a warm one is armed before a token runs.");
+    }
+
+    /// <summary>
+    /// The rows of the head to score in place of the whole table - a turn's surface of the head's store by
+    /// script (<see cref="HeadStore"/>) - or null for the whole table. A token outside it gets -inf; a token
+    /// in it gets the whole table's own logit, to the bit. The lookup-table kernels read it; a paired model
+    /// scores its whole table.
+    /// </summary>
+    public IHeadRows? Head { get; set; }
+
     /// <summary>
     /// The ternary packing <paramref name="file"/>'s weights are in, read off its embedding table; null
     /// when it is not one this engine reads (PTQ1_0 or PQ2_0).
@@ -168,10 +304,29 @@ public sealed class Qwen35Model
     /// Binds every weight of <paramref name="file"/> (which must stay open while the model is used)
     /// and checks every shape. Products share <paramref name="pool"/>'s threads when one is given.
     /// </summary>
-    public static Qwen35Model Load(GgufFile file, WorkerPool? pool = null)
+    public static Qwen35Model Load(GgufFile file, WorkerPool? pool = null) => Load(file, pool, headFromStore: false);
+
+    /// <summary>
+    /// As <see cref="Load(GgufFile, WorkerPool?)"/>; with <paramref name="headFromStore"/> the head's weights are not
+    /// copied into RAM, because its store on flash serves them (<see cref="HeadFromStore"/>).
+    /// </summary>
+    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore) => Load(file, pool, headFromStore, ffnFromStore: false);
+
+    /// <summary>
+    /// As <see cref="Load(GgufFile, WorkerPool?, bool)"/>; with <paramref name="ffnFromStore"/> the feed-forward's
+    /// weights are not copied into RAM either, because its store on flash serves them (<see cref="FfnFromStore"/>).
+    /// </summary>
+    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore) =>
+        Load(file, pool, headFromStore, ffnFromStore, pairedOverride: null);
+
+    // The same, with the vector kernel's repack forced on or off. For tests.
+    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool? pairedOverride) =>
+        Load(file, pool, headFromStore, ffnFromStore: false, pairedOverride);
+
+    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride)
     {
         ArgumentNullException.ThrowIfNull(file);
-        return new Qwen35Model(file, pool);
+        return new Qwen35Model(file, pool, headFromStore, ffnFromStore, pairedOverride);
     }
 
     /// <summary>A new, empty conversation state holding up to <paramref name="capacity"/> tokens.</summary>
@@ -255,7 +410,7 @@ public sealed class Qwen35Model
 
         RmsNorm(m.Cur, m.HeadNorm ?? _outputNorm, _h, c.RmsEps);
         if (hidden.Length != 0) _h.CopyTo(hidden);
-        if (logits.Length != 0) _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+        if (logits.Length != 0) ScoreHead(Prepare(_h, _embedding.Input), logits);
         _tMtp += Stopwatch.GetTimestamp() - started;
     }
 
@@ -273,9 +428,12 @@ public sealed class Qwen35Model
     public ForwardTimes TakeTimes()
     {
         var times = new ForwardTimes(_tokens, Elapsed(_tTotal), Elapsed(_tTables), Elapsed(_tProducts),
-            Elapsed(_tRecurrence), Elapsed(_tAttention), Elapsed(_tHead));
+            Elapsed(_tRecurrence), Elapsed(_tAttention), Elapsed(_tHead),
+            _faultsKnown ? _faultsMajor : -1, _faultsKnown ? _faultsMinor : -1);
         _tTotal = _tTables = _tProducts = _tRecurrence = _tAttention = _tHead = 0;
         _tokens = 0;
+        _faultsMinor = _faultsMajor = 0;
+        _faultsKnown = false;
         return times;
 
         static TimeSpan Elapsed(long ticks) => TimeSpan.FromSeconds((double)ticks / Stopwatch.Frequency);
@@ -294,6 +452,7 @@ public sealed class Qwen35Model
         var c = Config;
         if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(token), token, $"The vocabulary holds {c.Vocabulary}.");
         Check(state, logits);
+        CheckFfn();
         if (nextn.Length != 0 && nextn.Length != c.Embedding) throw new ArgumentException($"The hidden state takes {c.Embedding} values.", nameof(nextn));
 
         var started = Stopwatch.GetTimestamp();
@@ -319,6 +478,7 @@ public sealed class Qwen35Model
         if (columns <= 0 || rows <= 0) throw new ArgumentOutOfRangeException(nameof(columns), $"A grid of {columns}x{rows} holds no tokens.");
         if ((uint)index >= (uint)(columns * rows)) throw new ArgumentOutOfRangeException(nameof(index), index, $"The image holds {columns * rows} tokens.");
         Check(state, logits);
+        CheckFfn();
 
         var started = Stopwatch.GetTimestamp();
         embedding.CopyTo(_x); // the primal basis already: the Hadamard turn belongs to the token table alone
@@ -345,6 +505,7 @@ public sealed class Qwen35Model
     private void Step(Qwen35State state, int t, int h, int w, Span<float> logits, Span<float> nextn, long started)
     {
         var c = Config;
+        var faults = PageFaults.Now();
         RopeAngles(t, h, w);
         for (var il = 0; il < c.Layers; il++)
         {
@@ -355,7 +516,7 @@ public sealed class Qwen35Model
             Add(_x, _mixOut);
 
             RmsNorm(_x, layer.PostNorm, _h, c.RmsEps);
-            FeedForward(layer);
+            FeedForward(il, layer);
             Add(_x, _ffnOut);
             LayerOutput?.Invoke(il, _x);
         }
@@ -366,11 +527,60 @@ public sealed class Qwen35Model
             var head = Stopwatch.GetTimestamp();
             RmsNorm(_x, _outputNorm, _h, c.RmsEps);
             if (nextn.Length != 0) _h.CopyTo(nextn);
-            if (logits.Length != 0) _embedding.MatVec(Prepare(_h, _embedding.Input), logits, _pool);
+            if (logits.Length != 0) ScoreHead(Prepare(_h, _embedding.Input), logits);
             _tHead += Stopwatch.GetTimestamp() - head;
         }
         _tTotal += Stopwatch.GetTimestamp() - started;
         _tokens++;
+        CountFaults(faults);
+    }
+
+    // The faults since `before`, added to the count TakeTimes hands out.
+    private void CountFaults((long Minor, long Major)? before)
+    {
+        if (before is not { } was || PageFaults.Now() is not { } now) return;
+        _faultsMinor += now.Minor - was.Minor;
+        _faultsMajor += now.Major - was.Major;
+        _faultsKnown = true;
+    }
+
+    // THE HEAD: the whole table read forward (tied), or only the rows of the turn's surface (Head) - each
+    // chunk's rows through the same kernel and tables, their scores sent to their tokens, every other
+    // token -inf. A row is summed block by block in the same order either way, so a token in the surface
+    // gets the whole table's logit to the bit.
+    private void ScoreHead(InputTables tables, Span<float> logits)
+    {
+        var head = Head;
+        var fits = head is not null && head.Layout == (_paired ? HeadLayout.Paired : HeadLayout.Rows);
+        if (!fits)
+        {
+            if (HeadFromStore)
+                throw new InvalidOperationException(head is null
+                    ? "This model's head is read from its store on flash: a turn sets Head before it asks for logits."
+                    : $"The head's rows are {head.Layout}, and this model computes {(_paired ? "paired" : "rows")}.");
+            _embedding.MatVec(tables, logits, _pool);
+            return;
+        }
+        logits.Fill(float.NegativeInfinity);
+        if (_headScores.Length < head!.MostRows) _headScores = new float[head.MostRows];
+        for (var chunk = 0; chunk < head.ChunkCount; chunk++)
+        {
+            head.Chunk(chunk, out var rows, out var scales, out var tokens);
+            var scores = _headScores.AsSpan(0, tokens.Length);
+            if (_paired) _headView.MatVec(rows, scales, tokens.Length, Config.Embedding, tables.Pair, scores, _pool);
+            else if (Packing == GgmlType.PQ2_0)
+            {
+                if (_pool is null) tables.Pq2.MatVec(rows, scales, scores);
+                else tables.Pq2.MatVec(rows, scales, scores, _pool);
+            }
+            else if (_pool is null) tables.Ptq1.MatVec(rows, scales, scores);
+            else tables.Ptq1.MatVec(rows, scales, scores, _pool);
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                var token = tokens[i];
+                if (token >= 0) logits[token] = scores[i];
+            }
+        }
     }
 
     /// <summary>
@@ -392,10 +602,12 @@ public sealed class Qwen35Model
         if (n == 0) return;
         if (logits.Count != n || (nextn is not null && nextn.Count != n)) throw new ArgumentException("One logits (and h) slot per token.");
         if (state.Position + n > state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens; {n} more do not fit.");
+        CheckFfn();
         foreach (var token in tokens)
             if ((uint)token >= (uint)c.Vocabulary) throw new ArgumentOutOfRangeException(nameof(tokens), token, $"The vocabulary holds {c.Vocabulary}.");
 
         var started = Stopwatch.GetTimestamp();
+        var faults = PageFaults.Now();
         var b = Batch(n);
         for (var i = 0; i < n; i++) Embed(tokens[i], b.X[i]);
         var position = state.Position;
@@ -437,7 +649,11 @@ public sealed class Qwen35Model
                 RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
             }
             Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
-            for (var i = 0; i < n; i++) Gate(b.Gate[i], b.Up[i]);
+            for (var i = 0; i < n; i++)
+            {
+                Gate(b.Gate[i], b.Up[i]);
+                RecordGroups(il, b.Gate[i]);
+            }
             Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
             for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
         }
@@ -463,11 +679,19 @@ public sealed class Qwen35Model
                 outputs[j] = logits[b.Head[j]]!;
                 if (outputs[j].Length != c.Vocabulary) throw new ArgumentException($"Logits take {c.Vocabulary} values.", nameof(logits));
             }
-            Products(inputs, heads, _embedding.Input, (_embedding, outputs));
+            if (Head is not null || HeadFromStore)
+            {
+                for (var j = 0; j < heads; j++) ScoreHead(Prepare(inputs[j], _embedding.Input), outputs[j]);
+            }
+            else
+            {
+                Products(inputs, heads, _embedding.Input, (_embedding, outputs));
+            }
         }
         _tHead += Stopwatch.GetTimestamp() - head;
         _tTotal += Stopwatch.GetTimestamp() - started;
         _tokens += n;
+        CountFaults(faults);
     }
 
     // ---- the batch's buffers and products ----
@@ -1004,12 +1228,34 @@ public sealed class Qwen35Model
         for (var i = 0; i < _attn.Length; i++) _attn[i] *= 1.0f / (1.0f + MathF.Exp(-_gate[i]));
     }
 
-    private void FeedForward(Layer layer)
+    private void FeedForward(int il, Layer layer)
     {
         var lut = Tables(_h, layer.FfnGate.Input);
+
+        // A SURFACE OF NEURON GROUPS (FfnGroups), on the vector kernel: only the kept groups' gate and up rows are read,
+        // the rest of the activation is zero, and the down product skips the blocks those zeros would feed.
+        if (FfnGroups is { } surface && layer.FfnGate.Pair is { } gate && layer.FfnUp.Pair is { } up && layer.FfnDown.Pair is { } down)
+        {
+            var keep = surface.Layer(il);
+            var started = Stopwatch.GetTimestamp();
+            Array.Clear(_ffnGate);
+            Array.Clear(_ffnUp);
+            gate.MatVecRanges(lut.Pair, _ffnGate, keep.Tiles, _pool);
+            up.MatVecRanges(lut.Pair, _ffnUp, keep.Tiles, _pool);
+            _tProducts += Stopwatch.GetTimestamp() - started;
+            Gate(_ffnGate, _ffnUp);
+            RecordGroups(il, _ffnGate);
+            var tables = Tables(_ffnGate, layer.FfnDown.Input);
+            started = Stopwatch.GetTimestamp();
+            down.MatVecMasked(tables.Pair, _ffnOut, keep.Blocks, _pool);
+            _tProducts += Stopwatch.GetTimestamp() - started;
+            return;
+        }
+
         Product(layer.FfnGate, lut, _ffnGate);
         Product(layer.FfnUp, lut, _ffnUp);
         Gate(_ffnGate, _ffnUp);
+        RecordGroups(il, _ffnGate);
         Product(layer.FfnDown, Tables(_ffnGate, layer.FfnDown.Input), _ffnOut);
     }
 
@@ -1384,7 +1630,8 @@ public sealed class Qwen35Model
         private readonly GgufFile _file;
         private readonly GgufTensor _tensor;
 
-        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows, GgmlType packing, WorkerPool? pool = null, bool paired = false)
+        public TernaryMatrix(GgufFile file, string name, PrismHadamard? hadamard, int columns, int rows, GgmlType packing, WorkerPool? pool = null,
+            bool paired = false, bool lean = false)
         {
             _file = file;
             _tensor = file.Tensor(name) ?? throw new InvalidDataException($"The model has no {name}.");
@@ -1393,7 +1640,13 @@ public sealed class Qwen35Model
             if (_tensor.RowLength != columns || _tensor.Rows != rows)
                 throw new InvalidDataException($"{name} is {_tensor.RowLength}x{_tensor.Rows}, not {columns}x{rows}.");
             Packing = packing;
-            if (paired)
+            Lean = lean;
+            if (lean)
+            {
+                // ITS PRODUCT IS SERVED FROM A STORE ON FLASH: nothing of it is held here, only its lookups read the file.
+                Scales = [];
+            }
+            else if (paired)
             {
                 Pair = new Ptq1PairMatrix(file.Bytes(_tensor), rows, columns, pool);
                 Scales = [];
@@ -1405,12 +1658,16 @@ public sealed class Qwen35Model
             Input = hadamard?.InputOf(name);
         }
 
+        // Whether nothing of it is held for its product (its store serves that).
+        public bool Lean { get; }
+
         public GgmlType Packing { get; }
 
         public float[] Scales { get; }
 
-        // The weights repacked for the vector kernel, where the runtime has one.
-        public Ptq1PairMatrix? Pair { get; }
+        // The weights repacked for the vector kernel, where the runtime has one - its own copy, or a view of its store's
+        // tiles while a warm feed-forward is armed.
+        public Ptq1PairMatrix? Pair { get; set; }
 
         public InputTransform? Input { get; }
 
@@ -1418,11 +1675,12 @@ public sealed class Qwen35Model
 
         public void MatVec(InputTables tables, Span<float> output, WorkerPool? pool)
         {
-            if (Pair is not null)
+            if (Pair is { } pair)
             {
-                Pair.MatVec(tables.Pair, output, pool);
+                pair.MatVec(tables.Pair, output, pool);
                 return;
             }
+            if (Lean) throw new InvalidOperationException($"{_tensor.Name}'s product is served from its store on flash, and none is armed.");
             if (Packing == GgmlType.PQ2_0)
             {
                 if (pool is null) tables.Pq2.MatVec(Bytes, Scales, output);
@@ -1538,15 +1796,17 @@ public sealed class Qwen35Model
 
     private sealed class Layer
     {
-        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired)
+        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired, bool ffnFromStore)
         {
             string Name(string part) => $"blk.{il}.{part}";
             TernaryMatrix Ternary(string part, int columns, int rows) => new(file, Name(part), hadamard, columns, rows, packing, pool, paired);
+            TernaryMatrix Stored(string part, int columns, int rows) =>
+                new(file, Name(part), hadamard, columns, rows, packing, pool, paired && !ffnFromStore, lean: ffnFromStore);
             AttnNorm = Floats(file, Name("attn_norm.weight"), c.Embedding);
             PostNorm = Floats(file, Name("post_attention_norm.weight"), c.Embedding);
-            FfnGate = Ternary("ffn_gate.weight", c.Embedding, c.FeedForward);
-            FfnUp = Ternary("ffn_up.weight", c.Embedding, c.FeedForward);
-            FfnDown = Ternary("ffn_down.weight", c.FeedForward, c.Embedding);
+            FfnGate = Stored("ffn_gate.weight", c.Embedding, c.FeedForward);
+            FfnUp = Stored("ffn_up.weight", c.Embedding, c.FeedForward);
+            FfnDown = Stored("ffn_down.weight", c.FeedForward, c.Embedding);
 
             if (c.IsRecurrent(il))
             {
@@ -1608,13 +1868,21 @@ public sealed class Qwen35Model
 /// <param name="Recurrence">The DeltaNet layers' gates, conv, delta rule and gated norm.</param>
 /// <param name="Attention">The full-attention layers' norms, RoPE, cache and attention.</param>
 /// <param name="Head">The output head, its table included.</param>
+/// <param name="MajorFaults">Pages the process read from flash while they ran; -1 where that cannot be read.</param>
+/// <param name="MinorFaults">Pages it found in RAM and only mapped; -1 where that cannot be read.</param>
 public readonly record struct ForwardTimes(int Tokens, TimeSpan Total, TimeSpan Tables, TimeSpan Products,
-    TimeSpan Recurrence, TimeSpan Attention, TimeSpan Head)
+    TimeSpan Recurrence, TimeSpan Attention, TimeSpan Head, long MajorFaults = -1, long MinorFaults = -1)
 {
     /// <summary>Everything else: the embedding row, the layer norms, the residual adds, the feed-forward gate.</summary>
     public TimeSpan Rest => Total - Tables - Products - Recurrence - Attention - Head;
 
     /// <inheritdoc/>
-    public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
-        $"{Tokens} tokens in {Total.TotalMilliseconds:F0} ms: products {Products.TotalMilliseconds:F0}, tables {Tables.TotalMilliseconds:F0}, recurrence {Recurrence.TotalMilliseconds:F0}, attention {Attention.TotalMilliseconds:F0}, head {Head.TotalMilliseconds:F0}, rest {Rest.TotalMilliseconds:F0}");
+    public override string ToString()
+    {
+        var faults = MajorFaults >= 0
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"; pages faulted in: {MajorFaults} from flash, {MinorFaults} from RAM")
+            : string.Empty;
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{Tokens} tokens in {Total.TotalMilliseconds:F0} ms: products {Products.TotalMilliseconds:F0}, tables {Tables.TotalMilliseconds:F0}, recurrence {Recurrence.TotalMilliseconds:F0}, attention {Attention.TotalMilliseconds:F0}, head {Head.TotalMilliseconds:F0}, rest {Rest.TotalMilliseconds:F0}{faults}");
+    }
 }

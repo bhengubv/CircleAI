@@ -1,0 +1,219 @@
+// FlashFile.cs
+//
+// THE FEW LINUX CALLS A STREAMING ENGINE NEEDS, so the flash does the engine's job and RAM only the
+// turbo's. By default the OS keeps a copy in RAM of every page a process reads, so a model streamed
+// through it would end up held in RAM anyway. Linux has two ways out, and both are plain calls:
+//
+//   O_DIRECT              the read goes from flash straight into the engine's own buffer and never
+//                         enters the page cache. Buffer, offset and length are whole pages.
+//   POSIX_FADV_DONTNEED   after a range is used the OS drops its pages at once. A range this process
+//                         maps is let go first (MADV_DONTNEED): the OS keeps a page while a mapping
+//                         holds it.
+//
+// WHICH WORKS IS THE DEVICE'S. On an older kernel with file-based encryption an O_DIRECT open can
+// succeed and quietly read through the cache, so a direct file drops what it read as well. Off
+// Linux - the desktop test legs - the same calls read through RandomAccess and drop nothing.
+
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace CircleAI.Inference.Managed.Store;
+
+/// <summary>A file read in whole pages, past the OS's cache where the device allows it.</summary>
+public sealed unsafe class FlashFile : IDisposable
+{
+    /// <summary>What direct reads, their offsets and their buffers are aligned to.</summary>
+    public const int Page = 4096;
+
+    private readonly int _fd = -1;
+    private readonly SafeFileHandle? _handle;
+    private int _disposed;
+
+    private FlashFile(string path, long length, int fd, bool direct, SafeFileHandle? handle)
+    {
+        FilePath = path;
+        Length = length;
+        _fd = fd;
+        Direct = direct;
+        _handle = handle;
+    }
+
+    /// <summary>Whether this platform has the Linux calls (Linux and Android).</summary>
+    public static bool Linux => OperatingSystem.IsLinux() || OperatingSystem.IsAndroid();
+
+    /// <summary>The file.</summary>
+    public string FilePath { get; }
+
+    /// <summary>Its length in bytes when it was opened.</summary>
+    public long Length { get; }
+
+    /// <summary>Whether the open took O_DIRECT. A device can still read through its cache; reads drop what they read either way.</summary>
+    public bool Direct { get; }
+
+    /// <summary>
+    /// Opens <paramref name="path"/> to read: with O_DIRECT when <paramref name="direct"/> and the
+    /// device takes it, else through the cache.
+    /// </summary>
+    public static FlashFile Open(string path, bool direct = true)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var length = new FileInfo(path).Length;
+        if (Linux)
+        {
+            try
+            {
+                var name = Encoding.UTF8.GetBytes(path + "\0");
+                fixed (byte* p = name)
+                {
+                    if (direct)
+                    {
+                        var fd = LinuxCalls.Open(p, LinuxCalls.ReadOnly | LinuxCalls.CloseOnExec | LinuxCalls.DirectFlag, 0);
+                        if (fd >= 0 && ReadsDirect(fd, length)) return new FlashFile(path, length, fd, direct: true, null);
+                        if (fd >= 0) LinuxCalls.Close(fd);
+                    }
+                    var buffered = LinuxCalls.Open(p, LinuxCalls.ReadOnly | LinuxCalls.CloseOnExec, 0);
+                    if (buffered >= 0) return new FlashFile(path, length, buffered, direct: false, null);
+                    throw new IOException($"{path} could not be opened (errno {Marshal.GetLastSystemError()}).");
+                }
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+            {
+                // No libc to call: read through the runtime instead.
+            }
+        }
+        return new FlashFile(path, length, -1, direct: false,
+            File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess));
+    }
+
+    // A DIRECT OPEN CAN SUCCEED AND ITS READS STILL BE REFUSED (an encrypted file on an older kernel answers
+    // EINVAL): one page is read to find out, and a refusal means the file is read through the cache instead.
+    private static bool ReadsDirect(int fd, long length)
+    {
+        if (length < Page) return true;
+        var page = Allocate(Page);
+        try
+        {
+            return LinuxCalls.ReadAt(fd, page, Page, 0) == Page;
+        }
+        finally
+        {
+            Free(page);
+        }
+    }
+
+    /// <summary>
+    /// Reads <paramref name="count"/> bytes at <paramref name="offset"/> into <paramref name="buffer"/>
+    /// - all of them unless the file ends first - and returns how many. A direct read wants all three
+    /// aligned to <see cref="Page"/>; the file's last page may be short.
+    /// </summary>
+    public int Read(byte* buffer, int count, long offset)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        var done = 0;
+        while (done < count)
+        {
+            int n;
+            if (_handle is not null)
+            {
+                n = RandomAccess.Read(_handle, new Span<byte>(buffer + done, count - done), offset + done);
+            }
+            else
+            {
+                var got = LinuxCalls.ReadAt(_fd, buffer + done, (nuint)(count - done), offset + done);
+                if (got < 0)
+                {
+                    var errno = Marshal.GetLastSystemError();
+                    if (errno == LinuxCalls.Interrupted) continue;
+                    throw new IOException($"Reading {count} bytes of {FilePath} at {offset} failed (errno {errno}).");
+                }
+                n = (int)got;
+            }
+            if (n == 0) break; // the end of the file
+            done += n;
+        }
+        return done;
+    }
+
+    /// <summary>Tells the OS to drop its cached pages of [<paramref name="offset"/>, +<paramref name="length"/>); nothing off Linux.</summary>
+    public void Drop(long offset, long length)
+    {
+        if (_fd < 0 || length <= 0) return;
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        LinuxCalls.Advise(_fd, offset, length, LinuxCalls.DontNeed);
+    }
+
+    /// <summary>
+    /// Lets the OS take back the pages of a range this process maps: <paramref name="mapped"/> points at
+    /// byte <paramref name="fileOffset"/> of <paramref name="path"/>, <paramref name="length"/> long.
+    /// The mapping lets go of them (MADV_DONTNEED), then the file's cache drops them. A later read of the
+    /// range faults them back in from flash. False where there are no Linux calls.
+    /// </summary>
+    public static bool Release(byte* mapped, long length, string path, long fileOffset)
+    {
+        if (!Linux || mapped == null || length <= 0) return false;
+        try
+        {
+            var start = (nint)mapped & ~(nint)(Page - 1);
+            var end = (nint)mapped + (nint)length;
+            LinuxCalls.AdviseMemory((void*)start, (nuint)(end - start), LinuxCalls.MemoryDontNeed);
+            using var file = Open(path, direct: false);
+            file.Drop(fileOffset, length);
+            return true;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Memory aligned for direct reads, <paramref name="bytes"/> long; free it with <see cref="Free"/>.</summary>
+    public static byte* Allocate(long bytes) => (byte*)NativeMemory.AlignedAlloc((nuint)Math.Max(Page, bytes), Page);
+
+    /// <summary>Frees what <see cref="Allocate"/> gave.</summary>
+    public static void Free(byte* memory)
+    {
+        if (memory != null) NativeMemory.AlignedFree(memory);
+    }
+
+    /// <summary><paramref name="value"/> rounded up to whole pages.</summary>
+    public static long Pages(long value) => (value + Page - 1) / Page * Page;
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_fd >= 0) LinuxCalls.Close(_fd);
+        _handle?.Dispose();
+    }
+}
+
+// The libc calls, blittable as the assembly's disabled runtime marshalling wants them. The flag values
+// are Linux's, and O_DIRECT is the one that differs by architecture.
+internal static unsafe class LinuxCalls
+{
+    public const int ReadOnly = 0;
+    public const int CloseOnExec = 0x80000;
+    public const int DontNeed = 4;       // POSIX_FADV_DONTNEED
+    public const int MemoryDontNeed = 4; // MADV_DONTNEED
+    public const int Interrupted = 4;    // EINTR
+
+    public static int DirectFlag => RuntimeInformation.ProcessArchitecture is Architecture.Arm64 or Architecture.Arm
+        ? 0x10000  // 0200000 on ARM
+        : 0x4000;  // 040000 on x86
+
+    [DllImport("libc", EntryPoint = "open")]
+    public static extern int Open(byte* path, int flags, int mode);
+
+    [DllImport("libc", EntryPoint = "close")]
+    public static extern int Close(int fd);
+
+    [DllImport("libc", EntryPoint = "pread64")]
+    public static extern nint ReadAt(int fd, void* buffer, nuint count, long offset);
+
+    [DllImport("libc", EntryPoint = "posix_fadvise64")]
+    public static extern int Advise(int fd, long offset, long length, int advice);
+
+    [DllImport("libc", EntryPoint = "madvise")]
+    public static extern int AdviseMemory(void* address, nuint length, int advice);
+}

@@ -229,12 +229,41 @@ public sealed class SoakReceiver : BroadcastReceiver
                 // setup board, and primed when it lands.
                 if (intent?.GetStringExtra("model") is { Length: > 0 } wanted) Fetch?.Invoke(wanted);
                 break;
+            case "ffn":
+                // THE SHARE OF FEED-FORWARD NEURON GROUPS THE BRAIN'S NEXT WORDS COMPUTE (step 3): the ones that fired
+                // most in full turns. 100 is all of them. Read by the brain at its next turn, in its own process.
+                //   ... --es do ffn --ei percent 50
+                WriteStoreControl("ffn-surface.txt", Math.Clamp(intent?.GetIntExtra("percent", 100) ?? 100, 1, 100)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture));
+                break;
+            case "ffn-fidelity":
+                // THOSE SHARES AGAINST EVERY GROUP on fixed text, done by the brain when it is next idle; the result is
+                // its "feed-forward fidelity" log line.
+                //   ... --es do ffn-fidelity --es percents 75,50
+                WriteStoreControl("ffn-fidelity.txt", intent?.GetStringExtra("percents") is { Length: > 0 } percents ? percents : "75,50");
+                break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
                 break;
             case "disarm":
                 ArmTestSwitches?.Invoke(false);
                 break;
+        }
+    }
+
+    // A control file beside the brain's stores (the app's cache folder, which both of its processes share).
+    private static void WriteStoreControl(string name, string value)
+    {
+        try
+        {
+            var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CircleAI", "store");
+            System.IO.Directory.CreateDirectory(directory);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(directory, name), value);
+            global::Android.Util.Log.Info("CircleAI.Soak", $"{name}: {value}");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            global::Android.Util.Log.Warn("CircleAI.Soak", $"{name} not written: {ex.GetType().Name}");
         }
     }
 
