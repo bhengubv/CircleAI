@@ -19,6 +19,9 @@ internal interface IHearing : IDisposable
     /// <summary>Where the time went, for the log.</summary>
     string Spent { get; }
 
+    /// <summary>What has been written down for good: the words of the lines closed so far.</summary>
+    string Closed { get; }
+
     /// <summary>Takes in audio, PCM 16-bit 16 kHz mono, in pieces of any size.</summary>
     void Hear(ReadOnlySpan<byte> pcm16);
 
@@ -140,11 +143,23 @@ public sealed class LiveHearing : IAsyncDisposable
 
                 // READ FIRST: everything queued before the end was said is in the queue by now.
                 var finishing = _finishing;
+                var spoke = false;
                 while (_audio.TryDequeue(out var heard))
                 {
                     _hearing.Hear(heard.Block);
                     sinceUpdate += heard.Block.Length;
                     quiet = heard.Quiet;
+                    spoke |= quiet < SettledAfter;
+                }
+
+                // ANY BLOCK OF THEM TALKING TAKES THE QUIET BACK, NOT ONLY THE LAST. The blocks of a long update
+                // are taken together, so three sentences and the quiet after them read as one long quiet, and on
+                // the P30 on 2026-11-08 the turn ended on the words from before those sentences.
+                if (spoke && _settled)
+                {
+                    _settled = false;
+                    BrainHold.Release();
+                    WentOn?.Invoke();
                 }
 
                 // WHAT WAS SETTLED IS WHAT WAS SAID: nothing but quiet has come in since, and reading it all
@@ -168,13 +183,8 @@ public sealed class LiveHearing : IAsyncDisposable
 
                     _settled = true;
                     if (_words.Length > 0) Settled?.Invoke(_words);
+                    else BrainHold.Release();
                     continue;
-                }
-
-                if (quiet < SettledAfter && _settled)
-                {
-                    _settled = false;
-                    WentOn?.Invoke();
                 }
 
                 // NOTHING NEW CAN COME OF A QUIET, and whoever was told has the cores to use. Going quiet is
@@ -201,7 +211,12 @@ public sealed class LiveHearing : IAsyncDisposable
     private void Update(bool still)
     {
         var words = _hearing.Update();
-        if (still && Still(words) is var steady && steady.Length > _still.Length)
+
+        // ONCE A LINE HAS CLOSED, ONLY WHAT WILL NOT CHANGE IS READ AHEAD. The brain's state can only step
+        // back to the start of its last read: a word that changes before that sends it back to the start of
+        // the turn, and on the P30 on 2026-11-07 that threw away 22 s of reading, then took 19 s to read it again.
+        var steady = _hearing.Closed is { Length: > 0 } closed ? closed : Still(words);
+        if (still && steady.Length > _still.Length)
         {
             _still = steady;
             HeldStill?.Invoke(steady);

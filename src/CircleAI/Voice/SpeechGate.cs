@@ -130,6 +130,41 @@ public sealed class SpeechGate
     private double _busiest;
     private double[] _scratch = Array.Empty<double>();
 
+    // What this stretch has sounded like, for a gate that may not learn from it: ten seconds of 100 ms
+    // blocks, and it says nothing until it has heard most of a second.
+    private const int StretchBlocks = 100;
+    private const int StretchEnough = 8;
+    private const double StretchQuantile = 0.2;
+    private const double VoiceOverQuiet = 2.5;
+    private readonly double[] _stretch = new double[StretchBlocks];
+    private readonly double[] _stretchSorted = new double[StretchBlocks];
+    private int _stretchAt;
+    private int _stretchHeld;
+
+    /// <summary>The quiet between the sounds of this stretch; zero until it has heard enough to say.</summary>
+    /// <remarks>
+    /// A QUESTION'S GATE STARTS KNOWING NOTHING, AND A ROOM ABOVE ITS LOWEST BAR NEVER LET IT FIND OUT. With
+    /// nothing learned the bar is <see cref="QuietestOpening"/>; a room over that opens the gate on its first
+    /// block, and a gate that may not learn while open keeps that bar for good. On the P30 on 2026-11-07 a
+    /// real room did this to every turn: nothing ever read as quiet, so the brain could not start on the quiet
+    /// and the microphone shut only when the words stopped, 4,6 s to the first sound where a quiet room takes
+    /// 2,4 s; and the window for carrying on ran its whole forty seconds on nobody, three times in five minutes.
+    /// <para>
+    /// THE BOTTOM OF THE STRETCH, NOT THE MIDDLE. <see cref="LearnsWhileOpen"/> is right that the middle of a
+    /// question is the question. Between its words it is the room, so a fifth of the way up what was heard is
+    /// the room whether anybody is talking or not, and the quiet after they stop can be told from talking.
+    /// </para>
+    /// <para>
+    /// ONLY WHEN THE LEVEL HAS MOVED. A voice rises and falls and a room does not, so a stretch whose loudest
+    /// is not well above its bottom has nothing to say about which it is: a steady level is held open, and
+    /// the ears decide, because cutting off somebody who speaks evenly is the worse of the two mistakes.
+    /// </para>
+    /// </remarks>
+    public double StretchQuiet { get; private set; }
+
+    /// <summary>The loudest block of this stretch, for the log: did a voice arrive at all.</summary>
+    public double StretchLoudest { get; private set; }
+
     /// <summary>True while the gate is letting audio through.</summary>
     public bool Open { get; private set; }
 
@@ -352,13 +387,22 @@ public sealed class SpeechGate
         // LearnsWhileOpen for the one caller that must not let it.
         if (LearnsWhileOpen || (!Open && rms < bar)) Remember(rms, length);
 
-        if (rms >= bar)
+        // ONCE IT HAS HEARD A VOICE RISE OVER THIS STRETCH'S OWN QUIET, STAYING OPEN TAKES MORE THAN THAT QUIET.
+        var stay = Open && !LearnsWhileOpen && StretchLoudest >= StretchQuiet * VoiceOverQuiet
+            ? Math.Max(bar, Math.Min(StretchQuiet * NoiseMultiple, LoudestOpening))
+            : bar;
+
+        if (rms >= stay)
         {
             if (!Open)
             {
                 Open = true;
                 Opened = true;
                 Passed = TimeSpan.Zero;
+                _stretchAt = 0;
+                _stretchHeld = 0;
+                StretchQuiet = 0;
+                StretchLoudest = 0;
             }
             _since = TimeSpan.Zero;
         }
@@ -376,6 +420,7 @@ public sealed class SpeechGate
 
         Passed += length;
         Decoded++;
+        if (!LearnsWhileOpen) Note(rms);
 
         // CUT AFTER IT IS COUNTED, so the block that reaches the limit is still
         // delivered and the stretch ends on a whole block rather than mid-word.
@@ -413,9 +458,26 @@ public sealed class SpeechGate
     private void Close()
     {
         if (Open) LastStretch = Passed;
+
+        // WHAT IT FOUND OUT BY LISTENING: the room, which is what the next stretch has to rise above.
+        if (Open && !LearnsWhileOpen && StretchQuiet > Floor) _floor = StretchQuiet;
         Open = false;
         _since = TimeSpan.MaxValue;
         Passed = TimeSpan.Zero;
+    }
+
+    // Files a block of this stretch. Sorted each time: a hundred numbers, ten times a second.
+    private void Note(double rms)
+    {
+        _stretch[_stretchAt] = rms;
+        _stretchAt = (_stretchAt + 1) % StretchBlocks;
+        if (_stretchHeld < StretchBlocks) _stretchHeld++;
+        if (rms > StretchLoudest) StretchLoudest = rms;
+        if (_stretchHeld < StretchEnough) return;
+
+        Array.Copy(_stretch, _stretchSorted, _stretchHeld);
+        Array.Sort(_stretchSorted, 0, _stretchHeld);
+        StretchQuiet = _stretchSorted[(int)(StretchQuantile * (_stretchHeld - 1))];
     }
 
     /// <summary>Files this block's level and keeps the room estimate current.</summary>
@@ -478,6 +540,10 @@ public sealed class SpeechGate
         _held = 0;
         _untilSort = 0;
         _busiest = 0;
+        _stretchAt = 0;
+        _stretchHeld = 0;
+        StretchQuiet = 0;
+        StretchLoudest = 0;
         Decoded = 0;
         Skipped = 0;
         Cut = 0;

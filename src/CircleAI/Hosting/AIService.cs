@@ -1724,6 +1724,17 @@ public sealed class AIService : IAIService
     /// no notes, no tools. The translation engine writes its own whole prompt, and notes put in
     /// front of it were translated along with the sentence, or got the sentence answered.
     /// </remarks>
+    /// <summary>How long a spoken question has to be for the brain's reading of it to be worth more than a note.</summary>
+    private const int ReadAsSaidFrom = 100;
+
+    /// <summary>Whether the brain has read this question as it was said, so nothing can go in front of it.</summary>
+    /// <remarks>
+    /// A NOTE GOES AT THE HEAD OF THE TURN, AND SENDS THE BRAIN BACK TO THERE. On the P30 on 2026-11-08 a skill
+    /// picked by the words of half a minute of talking cost 12 s of reading it had already done, on an answer
+    /// the ears had finished a second after the last word. And half a minute has a word for every skill there is.
+    /// </remarks>
+    internal static bool ReadAsItWasSaid(string? question, bool spoken) => spoken && question?.Length > ReadAsSaidFrom;
+
     private async Task<PreparedTurn> PrepareTurnAsync(
         IReadOnlyList<ChatMessage> messages,
         string userQuery,
@@ -1755,8 +1766,9 @@ public sealed class AIService : IAIService
         // AND NOTHING PICKED BY THE WORDS WHILE THE WORDS ARE COMING IN. On the P30 on 2026-11-06 "Write one
         // short" drew a note the whole question did not, and the brain read 158 tokens of it for 17 s with
         // the person waiting; a tool cue would have been hundreds.
+        var noNotes = justRead || ReadAsItWasSaid(userQuery, spoken);
         var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery, sources,
-            skills: !justRead && !(forceTools && toolsByTemplate), pastExchanges: !justRead, spoken: spoken).ConfigureAwait(false);
+            skills: !noNotes && !(forceTools && toolsByTemplate), pastExchanges: !noNotes, spoken: spoken).ConfigureAwait(false);
 
         // WHICH NOTES RIDE THIS TURN, BY SOURCE AND LENGTH - NEVER THEIR WORDS, which are the
         // person's. On the P30 on 2026-11-04 a 35-character question carried 210 characters of

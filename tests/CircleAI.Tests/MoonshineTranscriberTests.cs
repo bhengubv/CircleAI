@@ -101,6 +101,37 @@ public sealed class MoonshineTranscriberTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task A_long_stretch_of_talking_is_written_down_once_and_to_its_end()
+    {
+        // CIRCLEAI_MOONSHINE_LONG_WAV: half a minute of sentences. Read as one stream on the P30 on 2026-11-08
+        // it lost its last three; with the lines carrying on from each other, it wrote each one over and over.
+        if (Model is not { } model
+            || Environment.GetEnvironmentVariable("CIRCLEAI_MOONSHINE_LONG_WAV") is not { Length: > 0 } wav || !File.Exists(wav))
+        {
+            output.WriteLine("CIRCLEAI_MOONSHINE_DIR and CIRCLEAI_MOONSHINE_LONG_WAV not set");
+            return;
+        }
+
+        var pcm = File.ReadAllBytes(wav)[44..];
+        await using var ears = new MoonshineTranscriber(model, threads: 2);
+
+        using var hearing = ears.Begin();
+        for (var at = 0; at < pcm.Length; at += 16_000)
+        {
+            hearing.Hear(pcm.AsSpan(at, Math.Min(16_000, pcm.Length - at)));
+            hearing.Update();
+        }
+
+        var words = hearing.Finish();
+        output.WriteLine(words);
+        output.WriteLine(hearing.Spent);
+
+        var sentences = words.Split(['.', '?', '!'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.True(sentences.Length >= 8, words);
+        Assert.Equal(sentences.Length, sentences.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
     public async Task A_quiet_room_writes_nothing()
     {
         if (Model is not { } model)

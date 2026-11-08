@@ -23,6 +23,10 @@
 // because the memory it attends to has grown. So the previous words go through the decoder in ONE
 // pass, it keeps the ones it still agrees with, and only what is new costs a step each. That is what
 // makes the last update after the last word short.
+//
+// AND IT ONLY STAYS SHORT WHILE THE MEMORY DOES, so a stretch of talking is written down a line at a time
+// (SpeechLines): what a closed line said is never read again, and an update costs one line whatever came
+// before it.
 
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -52,6 +56,9 @@ public sealed class MoonshineTranscriber : IVoiceTranscriber
 
     /// <summary>The decoder's memory runs at 50 frames a second.</summary>
     private const float SecondsPerFrame = 0.020f;
+
+    /// <summary>Samples in one of those frames.</summary>
+    private const int SamplesPerFrame = 320;
 
     /// <summary>
     /// The most tokens a second of speech is allowed to come to; past it the decoder is repeating itself.
@@ -319,6 +326,19 @@ public sealed class MoonshineTranscriber : IVoiceTranscriber
         private List<int> _written = [];
         private string _text = string.Empty;
 
+        // What closed lines said, and the open line's own audio, kept so what follows a cut can start the next.
+        private string _said = string.Empty;
+        private float[] _line = new float[ChunkSamples * 8];
+        private int _lineCount;
+        private int _lines;
+        private int _heardBefore;
+
+        // How loud each frame of the open line was, for where it can close.
+        private float[] _levels = new float[1024];
+        private int _levelCount;
+        private double _framePower;
+        private int _frameSamples;
+
         private readonly Stopwatch _frontendTime = new();
         private readonly Stopwatch _encoderTime = new();
         private readonly Stopwatch _crossTime = new();
@@ -336,32 +356,102 @@ public sealed class MoonshineTranscriber : IVoiceTranscriber
         }
 
         /// <summary>The words so far.</summary>
-        public string Text => _text;
+        public string Text => _said.Length == 0 ? _text : _text.Length == 0 ? _said : _said + " " + _text;
+
+        /// <inheritdoc />
+        public string Closed => _said;
 
         /// <summary>Audio heard so far.</summary>
-        public TimeSpan Heard => TimeSpan.FromSeconds(_featureCount * (double)SecondsPerFrame);
+        public TimeSpan Heard => TimeSpan.FromSeconds((_heardBefore + _featureCount) * (double)SecondsPerFrame);
 
         /// <summary>Where the time has gone so far, for the log.</summary>
         public string Spent =>
             $"frontend {_frontendTime.ElapsedMilliseconds} ms, "
             + $"encoder {_encoderTime.ElapsedMilliseconds} ms over {_encoderFrames} frames, "
             + $"cross {_crossTime.ElapsedMilliseconds} ms, "
-            + $"decoder {_decoderTime.ElapsedMilliseconds} ms in {_decoderPasses} passes";
+            + $"decoder {_decoderTime.ElapsedMilliseconds} ms in {_decoderPasses} passes, {_lines} lines closed";
 
         /// <summary>Takes in audio, PCM 16-bit 16 kHz mono, in pieces of any size.</summary>
         public void Hear(ReadOnlySpan<byte> pcm16)
         {
             Fit(ref _samples, _sampleCount + pcm16.Length / 2);
+            Fit(ref _line, _lineCount + pcm16.Length / 2);
             for (var i = 0; i + 1 < pcm16.Length; i += 2)
-                _samples[_sampleCount++] = BinaryPrimitives.ReadInt16LittleEndian(pcm16[i..]) / 32768f;
+            {
+                var sample = BinaryPrimitives.ReadInt16LittleEndian(pcm16[i..]) / 32768f;
+                _samples[_sampleCount++] = sample;
+                _line[_lineCount++] = sample;
+
+                _framePower += sample * sample;
+                if (++_frameSamples < SamplesPerFrame) continue;
+
+                Fit(ref _levels, _levelCount + 1);
+                _levels[_levelCount++] = (float)Math.Sqrt(_framePower / SamplesPerFrame);
+                _framePower = 0;
+                _frameSamples = 0;
+            }
         }
 
         /// <summary>Writes down what has settled, and returns the words so far.</summary>
         public string Update()
         {
             Frontend();
-            if (Encode(final: false) > 0) Decode();
-            return _text;
+            if (Encode(final: false) > 0)
+            {
+                CloseLine();
+                Decode();
+            }
+            return Text;
+        }
+
+        // WRITTEN DOWN FOR GOOD, FROM ITS OWN FRAMES ALONE: what the last update wrote may have run on past the cut.
+        private void CloseLine()
+        {
+            var cut = SpeechLines.CutIn(_levels.AsSpan(0, Math.Min(_memoryLength, _levelCount)));
+            if (cut == 0) return;
+
+            _memoryLength = cut;
+            _crossIsCurrent = false;
+            _written = [];
+            Decode();
+            _said = Text;
+            _lines++;
+
+            StartLine(cut);
+            Frontend();
+            Encode(final: false);
+        }
+
+        // A LINE IS A STREAM OF ITS OWN, FROM THE FRONTEND UP, as it is in moonshine-ai's transcriber. Carrying
+        // the features over and only numbering the memory from nothing, the decoder never found the end of a
+        // line: on the P30 on 2026-11-08 it read each one again until it ran out of tokens, "My daughter My
+        // daughter My daughter".
+        private void StartLine(int frames)
+        {
+            var from = Math.Min(frames * SamplesPerFrame, _lineCount);
+            _lineCount -= from;
+            Array.Copy(_line, from, _line, 0, _lineCount);
+            Fit(ref _samples, _lineCount);
+            Array.Copy(_line, _samples, _lineCount);
+            _sampleCount = _lineCount;
+
+            var levels = Math.Min(frames, _levelCount);
+            _levelCount -= levels;
+            Array.Copy(_levels, levels, _levels, 0, _levelCount);
+
+            Array.Clear(_sampleBuffer);
+            Array.Clear(_conv1);
+            Array.Clear(_conv2);
+            _sampleLength[0] = 0;
+            _frameCount[0] = 0;
+            _heardBefore += _featureCount;
+            _featureCount = 0;
+            _settled = 0;
+            _position[0] = 0;
+            _memoryLength = 0;
+            _written = [];
+            _text = string.Empty;
+            _crossIsCurrent = false;
         }
 
         /// <summary>
@@ -375,7 +465,7 @@ public sealed class MoonshineTranscriber : IVoiceTranscriber
             if (Encode(final: true) > 0) Decode();
             (_settled, _memoryLength, _position[0]) = (settled, memory, position);
             _crossIsCurrent = false;
-            return _text;
+            return Text;
         }
 
         /// <summary>Writes down everything, the last frames included, and returns the words.</summary>
@@ -383,7 +473,7 @@ public sealed class MoonshineTranscriber : IVoiceTranscriber
         {
             Frontend();
             if (Encode(final: true) > 0) Decode();
-            return _text;
+            return Text;
         }
 
         /// <summary>Everything waiting, in one call: its weights go in with every call, so calls are what cost.</summary>

@@ -100,6 +100,17 @@ public static class WakeTurn
     /// </remarks>
     private static readonly TimeSpan FollowUp = TimeSpan.FromSeconds(4);
 
+    /// <summary>The longest somebody carrying on goes: past this it is a room with people in it, not a reply.</summary>
+    /// <remarks>
+    /// NOBODY NAMED IT THIS TIME, so nothing says it is being spoken to. On the P30 on 2026-11-07 the window
+    /// took in forty seconds of a room, heard 926 characters of it, and answered them, turn after turn on
+    /// the one "Hey B". What runs this long here is let go, and the conversation with it.
+    /// </remarks>
+    private static readonly TimeSpan LongestCarryingOn = TimeSpan.FromSeconds(15);
+
+    /// <summary>How long after the time to start the ears may take to write the first word of somebody who did.</summary>
+    private static readonly TimeSpan EarsBehind = TimeSpan.FromSeconds(1.5);
+
 
     /// <summary>How long a quiet lasts before the ears start on what has been said so far.</summary>
     /// <remarks>
@@ -237,7 +248,8 @@ public static class WakeTurn
                     early = null;
                 }
 
-                var question = await HearAsync(clock, mic, Settled, WentOn, goingOn == 0 ? FirstWord : FollowUp, ct).ConfigureAwait(false);
+                var question = await HearAsync(clock, mic, Settled, WentOn, goingOn == 0 ? FirstWord : FollowUp,
+                    goingOn == 0 ? Longest : LongestCarryingOn, ct).ConfigureAwait(false);
                 if (early is null) clock.Heard();
 
                 if (string.IsNullOrWhiteSpace(question))
@@ -491,7 +503,8 @@ public static class WakeTurn
     /// ones the app's spoken turn uses.
     /// </remarks>
     private static async Task<string?> HearAsync(
-        SpokenTurnClock turn, CircleAI.Voice.IAudioCapture? microphone, Action<string> settled, Action wentOn, TimeSpan firstWord, CancellationToken ct)
+        SpokenTurnClock turn, CircleAI.Voice.IAudioCapture? microphone, Action<string> settled, Action wentOn, TimeSpan firstWord, TimeSpan most,
+        CancellationToken ct)
     {
         var speech = Speech;
         if (speech is null)
@@ -501,7 +514,7 @@ public static class WakeTurn
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadline.CancelAfter(Longest);
+        deadline.CancelAfter(most + TimeSpan.FromSeconds(1));   // the gate gets there first, and says so
 
         var spoken = new List<byte>();
         var clock = Stopwatch.StartNew();
@@ -557,7 +570,7 @@ public static class WakeTurn
             await using var mic = microphone ?? new AndroidAudioCapture();
             // LearnsWhileOpen = false: a fresh gate that learned from the question
             // would take the question as the room and shut mid-sentence. See it.
-            var gate = new CircleAI.Voice.SpeechGate { MostOpen = Longest, LearnsWhileOpen = false, Hangover = EndOfQuestion };
+            var gate = new CircleAI.Voice.SpeechGate { MostOpen = most, LearnsWhileOpen = false, Hangover = EndOfQuestion };
 
             // The last few blocks before the gate opened. A gate opens on the
             // block that clears its bar, and the attack of the first word is
@@ -636,6 +649,15 @@ public static class WakeTurn
                 // on a block that WAS kept, and that is still an ending.
                 if (started && gate.Closed)
                 {
+                    // THE ROOM OPENED IT AND THE ROOM SHUT IT, AND NOBODY HAS SAID ANYTHING. The gate knows
+                    // the room now, and they still have the rest of their time to start in.
+                    if (live is { Words.Length: 0 } && clock.Elapsed < firstWord)
+                    {
+                        started = false;
+                        spoken.Clear();
+                        continue;
+                    }
+
                     turn.MicrophoneClosed(gate.Hangover + gate.Hold);
                     break;
                 }
@@ -653,6 +675,24 @@ public static class WakeTurn
                 // spoke, which is fifteen seconds of a phone doing nothing visible
                 // after it has just said hello.
                 if (!started && clock.Elapsed > firstWord) break;
+
+                // AND A ROOM THAT HOLDS THE GATE OPEN WITH NOTHING TO WRITE DOWN IS THE SAME SILENCE.
+                if (started && live is { Words.Length: 0 } && clock.Elapsed > firstWord + EarsBehind)
+                {
+                    Log.Info(Tag, "the gate is open and the ears have heard no words: nobody is talking");
+                    spoken.Clear();
+                    break;
+                }
+            }
+
+            // Levels only, as what was said is nobody's log line: these say what the room did to the turn.
+            Log.Info(Tag, string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"the gate: room {gate.Floor:F4}, opens at {gate.Opening:F4}, between the words {gate.StretchQuiet:F4}, loudest {gate.StretchLoudest:F4}, {gate.Cut} cut"));
+
+            if (most < Longest && gate.Cut > 0)
+            {
+                Log.Info(Tag, "that ran to its limit with nobody having named it: a room, not somebody carrying on");
+                spoken.Clear();
             }
         }
         catch (OperationCanceledException)

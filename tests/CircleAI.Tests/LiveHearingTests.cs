@@ -50,14 +50,18 @@ public sealed class LiveHearingTests
         public int Finishes;
         public int Bytes;
         public readonly TaskCompletionSource<string> Hold = new();
+        public readonly ManualResetEventSlim InUpdate = new();
         public bool Holding;
 
         public string Spent => "spent";
+
+        public string Closed { get; set; } = string.Empty;
 
         public void Hear(ReadOnlySpan<byte> pcm16) => Interlocked.Add(ref Bytes, pcm16.Length);
 
         public string Update()
         {
+            InUpdate.Set();
             if (Holding) Hold.Task.GetAwaiter().GetResult();
             Interlocked.Increment(ref Updates);
             return lines[Math.Min(_next++, lines.Length - 1)];
@@ -163,6 +167,59 @@ public sealed class LiveHearingTests
         Assert.Equal("settled: What is", first);
         Assert.Equal("went on", second);
         Assert.Equal("settled: What is the capital of Kenya?", third);
+    }
+
+    [Fact]
+    public async Task Talking_behind_a_long_update_takes_the_quiet_back_though_the_last_block_is_quiet()
+    {
+        // MEASURED ON THE P30 ON 2026-11-08: three sentences went by while the ears were writing down the
+        // last pause. They came out of the queue with the quiet after them, and the turn ended without them.
+        var script = new Scripted("And which day is it?", "And which day is it? What is her name?") { Holding = true };
+        await using var live = new LiveHearing(script, bytesPerUpdate: Block * 100);
+        var said = new BlockingCollection<string>();
+        live.Settled += words => said.Add("settled: " + words);
+        live.WentOn += () => said.Add("went on");
+
+        live.Hear(Audio(), LiveHearing.SettledAfter);
+        Assert.True(script.InUpdate.Wait(Wait));
+        live.Hear(Audio(), TimeSpan.Zero);
+        live.Hear(Audio(), LiveHearing.SettledAfter + Ms(100));
+        script.Hold.SetResult("go");
+
+        Assert.True(said.TryTake(out var first, Wait));
+        Assert.True(said.TryTake(out var second, Wait));
+        Assert.True(said.TryTake(out var third, Wait));
+
+        Assert.Equal("settled: And which day is it?", first);
+        Assert.Equal("went on", second);
+        Assert.Equal("settled: And which day is it? What is her name?", third);
+        Assert.Equal("And which day is it? What is her name?", await live.FinishAsync().WaitAsync(Wait));
+    }
+
+    [Fact]
+    public async Task Once_a_line_has_closed_only_what_it_said_is_read_ahead()
+    {
+        var script = new Scripted("My kitchen tap keeps on", "My kitchen tap keeps on dripping all night.", "My kitchen tap keeps on dripping all night. Can I fix", "My kitchen tap keeps on dripping all night. Can I fix it myself?");
+        await using var live = new LiveHearing(script, bytesPerUpdate: Block);
+        var still = new BlockingCollection<string>();
+        live.HeldStill += still.Add;
+
+        live.Hear(Audio(), TimeSpan.Zero);
+        Assert.True(still.TryTake(out var first, Wait));
+        Assert.Equal("My kitchen tap keeps", first);
+
+        script.Closed = "My kitchen tap keeps on dripping all night.";
+        live.Hear(Audio(), TimeSpan.Zero);
+        Assert.True(still.TryTake(out var second, Wait));
+        Assert.Equal("My kitchen tap keeps on dripping all night.", second);
+
+        // The words of the open line can still change, so they wait for it to close.
+        live.Hear(Audio(), TimeSpan.Zero);
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref script.Updates) == 3, Wait));
+        live.Hear(Audio(), TimeSpan.Zero);
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref script.Updates) == 4, Wait));
+        await live.FinishAsync().WaitAsync(Wait);
+        Assert.Equal(0, still.Count);
     }
 
     [Fact]

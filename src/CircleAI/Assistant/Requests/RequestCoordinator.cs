@@ -262,6 +262,17 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         var ask = Status(callerKey, askId);
         if (ask is null || ask.IsFinal) return false;
 
+        // FINAL FIRST, THEN STOPPED. Stopping the generation can run the loop on this very thread
+        // - a cancellation's continuations may run inline - and the loop takes the next open ask.
+        // While this one was not yet final it was the next open ask: it was picked again and run
+        // a second time, holding the brain until its deadline while everything else waited.
+        // Made final first, it is out of the queue before anything can pick it.
+        var done = Finish(askId, AskState.Cancelled, FailureKind.Cancelled, AskSentences.Cancelled, keepText: true);
+
+        // AND WHAT IS RUNNING IT IS ASKED AFTER THAT, NOT BEFORE. Between being marked running and being
+        // handed to the brain an ask is in neither place: on the P30 on 2026-11-08 one withdrawn 45 ms after
+        // it came in found nothing to stop, and the brain spent 6 s answering it. Out of the queue first,
+        // either the loop sees it has gone (RunOneAsync) or this sees the loop has it.
         EffortChoice? wasThinking = null;
         CancellationTokenSource? running = null;
         lock (_gate)
@@ -274,12 +285,6 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             }
         }
 
-        // FINAL FIRST, THEN STOPPED. Stopping the generation can run the loop on this very thread
-        // - a cancellation's continuations may run inline - and the loop takes the next open ask.
-        // While this one was not yet final it was the next open ask: it was picked again and run
-        // a second time, holding the brain until its deadline while everything else waited.
-        // Made final first, it is out of the queue before anything can pick it.
-        var done = Finish(askId, AskState.Cancelled, FailureKind.Cancelled, AskSentences.Cancelled, keepText: true);
         try { running?.Cancel(); } catch (ObjectDisposedException) { }
         _log($"ask {askId} cancelled by its caller");
 
@@ -631,6 +636,9 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         cts.CancelAfter(_limits.GenerationDeadline);
         lock (_gate)
         {
+            // WITHDRAWN WHILE THE JOB WAS BEING PUT TOGETHER: see Cancel.
+            if (!_open.ContainsKey(ask.Id)) return;
+
             _runningId = ask.Id; _runningCts = cts; _runningCancelledByCaller = false; _runningChoice = choice;
             _gaveWay = false;
 

@@ -20,6 +20,19 @@ namespace CircleAI.Tests;
 
 public sealed class SpokenTurnFixesTests
 {
+    [Fact]
+    public void Nothing_goes_in_front_of_a_long_question_the_brain_read_as_it_was_said()
+    {
+        var talking = string.Join(' ', Enumerable.Repeat("I'm having twelve people over on Saturday.", 4));
+
+        Assert.True(CircleAI.Hosting.AIService.ReadAsItWasSaid(talking, spoken: true));
+
+        // Typed, it arrives whole and nothing has been read. Short, a note costs less than it brings.
+        Assert.False(CircleAI.Hosting.AIService.ReadAsItWasSaid(talking, spoken: false));
+        Assert.False(CircleAI.Hosting.AIService.ReadAsItWasSaid("What could I get her?", spoken: true));
+        Assert.False(CircleAI.Hosting.AIService.ReadAsItWasSaid(null, spoken: true));
+    }
+
     private static async Task<List<string>> Said(params string[] fragments)
     {
         var said = new List<string>();
@@ -146,6 +159,86 @@ public sealed class SpokenTurnFixesTests
         Assert.True(gate.Open);
         for (var i = 0; i < 3; i++) gate.Wants(quiet);
         Assert.False(gate.Open);
+    }
+
+    private static float[] Block(float level) => Enumerable.Repeat(level, 1600).ToArray();
+
+    private static SpeechGate QuestionGate() =>
+        new() { Hangover = TimeSpan.FromSeconds(1.7), LearnsWhileOpen = false, MostOpen = TimeSpan.FromSeconds(40) };
+
+    // Measured on the P30 on 2026-11-07, real voice in a real room: nothing read as quiet, the microphone shut only when
+    // the words stopped, and the first sound took 4,6 s where a quiet recording takes 2,4 s.
+    [Theory]
+    [InlineData(0.0025f)]
+    [InlineData(0.004f)]
+    public void A_question_in_a_room_above_the_lowest_bar_is_heard_to_stop(float room)
+    {
+        var gate = QuestionGate();
+
+        for (var i = 0; i < 10; i++) gate.Wants(Block(room));
+        Assert.True(gate.Open);   // the room alone opened it: it knows nothing yet
+
+        for (var i = 0; i < 30; i++) gate.Wants(Block(i % 4 == 3 ? room * 1.4f : 0.012f));
+        Assert.True(gate.Open);
+
+        var blocks = 0;
+        while (gate.Open && blocks < 40) { gate.Wants(Block(room)); blocks++; }
+
+        Assert.InRange(blocks, 17, 19);   // its 1,7 s of quiet, and no more
+    }
+
+    [Fact]
+    public void A_gap_inside_a_sentence_in_that_room_is_not_the_end_of_it()
+    {
+        var gate = QuestionGate();
+        for (var i = 0; i < 10; i++) gate.Wants(Block(0.003f));
+        for (var i = 0; i < 20; i++) gate.Wants(Block(0.012f));
+
+        for (var i = 0; i < 10; i++) gate.Wants(Block(0.003f));   // a second to think
+        Assert.True(gate.Open);
+        Assert.True(gate.QuietFor > TimeSpan.FromSeconds(0.5));   // and the ears can start on it
+
+        gate.Wants(Block(0.012f));
+        Assert.Equal(TimeSpan.Zero, gate.QuietFor);
+    }
+
+    [Fact]
+    public void Once_a_voice_has_ended_in_that_room_the_room_no_longer_opens_the_gate()
+    {
+        var gate = QuestionGate();
+        for (var i = 0; i < 10; i++) gate.Wants(Block(0.003f));
+        for (var i = 0; i < 20; i++) gate.Wants(Block(0.012f));
+        for (var i = 0; i < 20; i++) gate.Wants(Block(0.003f));
+        Assert.False(gate.Open);
+
+        for (var i = 0; i < 30; i++) gate.Wants(Block(0.003f));
+        Assert.False(gate.Open);   // that is the room now
+
+        gate.Wants(Block(0.012f));
+        Assert.True(gate.Open);    // and a voice is not
+    }
+
+    [Fact]
+    public void A_level_that_does_not_move_is_held_open_for_the_ears_to_decide()
+    {
+        var gate = QuestionGate();
+
+        for (var i = 0; i < 60; i++) gate.Wants(Block(0.003f));
+
+        Assert.True(gate.Open);
+        Assert.Equal(TimeSpan.Zero, gate.QuietFor);
+    }
+
+    [Fact]
+    public void A_quiet_room_takes_a_question_as_it_always_did()
+    {
+        var gate = QuestionGate();
+        for (var i = 0; i < 10; i++) gate.Wants(Block(0.0008f));
+        Assert.False(gate.Open);
+
+        for (var i = 0; i < 20; i++) gate.Wants(Block(0.003f));   // a soft voice, and nothing softer in it
+        Assert.True(gate.Open);
+        Assert.Equal(TimeSpan.Zero, gate.QuietFor);
     }
 
     private static AskRecord Asked(string words) =>

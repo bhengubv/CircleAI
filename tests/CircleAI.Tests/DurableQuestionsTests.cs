@@ -203,6 +203,33 @@ public sealed class DurableQuestionsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_question_withdrawn_while_its_job_is_put_together_never_reaches_the_brain()
+    {
+        // MEASURED ON THE P30 ON 2026-11-08: withdrawn 45 ms after it came in, and the brain spent 6 s on it.
+        using var store = Store();
+        var brain = new FakeBrain();
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        var withdrawn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        front.Images = ask =>
+        {
+            if (ask.Asked != "What is") return null;
+            front.Cancel("app:1", ask.Id);
+            withdrawn.TrySetResult();
+            return null;
+        };
+        front.Start();
+
+        var stopped = front.Submit(Ask("What is", lane: AskLane.Assistant)).Record!;
+        await withdrawn.Task.WaitAsync(Patience);
+
+        var meant = front.Submit(Ask("What is the capital of Kenya?", lane: AskLane.Assistant)).Record!;
+
+        Assert.Equal(AskState.Succeeded, (await Final(front, "app:1", meant.Id)).State);
+        Assert.Equal(AskState.Cancelled, (await Final(front, "app:1", stopped.Id)).State);
+        Assert.Equal(["What is the capital of Kenya?"], brain.Jobs.Select(j => j.Messages[^1].Content));
+    }
+
+    [Fact]
     public async Task A_person_takes_the_brain_from_a_background_ask_and_it_goes_back_in_line()
     {
         using var store = Store();
