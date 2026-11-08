@@ -1076,24 +1076,38 @@ public sealed class InferenceSupervisor : IBrainWorker
         catch { /* the next load hashes again; slower, never wrong */ }
     }
 
+    // "freeGb|build": the free RAM a load of the model was killed at, and the build of this app that was killed (its
+    // package's last update time).
     private void RecordKilledAt(string model, double freeGb)
     {
         try
         {
             var path = StatePath("killed", model);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, freeGb.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            File.WriteAllText(path, freeGb.ToString("R", inv) + "|" + (ExitEvidence.Now(_context).Updated ?? -1).ToString(inv));
         }
         catch { }
     }
 
+    // A KILL ON ANOTHER BUILD SAYS NOTHING ABOUT THIS ONE. What a model needs in RAM is the engine's to decide, and an
+    // update can change it by gigabytes: the 27B was killed at 1.73 GB free while the engine copied its layers into RAM
+    // (2026-11-09 on the P30), and needs a fraction of that once they stream from flash. A record from another build - or
+    // one written before records kept their build - is set aside: the model gets one try on this build, and a kill on
+    // it holds as it always did.
     private double? KilledAt(string model)
     {
         try
         {
             var path = StatePath("killed", model);
-            return File.Exists(path) && double.TryParse(File.ReadAllText(path), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var gb) ? gb : null;
+            if (!File.Exists(path)) return null;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var parts = File.ReadAllText(path).Split('|');
+            if (!double.TryParse(parts[0], System.Globalization.NumberStyles.Float, inv, out var gb)) return null;
+            if (parts.Length < 2 || !long.TryParse(parts[1], System.Globalization.NumberStyles.Integer, inv, out var build)
+                || ExitEvidence.Now(_context).Updated is not { } current || build != current)
+                return null;
+            return gb;
         }
         catch { return null; }
     }
@@ -1465,7 +1479,7 @@ internal static class ExitEvidence
         catch { }
     }
 
-    private static (long? Boot, long? Updated) Now(Context context)
+    internal static (long? Boot, long? Updated) Now(Context context)
     {
         long? boot = null, updated = null;
         try { boot = global::Android.Provider.Settings.Global.GetInt(context.ContentResolver, "boot_count", -1); } catch { }
