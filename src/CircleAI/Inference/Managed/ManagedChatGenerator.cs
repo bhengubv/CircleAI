@@ -1699,9 +1699,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
     }
 
-    // Kept for the phone itself when every layer stays warm, and when some stream.
+    // Kept for the phone itself when every layer stays warm, and when some stream. Streaming, the turn holds more than its
+    // layers: the 27B's head surface (206 MB of Latin rows), its DeltaNet state (151 MB, 48 recurrent layers) and a
+    // prompt's buffers - and the P30 lost twenty processes to the low-memory killer the one time the 27B overran it. A
+    // warm layer saves the 27B 1/64 of a word's reading; the reserve is not worth it.
     private const long AllWarmReserve = 128L << 20;
-    private const long StreamingReserve = 512L << 20;
+    private const long StreamingReserve = 768L << 20;
 
     // HOW MANY LAYERS STAY WARM: every one when they fit with room to spare (the 2B on the P30: 345 MB); else the RAM left
     // beside the phone's share and a ring of two slots, the rest streamed (the 27B: 6.8 GB of layers).
