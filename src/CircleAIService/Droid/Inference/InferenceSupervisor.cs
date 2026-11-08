@@ -549,10 +549,23 @@ public sealed class InferenceSupervisor : IBrainWorker
             var workerDied = false;
             try
             {
+                // THE LIMIT IS EACH STEP'S, NOT THE WHOLE LOAD'S. A load that goes on from checking its files to building
+                // to warming is making progress; one stuck in a step is not. On the P30 on 2026-11-09 the 27B checked its
+                // file (44 s), built with no copies (4 s) and was warming - its first prefill, every layer streamed from
+                // flash - when three minutes from the start ended it.
                 using var limit = new CancellationTokenSource(LoadLimit);
                 var shape = Shape; // the balance's working memory and context (Step 4)
+                var lastStep = -1;
                 await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash, null, shape.KvMode, shape.ContextShare),
-                    new Progress<LoadStep>(step => Report(BrainPhase.Loading, step, model, null, ReadinessSentences.For(step))),
+                    new Progress<LoadStep>(step =>
+                    {
+                        if (Interlocked.Exchange(ref lastStep, (int)step) != (int)step)
+                        {
+                            try { limit.CancelAfter(LoadLimit); }
+                            catch (ObjectDisposedException) { /* the load is over */ }
+                        }
+                        Report(BrainPhase.Loading, step, model, null, ReadinessSentences.For(step));
+                    }),
                     limit.Token).ConfigureAwait(false);
             }
             catch (System.OperationCanceledException)

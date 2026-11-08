@@ -83,6 +83,7 @@ public sealed class InProcessBrainWorker : IBrainWorker
     public async Task EnsureReadyAsync(CancellationToken ct)
     {
         Task<InProcessBrain> loading;
+        TaskCompletionSource<InProcessBrain>? mine = null;
         lock (_gate)
         {
             if (_brain is not null) return;
@@ -91,20 +92,34 @@ public sealed class InProcessBrainWorker : IBrainWorker
                 if (_status.Phase == BrainPhase.Failed && _clock.GetUtcNow() < _retryAt && _status.LastFailure is { } last)
                     throw new BrainWorkerException(last);
 
-                // A LOAD THAT FAILED BEFORE ITS FIRST AWAIT has already run its catch, which
-                // cleared _loading - so storing it here kept a failed load for good, and no
-                // load was tried again until the process restarted: the desktop service
-                // answered "not installed" after the model it was waiting for had landed.
-                var started = LoadAsync();
-                _loading = started.IsCompleted ? null : started;
-                loading = started;
+                // THIS CALLER STARTS THE LOAD: a place for it, so every caller after waits on the same one.
+                mine = new TaskCompletionSource<InProcessBrain>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _loading = mine.Task;
             }
-            else loading = _loading;
+            loading = _loading;
         }
+
+        // THE LOAD RUNS OUTSIDE THE LOCK. The managed engine's load does its work before its first await - the hash,
+        // the split into stores, the build - and started inside the lock it held it all that time, so every Status read
+        // waited: the supervisor's load watchdog went blind for the whole load and saw its limit only when the lock let
+        // go, as the load finished. On the P30 on 2026-11-09 it let a 10-minute load run unwatched, then ended the 27B
+        // the second it was ready. Still started on this thread, so what a load says before its first await (its step,
+        // its phase) is in the status when this call returns.
+        // A LOAD THAT FAILS BEFORE ITS FIRST AWAIT has already run its catch, which cleared _loading - so the next
+        // caller tries again: the desktop service once answered "not installed" for good after the model had landed.
+        if (mine is not null) _ = Relay(LoadAsync(), mine);
 
         // EVERY CALLER WAITS ON THE SAME LOAD, and a caller that stops waiting does not
         // stop the load: the next question will want it.
         await loading.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    // The load's end, handed to everyone waiting on its place.
+    private static async Task Relay(Task<InProcessBrain> load, TaskCompletionSource<InProcessBrain> place)
+    {
+        try { place.TrySetResult(await load.ConfigureAwait(false)); }
+        catch (OperationCanceledException) { place.TrySetCanceled(); }
+        catch (Exception ex) { place.TrySetException(ex); }
     }
 
     private async Task<InProcessBrain> LoadAsync()

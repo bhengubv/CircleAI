@@ -1699,24 +1699,21 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
     }
 
-    // Kept for the phone itself when every layer stays warm, and when some stream. Streaming, the turn holds more than its
-    // layers: the 27B's head surface (206 MB of Latin rows), its DeltaNet state (151 MB, 48 recurrent layers) and a
-    // prompt's buffers - and the P30 lost twenty processes to the low-memory killer the one time the 27B overran it. A
-    // warm layer saves the 27B 1/64 of a word's reading; the reserve is not worth it.
+    // Kept for the phone itself when every layer stays warm. Streaming, a turn holds more than its layers - the 27B's head
+    // surface (206 MB of Latin rows), its DeltaNet state (151 MB, 48 recurrent layers), a prompt's buffers - and the P30
+    // lost twenty processes to the low-memory killer the one time the 27B overran it.
     private const long AllWarmReserve = 128L << 20;
-    private const long StreamingReserve = 768L << 20;
 
-    // HOW MANY LAYERS STAY WARM: every one when they fit with room to spare (the 2B on the P30: 345 MB); else the RAM left
-    // beside the phone's share and a ring of two slots, the rest streamed (the 27B: 6.8 GB of layers).
+    // HOW MANY LAYERS STAY WARM: every one when they fit with room to spare (the 2B on the P30: 345 MB); else none, every
+    // layer streamed through a ring of two slots (the 27B: 6.2 GB of layers a pass). Measured on the P30 on 2026-11-09:
+    // three layers held warm beside the 27B's ring, head surface and state bought it 3/64 of a pass and cost 308 MB, and
+    // took the phone to 3 MB of free swap - so a streaming turn holds no warm layer until a device measures that it pays.
     private static (long Warm, int Slots, long? Available) LayerRecipe(TileStore mix, TileStore ffn)
     {
         var available = MemoryNow.AvailableBytes();
         var total = mix.DataBytes + ffn.DataBytes;
         if (available is not { } room || total + AllWarmReserve <= room) return (long.MaxValue, 0, available);
-        var slot = 0L;
-        for (var il = 0; il < mix.Layers; il++) slot = Math.Max(slot, mix.LayerRange(il).Length + ffn.LayerRange(il).Length);
-        const int Slots = 2;
-        return (Math.Max(0, room - StreamingReserve - Slots * slot), Slots, available);
+        return (0, 2, available);
     }
 
     // A call has used the feed-forward: the idle clock starts again, and where it streams every turn it goes now. Under the gate.
