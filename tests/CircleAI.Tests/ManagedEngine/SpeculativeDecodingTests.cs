@@ -51,33 +51,32 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
     [InlineData(11)]
     public void Tokens_through_the_lanes_give_each_its_own_logits_to_the_bit(int n)
     {
-        Qwen35Model.PairedForTest = true;
-        try
+        // PAIRED BY THIS MODEL'S OWN OVERRIDE, NOT THE GLOBAL SWITCH. Qwen35Model.PairedForTest flipped here paired every
+        // model the test classes running beside this one loaded in that moment - generator tests among them, whose paired
+        // models wrote stores, opened streams and looked for drafters (2026-11-09: ten of them failed in one full run).
+        GgufBuilder.WithFile(SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 3), path =>
         {
-            WithModel(SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 3), threads: 3, m =>
+            using var file = GgufFile.Open(path);
+            using var pool = new WorkerPool(3);
+            var m = Qwen35Model.Load(file, pool, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            Assert.True(m.Paired);
+            var v = m.Config.Vocabulary;
+            var batch = Enumerable.Range(0, n).Select(i => (i * 5 + 1) % v).ToArray();
+            var one = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
+            var together = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
+
+            var want = batch.Select(t =>
             {
-                var v = m.Config.Vocabulary;
-                var batch = Enumerable.Range(0, n).Select(i => (i * 5 + 1) % v).ToArray();
-                var one = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
-                var together = m.NewState(32, KvCompressionMode.Off, TurboQuantForm.Mse);
+                var logits = new float[v];
+                m.Forward(t, one, logits);
+                return logits;
+            }).ToArray();
+            var got = batch.Select(_ => new float[v]).ToArray();
+            m.ForwardBatch(batch, together, got);
 
-                var want = batch.Select(t =>
-                {
-                    var logits = new float[v];
-                    m.Forward(t, one, logits);
-                    return logits;
-                }).ToArray();
-                var got = batch.Select(_ => new float[v]).ToArray();
-                m.ForwardBatch(batch, together, got);
-
-                for (var i = 0; i < n; i++) Assert.Equal(want[i], got[i]);
-                return 0;
-            });
-        }
-        finally
-        {
-            Qwen35Model.PairedForTest = false;
-        }
+            for (var i = 0; i < n; i++) Assert.Equal(want[i], got[i]);
+            return 0;
+        });
     }
 
     [Theory]

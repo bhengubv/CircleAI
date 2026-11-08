@@ -10,10 +10,12 @@
 //   draw      the reply draws from those logits in order, through the very step plain decoding
 //             uses (sampler, tool-call form, stops, length); a draft stays only while it is the
 //             token drawn, and the first token drawn that differs is the next token
-//   roll back the trunk ran past what it keeps: the Gated DeltaNet layers go back to a checkpoint
-//             taken before the pass (Qwen35State.Checkpoint - its own copy, beside the turn's mark
-//             and the primed start) and the kept tokens run again; the attention caches are
-//             written again where they are read next
+//   roll back the trunk ran past what it keeps: the pass stepped each Gated DeltaNet layer on a copy
+//             aside, one layer's worth, and recorded the inputs (Qwen35Model.RecordRecurrence), so
+//             the state's recurrent layers step through just the kept tokens afterwards
+//             (ReplayRecurrence) - no second pass over the weights, which for a model streamed from
+//             flash is the whole cost of a word, and no checkpoint of every layer, which for the
+//             27B is 157 MB; the attention caches are written again where they are read next
 //
 // Because every token is drawn by the same step from the same logits in the same order, the reply
 // - greedy or sampled with a seed - is the plain reply, token for token. The drafts only decide
@@ -38,6 +40,12 @@ public interface IDraftSource
 
     /// <summary>Forgets what it carried: the state it observed was replaced.</summary>
     void Forget();
+
+    /// <summary>
+    /// Whether it drafts from the trunk's hidden states (the MTP head), so every token the trunk runs must pass through
+    /// <see cref="Observe"/> with its own. A drafter model reads the tokens alone, and a prompt can go in whole.
+    /// </summary>
+    bool NeedsHidden => true;
 }
 
 /// <summary>Draft-and-verify decoding over a <see cref="Qwen35Model"/>, lossless by construction.</summary>
@@ -123,8 +131,16 @@ public sealed class Speculator
 
         var n = drafted + 1;
         _tokens[0] = token;
-        state.Checkpoint();
-        _model.ForwardBatch(_tokens.AsSpan(0, n), state, _logits.AsSpan(0, n).ToArray(), _hidden.AsSpan(0, n).ToArray());
+        var rope = state.RopePosition;
+        _model.RecordRecurrence(n);
+        try
+        {
+            _model.ForwardBatch(_tokens.AsSpan(0, n), state, _logits.AsSpan(0, n).ToArray(), _hidden.AsSpan(0, n).ToArray());
+        }
+        finally
+        {
+            _model.StopRecording();
+        }
 
         var at = 0;
         (int Token, bool End) drawn;
@@ -142,12 +158,10 @@ public sealed class Speculator
         Drafted += drafted;
         Accepted += at;
 
-        if (kept < n)
-        {
-            // The trunk ran past what it keeps: back to the checkpoint, and the kept tokens again.
-            state.RestoreCheckpoint();
-            _model.ForwardBatch(_tokens.AsSpan(0, kept), state, new float[kept][], _hidden.AsSpan(0, kept).ToArray());
-        }
+        // The pass stepped the recurrent layers aside and wrote the attention layers for all n tokens: the recurrent layers
+        // step through the kept ones now, from the inputs the pass recorded, and the state stands after them. Their logits
+        // and hidden states are the pass's own: a token's lane reads only the tokens before it.
+        _model.ReplayRecurrence(state, kept, position, rope);
         for (var i = 0; i < kept; i++) history.Add(_tokens[i]);
         _source.Observe(_tokens.AsSpan(0, kept), position, _hidden.AsSpan(0, kept).ToArray());
         return drawn;

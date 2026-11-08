@@ -29,15 +29,22 @@ public sealed class LoadUnderTheLockTests
             throw new InvalidOperationException("the load ends");
         });
 
-        var ensuring = Task.Run(() => worker.EnsureReadyAsync(CancellationToken.None));
+        // THREADS OF THEIR OWN, NOT THE POOL'S: the load blocks its thread on purpose, and in a full parallel run a read
+        // queued to the pool can wait seconds for a thread - which reads as the lock it is here to rule out.
+        Task? ensuring = null;
+        var loader = new Thread(() => ensuring = worker.EnsureReadyAsync(CancellationToken.None)) { IsBackground = true };
+        loader.Start();
         Assert.True(entered.Wait(TimeSpan.FromSeconds(10)), "the load never started");
 
-        var reading = Task.Run(() => worker.Status);
-        Assert.True(reading.Wait(TimeSpan.FromSeconds(5)), "a Status read waited on the load");
-        Assert.Equal(BrainPhase.Loading, reading.Result.Phase);
+        BrainPhase? phase = null;
+        var reader = new Thread(() => phase = worker.Status.Phase) { IsBackground = true };
+        reader.Start();
+        Assert.True(reader.Join(TimeSpan.FromSeconds(5)), "a Status read waited on the load");
+        Assert.Equal(BrainPhase.Loading, phase);
 
         release.Set();
-        await Assert.ThrowsAsync<BrainWorkerException>(() => ensuring);
+        Assert.True(loader.Join(TimeSpan.FromSeconds(10)), "the load never ended");
+        await Assert.ThrowsAsync<BrainWorkerException>(() => ensuring!);
     }
 
     // A load that fails before it ever waits must not be kept: within its retry time the failure is answered, and

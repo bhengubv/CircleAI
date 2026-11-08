@@ -727,12 +727,15 @@ public sealed class Qwen35Model
                 if (c.IsRecurrent(il))
                 {
                     Products(b.H, n, layer.Qkv!.Input, (layer.Qkv!, b.Qkv), (layer.Z!, b.Z));
+                    // A CHECKED BATCH STEPS THIS LAYER ASIDE: on a copy of its state, the inputs kept for the tokens kept.
+                    var (convState, ssmState) = _recording > 0 ? Aside(state, il) : (state.Conv[il], state.Ssm[il]);
                     for (var i = 0; i < n; i++)
                     {
                         b.H[i].CopyTo(_h, 0);
                         b.Qkv[i].CopyTo(_qkv, 0);
                         b.Z[i].CopyTo(_z, 0);
-                        DeltaCore(il, layer, state);
+                        if (i < _recording) KeepInputs(il, i);
+                        DeltaCore(layer, convState, ssmState);
                         _o.CopyTo(b.O[i], 0);
                     }
                     Products(b.O, n, layer.SsmOut!.Input, (layer.SsmOut!, b.Mix));
@@ -1047,10 +1050,98 @@ public sealed class Qwen35Model
         Product(layer.SsmOut!, Tables(_o, layer.SsmOut!.Input), _mixOut);
     }
 
+    // A CHECKED BATCH STEPS THE RECURRENCE ASIDE (Speculator): while recording, each DeltaNet layer runs the batch's tokens
+    // on a scratch copy of its own state - one layer's worth, reused layer after layer - and keeps the h, qkv and z each
+    // step read; the state's recurrent layers stay where they were. The tokens the trunk keeps then step the real state
+    // from those inputs (ReplayRecurrence): no second pass over the weights - for a model whose layers stream from flash, a
+    // pass is the whole cost of a word - and no checkpoint of every layer's state, which for the 27B is 157 MB.
+    private float[][][]? _recorded;   // [layer][token]: h, then qkv, then z
+    private int _recording;           // tokens of the next batch to keep the inputs of
+    private float[]? _asideConv, _asideSsm;
+
+    /// <summary>
+    /// The batches that follow, until <see cref="StopRecording"/>, step their recurrent layers on a scratch copy and keep the
+    /// inputs of their first <paramref name="tokens"/> tokens: the state's recurrent layers stay where they were, its
+    /// attention layers and position move on, until <see cref="ReplayRecurrence"/> steps it through the tokens kept.
+    /// </summary>
+    internal void RecordRecurrence(int tokens)
+    {
+        var c = Config;
+        var width = c.Embedding + c.ConvChannels + c.SsmInner;
+        _recorded ??= new float[c.Layers][][];
+        for (var il = 0; il < c.Layers; il++)
+        {
+            if (!c.IsRecurrent(il)) continue;
+            var kept = _recorded[il];
+            if (kept is null || kept.Length < tokens)
+            {
+                var grown = new float[tokens][];
+                for (var i = 0; i < tokens; i++) grown[i] = kept is not null && i < kept.Length ? kept[i] : new float[width];
+                _recorded[il] = grown;
+            }
+        }
+        _recording = tokens;
+    }
+
+    /// <summary>Keeps no more inputs; what was kept stays until the next batch records over it.</summary>
+    internal void StopRecording() => _recording = 0;
+
+    /// <summary>
+    /// Steps the recurrent layers of <paramref name="state"/> - still where they were before the last recorded batch -
+    /// through the first <paramref name="count"/> tokens of it: the same steps on the same inputs, so the same state, bit for
+    /// bit, as running those tokens. Then the state stands after them, at <paramref name="position"/> + count (its rotary
+    /// position likewise, from <paramref name="rope"/>). The attention layers already hold those tokens: the batch wrote them.
+    /// </summary>
+    internal void ReplayRecurrence(Qwen35State state, int count, int position, int rope)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var c = Config;
+        for (var il = 0; il < c.Layers; il++)
+        {
+            if (!c.IsRecurrent(il)) continue;
+            var kept = _recorded?[il];
+            if (kept is null || kept.Length < count) throw new InvalidOperationException($"No inputs were kept for {count} tokens of layer {il}.");
+            for (var i = 0; i < count; i++)
+            {
+                kept[i].AsSpan(0, c.Embedding).CopyTo(_h);
+                kept[i].AsSpan(c.Embedding, c.ConvChannels).CopyTo(_qkv);
+                kept[i].AsSpan(c.Embedding + c.ConvChannels, c.SsmInner).CopyTo(_z);
+                DeltaCore(_layers[il], state.Conv[il], state.Ssm[il]);
+            }
+        }
+        state.Position = position + count;
+        state.RopePosition = rope + count;
+    }
+
+    // Layer il's conv window and recurrent state, copied aside for a checked batch to step.
+    private (float[] Conv, float[] Ssm) Aside(Qwen35State state, int il)
+    {
+        var conv = state.Conv[il];
+        var ssm = state.Ssm[il];
+        if (_asideConv is null || _asideConv.Length != conv.Length) _asideConv = new float[conv.Length];
+        if (_asideSsm is null || _asideSsm.Length != ssm.Length) _asideSsm = new float[ssm.Length];
+        conv.CopyTo(_asideConv, 0);
+        ssm.CopyTo(_asideSsm, 0);
+        return (_asideConv, _asideSsm);
+    }
+
+    // One token's inputs to a DeltaNet layer's step, kept while recording.
+    private void KeepInputs(int il, int token)
+    {
+        var c = Config;
+        var kept = _recorded![il][token];
+        _h.AsSpan(0, c.Embedding).CopyTo(kept);
+        _qkv.AsSpan(0, c.ConvChannels).CopyTo(kept.AsSpan(c.Embedding));
+        _z.AsSpan(0, c.SsmInner).CopyTo(kept.AsSpan(c.Embedding + c.ConvChannels));
+    }
+
     // One token's step through a DeltaNet layer, between its products: beta and alpha from _h, the
     // conv over _qkv, the delta rule and the gated norm with _z, into _o. The batched forward runs
     // the same step for each of its tokens in turn.
-    private void DeltaCore(int il, Layer layer, Qwen35State state)
+    private void DeltaCore(int il, Layer layer, Qwen35State state) => DeltaCore(layer, state.Conv[il], state.Ssm[il]);
+
+    // The same step on the conv window and recurrent state given: the layer's own, or a checked batch's copy aside.
+    private void DeltaCore(Layer layer, float[] convState, float[] ssmState)
     {
         var c = Config;
         var started = Stopwatch.GetTimestamp();
@@ -1058,7 +1149,7 @@ public sealed class Qwen35Model
         layer.Alpha!.MatVec(_h, _alpha, _hRounded);
 
         // The causal conv, on the pool's threads: a channel reads only its own past.
-        _convWork.Set(layer.ConvKernel!, state.Conv[il]);
+        _convWork.Set(layer.ConvKernel!, convState);
         try
         {
             if (_pool is null) _convWork.Execute(0, 1);
@@ -1074,7 +1165,7 @@ public sealed class Qwen35Model
         for (var head = 0; head < 2 * c.SsmGroups; head++) L2Norm(_conv.AsSpan(head * hk, hk), c.RmsEps);
 
         // The delta rule and the gated norm, value head by value head, on the pool's threads.
-        _deltaWork.Set(layer, state.Ssm[il]);
+        _deltaWork.Set(layer, ssmState);
         try
         {
             if (_pool is null) _deltaWork.Execute(0, 1);

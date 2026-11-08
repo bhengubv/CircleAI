@@ -104,6 +104,23 @@ public sealed record ManagedGeneratorOptions
     /// </remarks>
     public int Drafts { get; init; }
 
+    /// <summary>
+    /// Tokens a smaller model of the same vocabulary drafts ahead for a trunk whose layers stream from flash (ModelDrafter):
+    /// 0 turns it off. Only while the trunk streams and the drafter fits in RAM beside it.
+    /// </summary>
+    /// <remarks>
+    /// THE ECONOMICS FLIP WHEN THE TRUNK STREAMS. In RAM a check of three tokens costs the P30 more than three plain
+    /// tokens (<see cref="Drafts"/>); streamed, every pass reads every layer - 6.5 GB, about 33 s for the 27B - whether
+    /// it carries one token or five, and the drafter's tokens cost a fraction of a second each.
+    /// </remarks>
+    public int StreamedDrafts { get; init; } = 4;
+
+    /// <summary>
+    /// The model that drafts for a streamed trunk: null finds one beside the model - a folder next to its own, a smaller
+    /// qwen35 file with the same vocabulary, token for token (the 2B for the 27B); empty for none.
+    /// </summary>
+    public string? DrafterPath { get; init; }
+
     /// <summary>Reply tokens when a call asks for none.</summary>
     public int MaxNewTokens { get; init; } = 512;
 
@@ -228,6 +245,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private TileStore? _ffnStore;
     private TileStore? _mixStore;
     private LayerStream? _stream;
+
+    // THE SMALLER MODEL THAT DRAFTS FOR A STREAMED TRUNK (ModelDrafter): found beside the model when it loads, built at the
+    // first streaming turn that has room for it, and let go with the layers when the engine is idle.
+    private string? _drafterPath;
+    private GgufFile? _drafterFile;
+    private Qwen35Model? _drafterModel;
+    private ModelDrafter? _drafter;
+    private LayerStream? _drafterStream;
+    private Speculator? _drafting;
     private FfnWarm? _ffnWarm;
     private long _ffnUsed;
     private long _ffnKeepTicks = (long)(180 * (double)Stopwatch.Frequency);
@@ -537,6 +563,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
                 CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Packing}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}{drafting}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
                 generator.StartStore(ggufPath, store, ffn, mix);
+                if (model.MixFromStore && options.StreamedDrafts > 0 && FindDrafter(ggufPath, file, options) is { } drafter)
+                {
+                    generator._drafterPath = drafter;
+                    CircleLog.Info(Area, $"a drafter beside it: {Path.GetFileName(drafter)}, for the turns its layers stream");
+                }
                 return generator;
             }
             catch
@@ -550,6 +581,80 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             file.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// The model that drafts for this one when its layers stream (ModelDrafter): <see cref="ManagedGeneratorOptions.DrafterPath"/>
+    /// when given (empty for none), else the smallest qwen35 file in a folder beside this model's - where the catalogue
+    /// keeps each model - that is smaller than this one and has its vocabulary, token for token. Null when there is none.
+    /// </summary>
+    internal static string? FindDrafter(string modelPath, GgufFile model, ManagedGeneratorOptions options)
+    {
+        if (options.DrafterPath is "") return null;
+        var own = Path.GetFullPath(modelPath);
+        IEnumerable<string> candidates;
+        if (options.DrafterPath is { } asked)
+        {
+            candidates = [asked];
+        }
+        else
+        {
+            // ONLY IN THE CATALOGUE'S LAYOUT - each model in a folder of its own, the folders side by side. A model lying
+            // among other files (a test's in the temp folder, a download folder) has no siblings to ask: scanning the
+            // folders beside that one would read whatever lies there.
+            var ownFolder = new DirectoryInfo(Path.GetDirectoryName(own)!);
+            var models = ownFolder.Parent;
+            if (models is null || !models.Exists) return null;
+            try
+            {
+                if (ownFolder.EnumerateFiles("*.gguf").Count() > 3) return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+            candidates = models.EnumerateDirectories()
+                .Where(d => !string.Equals(d.FullName.TrimEnd(Path.DirectorySeparatorChar), ownFolder.FullName.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                .SelectMany(d =>
+                {
+                    try { return d.EnumerateFiles("*.gguf").Select(f => f.FullName); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
+                });
+        }
+
+        var size = new FileInfo(own).Length;
+        string? best = null;
+        var bestSize = long.MaxValue;
+        foreach (var path in candidates)
+        {
+            var full = Path.GetFullPath(path);
+            if (string.Equals(full, own, StringComparison.Ordinal) || Path.GetFileName(full).Contains("mmproj", StringComparison.OrdinalIgnoreCase)) continue;
+            var length = File.Exists(full) ? new FileInfo(full).Length : 0;
+            if (length == 0 || length >= size || length >= bestSize) continue;
+            try
+            {
+                using var other = GgufFile.Open(full);
+                if (other["general.architecture"].AsString() != "qwen35" || !SameVocabulary(model, other)) continue;
+                best = full;
+                bestSize = length;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or KeyNotFoundException or UnauthorizedAccessException)
+            {
+                // Not a model this engine reads: not a drafter.
+            }
+        }
+        return best;
+    }
+
+    // The same tokens at the same ids, and the same end: a draft is the trunk's token only when the two speak alike.
+    private static bool SameVocabulary(GgufFile a, GgufFile b)
+    {
+        static string[] Tokens(GgufFile f) => f["tokenizer.ggml.tokens"].AsArray().ToStringArray();
+        static long Eos(GgufFile f) => f.TryGetValue("tokenizer.ggml.eos_token_id", out var v) ? v.AsInt64() : -1;
+        if (Eos(a) != Eos(b)) return false;
+        var x = Tokens(a);
+        var y = Tokens(b);
+        return x.Length == y.Length && x.AsSpan().SequenceEqual(y);
     }
 
     /// <summary>
@@ -904,9 +1009,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var reused = _history.Count;
             _model.TakeTimes(); // whatever an abandoned call left counted
 
+            // A STREAMED TRUNK KEEPS NO MARK AND NO CONVERSATION COPY. Each is a copy of every recurrent layer - 157 MB for the
+            // 27B - and saves re-reading tokens, which a streamed model reads in passes that cost the same 6.5 GB for one token
+            // or a hundred and twenty-eight: re-reading a short conversation rides in the pass the question needs anyway. The
+            // mark cost a pass too - the prompt was cut there so it could be taken.
+            var leanState = _stream is { Slots: > 0 };
+
             // A WORD CAN STILL CHANGE: the ears heard "Why is this?" on their way to "Why is the sky blue?",
             // and a recurrent state only steps back to a mark. So only this read is lost, not all of them.
-            if (options.JustRead && reused < readTo) _state.Mark();
+            if (options.JustRead && reused < readTo && !leanState) _state.Mark();
 
             for (var i = reused; i < readTo; i++)
             {
@@ -920,16 +1031,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 }
 
                 if (i == primed && _state.PrimedPosition != i) Prime(prompt, i);
-                if (i == lastTurn) _state.Mark();
+                if (i == lastTurn && !leanState) _state.Mark();
 
                 // AN ANSWER'S TOKENS GO IN TOGETHER, up to the next place the state is kept: the same
                 // sums, each weight read once for all of them. Reading ahead goes a token at a time, so
                 // that whatever real comes along need not wait.
                 // A MODEL WHOSE LAYERS STREAM FROM FLASH reads its whole prompt in passes as big as it can: every pass reads every
                 // layer, so token by token or eight by eight would read the 27B's 6.8 GB that many times.
-                var streaming = _stream is { Slots: > 0 };
-                var together = (options.JustRead && !streaming) || built.Slots is not null || _speculator is not null ? 1
-                    : Together(i, readTo, primed, lastTurn, streaming ? StreamedReadTogether : Qwen35Model.ReadTogether);
+                var together = (options.JustRead && !leanState) || built.Slots is not null || _speculator is not null ? 1
+                    : Together(i, readTo, primed, leanState ? -1 : lastTurn, leanState ? StreamedReadTogether : Qwen35Model.ReadTogether);
                 if (together > 1)
                 {
                     var read = new float[]?[together];
@@ -975,6 +1085,17 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             }
 
             if (prefillTimes.Tokens >= ReadMeasuredFrom) Volatile.Write(ref _readCost, (prefillTimes.Total / prefillTimes.Tokens).Ticks);
+
+            // A STREAMED TRUNK'S WORDS ARE DRAFTED BY THE SMALLER MODEL, which first catches up on what the trunk read - from
+            // its primed start when the system turn is the same, so a new question costs it the question.
+            var speculator = _speculator ?? (_drafting is not null && _stream is { Slots: > 0 } ? _drafting : null);
+            if (speculator is not null && speculator == _drafting)
+            {
+                var caught = Stopwatch.GetTimestamp();
+                var from = _drafter!.Position;
+                _drafter.Sync(_history, primed);
+                CircleLog.Info(Area, Invariant($"drafting: the drafter caught up to {_history.Count} tokens from {Math.Min(from, _history.Count)} in {Stopwatch.GetElapsedTime(caught).TotalMilliseconds:F0} ms"));
+            }
 
             var sampler = new TokenSampler(Settings(options, thinking), options.Seed);
             var generated = new List<int>();
@@ -1094,15 +1215,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 return (token, generated.Count >= maxTokens);
             }
 
-            _speculator?.TakeCounts();
+            speculator?.TakeCounts();
             if (maxTokens > 0)
             {
                 var (token, end) = Step(_logits);
                 while (!end)
                 {
-                    if (_speculator is not null)
+                    if (speculator is not null)
                     {
-                        (token, end) = _speculator.Step(token, _state, _history, Step);
+                        (token, end) = speculator.Step(token, _state, _history, Step);
                         continue;
                     }
                     // THE VOICE IS ON THE FIRST WORDS (BrainHold). The workers sleep by themselves.
@@ -1134,9 +1255,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var pictures = built.Images.Length == 0 ? "" : Invariant($" ({built.Images.Length} pictures, {built.Images.Sum(p => p.Count)} of them picture tokens)");
             CircleLog.Info(Area, Invariant($"{prompt.Count} prompt tokens{pictures}, {prompt.Count - reused} run ({path}) in {prefillMs:F0} ms; {generated.Count} tokens in {decodeSeconds * 1000:F0} ms ({rate:F2} tok/s); {finish}"));
             CircleLog.Info(Area, Invariant($"where the time went: prompt {prefillTimes}; reply {_model.TakeTimes()}; the {_pool.Threads - 1} workers slept {_pool.Sleeps - sleptBefore} times; {_pool.Runs - runsBefore} pieces of work, {(_pool.Waited - waitedBefore).TotalMilliseconds:F0} ms of them waiting for the slowest"));
-            var (drafted, accepted) = _speculator?.TakeCounts() ?? (0L, 0L);
-            if (drafted > 0)
+            var (drafted, accepted) = speculator?.TakeCounts() ?? (0L, 0L);
+            if (drafted > 0 && speculator == _speculator)
                 CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));
+            else if (drafted > 0)
+                CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens {Path.GetFileName(_drafterPath)} drafted ({100.0 * accepted / drafted:F0}%); {generated.Count} words from {Math.Max(0, generated.Count - 1 - accepted)} passes of the trunk after the prompt's; the drafter took {_drafterModel?.TakeTimes().Total.TotalMilliseconds ?? 0:F0} ms"));
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
             if (thinking) CircleLog.Info(Area, Invariant($"thought for {thoughtTokens} tokens{(closedByBudget ? $", closed by its {thinkingBudget}-token budget" : string.Empty)} ({options.Effort?.TemplateName() ?? "the generator's default"})"));
             Keep(options, messages, built);
@@ -1688,7 +1811,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // layer ahead of the one computing. Under the gate.
     private void EnsureLayers()
     {
-        if (_stream is not null) return;
+        if (_stream is null) OpenLayers();
+        EnsureDrafter();
+    }
+
+    private void OpenLayers()
+    {
         var mix = _mixStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no mixing store.");
         var ffn = _ffnStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no feed-forward store.");
         var (warm, slots, available) = LayerRecipe(mix, ffn);
@@ -1698,6 +1826,71 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _stream = stream;
         CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
     }
+
+    // THE DRAFTER, BUILT AT THE FIRST STREAMING TURN WITH ROOM FOR IT: its layers from its own stores, every one warm beside
+    // the trunk's ring, its head a copy of its own. Without room this turn decodes plainly and the next asks again. Under
+    // the gate.
+    private void EnsureDrafter()
+    {
+        if (_drafting is not null || _drafterPath is not { } path || _stream is not { Slots: > 0 } || _options.StreamedDrafts <= 0) return;
+        try
+        {
+            _drafterFile ??= GgufFile.Open(path);
+            SplitBeforeLoad(path, _drafterFile, _options);
+            var ffn = ExistingFfnStore(path, _drafterFile, _options);
+            var mix = ffn is null ? null : ExistingMixStore(path, _drafterFile, _options);
+            if (ffn is null || mix is null)
+            {
+                CircleLog.Info(Area, $"no drafting: {Path.GetFileName(path)} has no layer stores here");
+                LetDrafterGo();
+                _drafterPath = null;
+                return;
+            }
+            var c = Qwen35Config.FromGguf(_drafterFile);
+            var head = (long)c.Vocabulary * c.Embedding * 9 / 32; // a paired copy: 2.25 bits a weight
+            var need = mix.DataBytes + ffn.DataBytes + head + DrafterReserve;
+            if (MemoryNow.AvailableBytes() is { } available && available < need)
+            {
+                CircleLog.Info(Area, Invariant($"no drafting this turn: {available / 1048576.0:F0} MB available, the drafter wants {need / 1048576.0:F0} MB"));
+                return;
+            }
+            var started = Stopwatch.GetTimestamp();
+            var model = Qwen35Model.Load(_drafterFile, _pool, headFromStore: false, ffnFromStore: true, mixFromStore: true);
+            var stream = new LayerStream(mix, ffn, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes), long.MaxValue, 0);
+            model.Stream = stream;
+            _drafterModel = model;
+            _drafterStream = stream;
+            _drafter = new ModelDrafter(model, Math.Min(_state.Capacity, DrafterCapacity), _options.KvMode, _options.KeyForm);
+            _drafting = new Speculator(_model, _drafter, _options.StreamedDrafts);
+            CircleLog.Info(Area, Invariant($"drafting: {Path.GetFileName(path)} drafts {_options.StreamedDrafts} ahead for the streamed trunk, {stream.Describe()}, built in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException
+                                   or InvalidOperationException or OutOfMemoryException or KeyNotFoundException)
+        {
+            CircleLog.Warn(Area, $"no drafting: the drafter would not build ({ex.GetType().Name}: {ex.Message})");
+            LetDrafterGo();
+            _drafterPath = null;
+        }
+    }
+
+    // The drafter goes: its stream, its model and its head's copy, its file. Under the gate.
+    private void LetDrafterGo()
+    {
+        var held = _drafterModel is not null;
+        _drafting = null;
+        _drafter = null;
+        if (_drafterModel is { } model) model.Stream = null;
+        _drafterModel = null;
+        _drafterStream?.Dispose();
+        _drafterStream = null;
+        _drafterFile?.Dispose();
+        _drafterFile = null;
+        if (held) GC.Collect(); // its head's copy is pinned arrays: RAM holds none of it once they are collected
+    }
+
+    // The most positions the drafter's state holds, and what is kept beside it for the phone.
+    private const int DrafterCapacity = 8192;
+    private const long DrafterReserve = 384L << 20;
 
     // Kept for the phone itself when every layer stays warm. Streaming, a turn holds more than its layers - the 27B's head
     // surface (206 MB of Latin rows), its DeltaNet state (151 MB, 48 recurrent layers), a prompt's buffers - and the P30
@@ -1734,11 +1927,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         if (_stream is { } stream)
         {
+            var drafter = _drafterStream?.Bytes ?? 0;
+            LetDrafterGo();
             _model.Stream = null;
             _stream = null;
             var bytes = stream.Bytes;
             stream.Dispose();
-            CircleLog.Info(Area, Invariant($"layers let go ({why}): RAM holds none of their {bytes / 1048576.0:F0} MB"));
+            CircleLog.Info(Area, Invariant($"layers let go ({why}): RAM holds none of their {bytes / 1048576.0:F0} MB{(drafter > 0 ? Invariant($", nor the drafter's {drafter / 1048576.0:F0} MB") : "")}"));
         }
         if (_ffnWarm is not { } warm) return;
         _model.ReleaseFfn();
@@ -1786,6 +1981,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private void Keep(GenerationOptions options, IReadOnlyList<ChatMessage> messages, PromptIds built)
     {
         if (options.Conversation is null || built.Slots is not null) return;
+        if (_stream is { Slots: > 0 })
+        {
+            // A streamed trunk keeps no copy of the conversation (see the prompt's read): the next turn reads it again in
+            // the pass its question needs.
+            _talk = null;
+            return;
+        }
         _talk = options.Conversation;
         _talkAsked = options.RetrievalQuery ?? messages.LastOrDefault(m => IsPerson(m))?.Content;
         _talkTokens.Clear();
