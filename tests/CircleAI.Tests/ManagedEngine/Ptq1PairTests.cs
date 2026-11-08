@@ -74,6 +74,30 @@ public sealed class Ptq1PairTests
         Assert.Equal(alone, shared);
     }
 
+    // THE SPLIT REPACKS ON THE CORES (the 27B's 4.6 GB feed-forward on the P30): every tile from its own rows into its
+    // own place, so the bytes are the serial repack's however the tiles are shared - including shares that do not
+    // divide the tiles evenly.
+    [Theory]
+    [InlineData(16 * 7, 2048, 3)]
+    [InlineData(16 * 40, 1024, 4)]
+    [InlineData(16 * 19, 512, 8)]
+    public void A_repack_shared_over_threads_is_the_serial_repack(int rows, int cols, int degree)
+    {
+        var (matrix, _) = Random(rows, cols, rows * 3 + degree);
+        var weightBytes = Ptq1PairMatrix.WeightBytes(rows, cols);
+        var scaleCount = Ptq1PairMatrix.ScaleCount(rows, cols);
+        var serialWeights = new byte[weightBytes];
+        var serialScales = new float[scaleCount];
+        var sharedWeights = new byte[weightBytes];
+        var sharedScales = new float[scaleCount];
+
+        Ptq1PairMatrix.Repack(matrix, rows, cols, serialWeights, serialScales);
+        Ptq1PairMatrix.Repack(matrix, rows, cols, sharedWeights, sharedScales, degree);
+
+        Assert.Equal(serialWeights, sharedWeights);
+        Assert.Equal(serialScales, sharedScales);
+    }
+
     [Fact]
     public void An_input_can_be_set_again()
     {

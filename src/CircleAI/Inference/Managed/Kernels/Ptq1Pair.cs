@@ -461,6 +461,39 @@ public sealed unsafe class Ptq1PairMatrix
         }
     }
 
+    /// <summary>
+    /// As <see cref="Repack(ReadOnlySpan{byte}, int, int, Span{byte}, Span{float})"/>, the tiles shared out over
+    /// <paramref name="degree"/> threads. Each tile is packed from its own sixteen rows into its own place, so the
+    /// bytes are the same however the tiles are shared.
+    /// </summary>
+    public static void Repack(ReadOnlySpan<byte> rows, int count, int cols, Span<byte> weights, Span<float> scales, int degree)
+    {
+        if (degree <= 1 || count / TileRows < 2 * degree)
+        {
+            Repack(rows, count, cols, weights, scales);
+            return;
+        }
+        if (cols <= 0 || cols % Ptq1.BlockWeights != 0) throw new ArgumentOutOfRangeException(nameof(cols), cols, "PTQ1_0 rows are whole 128-weight blocks.");
+        if (count <= 0 || count % TileRows != 0) throw new ArgumentOutOfRangeException(nameof(count), count, $"Rows come in whole {TileRows}-row tiles.");
+        var blocks = cols / Ptq1.BlockWeights;
+        var tiles = count / TileRows;
+        if (rows.Length < (long)count * blocks * Ptq1.BlockBytes) throw new ArgumentException("The rows are too short.", nameof(rows));
+        if (weights.Length < (long)tiles * blocks * TileBlockBytes) throw new ArgumentException("The weights are too short.", nameof(weights));
+        if (scales.Length < (long)tiles * blocks * TileRows) throw new ArgumentException("The scales are too short.", nameof(scales));
+        fixed (byte* source = rows)
+        fixed (byte* w = weights)
+        fixed (float* s = scales)
+        {
+            nint from = (nint)source, to = (nint)w, scaled = (nint)s;
+            Parallel.For(0, degree, new ParallelOptions { MaxDegreeOfParallelism = degree }, part =>
+            {
+                var end = (int)((long)tiles * (part + 1) / degree);
+                for (var tile = (int)((long)tiles * part / degree); tile < end; tile++)
+                    PackTile((byte*)from, blocks, tile, (byte*)to, (float*)scaled);
+            });
+        }
+    }
+
     /// <summary>Bytes of weights <paramref name="rows"/> rows of <paramref name="cols"/> take in this layout.</summary>
     public static long WeightBytes(int rows, int cols) => (long)rows / TileRows * (cols / Ptq1.BlockWeights) * TileBlockBytes;
 

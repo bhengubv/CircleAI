@@ -135,6 +135,56 @@ public sealed unsafe class FlashFile : IDisposable
         return done;
     }
 
+    /// <summary>
+    /// Reads [<paramref name="offset"/>, +<paramref name="count"/>) into <paramref name="buffer"/> as the device's recipe
+    /// says: reads of <paramref name="readBytes"/> on <paramref name="channels"/> readers at once, each dropping from the
+    /// cache what it brought in. Returns the bytes read - fewer only where the file ends. For a direct read the offset,
+    /// the count and the buffer are whole pages.
+    /// </summary>
+    /// <remarks>
+    /// THE FLASH ON THE ENGINE'S TERMS. A tensor read through the model's mapping comes in a page fault at a time, and
+    /// on a phone whose RAM is full the pages leave as fast as they arrive: the P30 split the 27B's feed-forward at
+    /// 8-15 MB/s that way, where its flash gives 245 MB/s to 1 MB reads on four readers.
+    /// </remarks>
+    public long ReadChannels(byte* buffer, long count, long offset, int channels, int readBytes)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (count <= 0) return 0;
+        var size = (int)Math.Max(Page, Pages(readBytes));
+        var reads = (count + size - 1) / size;
+        long got = 0;
+        var into = (nint)buffer;
+        Parallel.For(0L, reads, new ParallelOptions { MaxDegreeOfParallelism = (int)Math.Clamp(channels, 1, reads) }, i =>
+        {
+            var from = i * size;
+            var length = (int)Math.Min(size, count - from);
+            var n = Read((byte*)into + from, length, offset + from);
+            Drop(offset + from, length);
+            Interlocked.Add(ref got, n);
+        });
+        return got;
+    }
+
+    /// <summary>
+    /// Writes what <paramref name="stream"/> holds of [<paramref name="offset"/>, +<paramref name="length"/>) to flash and
+    /// tells the OS to drop those pages, so a file bigger than the phone's RAM can be written without filling it with
+    /// pages waiting to be written back. Only flushes off Linux.
+    /// </summary>
+    public static void Settle(FileStream stream, long offset, long length)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        stream.Flush(flushToDisk: true);
+        if (!Linux || length <= 0) return;
+        try
+        {
+            LinuxCalls.Advise((int)stream.SafeFileHandle.DangerousGetHandle(), offset, length, LinuxCalls.DontNeed);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // No libc to call: the cache lets go in its own time.
+        }
+    }
+
     /// <summary>Tells the OS to drop its cached pages of [<paramref name="offset"/>, +<paramref name="length"/>); nothing off Linux.</summary>
     public void Drop(long offset, long length)
     {

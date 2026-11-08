@@ -93,8 +93,12 @@ public sealed class FfnStore
         return null;
     }
 
-    /// <summary>Writes the store of <paramref name="model"/>'s feed-forward to <paramref name="path"/>; returns it, opened.</summary>
-    public static unsafe FfnStore Write(GgufFile model, string path, CancellationToken ct = default)
+    /// <summary>
+    /// Writes the store of <paramref name="model"/>'s feed-forward to <paramref name="path"/>; returns it, opened. Each tensor
+    /// is read from the model's file past the cache, in reads of <paramref name="readBytes"/> on <paramref name="channels"/>
+    /// readers (the device's recipe), repacked on the cores, and written and let go before the next.
+    /// </summary>
+    public static unsafe FfnStore Write(GgufFile model, string path, CancellationToken ct = default, int channels = 4, int readBytes = 1 << 20)
     {
         ArgumentNullException.ThrowIfNull(model);
         if (Unreadable(model) is { } why) throw new NotSupportedException(why);
@@ -137,24 +141,31 @@ public sealed class FfnStore
 
         var partial = path + ".partial";
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var most = entries.Max(e => FlashFile.Pages(e.WeightsBytes) + FlashFile.Pages(e.ScaleCount * sizeof(float)));
+        var buffer = FlashFile.Allocate(most);
+        var window = FlashFile.Allocate(entries.Max(SourceSpan));
         try
         {
+            using var source = FlashFile.Open(model.FilePath);
             using (var stream = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
             {
                 stream.Write(header);
                 stream.Write(index);
-                var most = entries.Max(e => FlashFile.Pages(e.WeightsBytes) + FlashFile.Pages(e.ScaleCount * sizeof(float)));
-                var buffer = new byte[most];
                 foreach (var e in entries)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var weightsSpan = buffer.AsSpan(0, (int)FlashFile.Pages(e.WeightsBytes));
-                    var scalesSpan = buffer.AsSpan((int)FlashFile.Pages(e.WeightsBytes), (int)FlashFile.Pages(e.ScaleCount * sizeof(float)));
-                    buffer.AsSpan(0, weightsSpan.Length + scalesSpan.Length).Clear();
-                    Repack(model, e, weightsSpan, System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(scalesSpan));
-                    stream.Write(buffer, 0, weightsSpan.Length + scalesSpan.Length);
+                    var rows = ReadTensor(source, e, window, channels, readBytes);
+                    var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
+                    var output = new Span<byte>(buffer, weightsLength + (int)FlashFile.Pages(e.ScaleCount * sizeof(float)));
+                    output.Clear();
+                    Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, output[..weightsLength],
+                        System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(output[weightsLength..]), RepackDegree);
+                    var place = stream.Position;
+                    stream.Write(output);
+                    // ON FLASH AND OUT OF RAM AS IT GOES. Written through the cache, a store bigger than the phone's RAM
+                    // fills it with pages the phone must write back and evict while it reads the next tensor.
+                    FlashFile.Settle(stream, place, output.Length);
                 }
-                stream.Flush(flushToDisk: true);
             }
             File.Move(partial, path, overwrite: true);
         }
@@ -162,6 +173,11 @@ public sealed class FfnStore
         {
             try { File.Delete(partial); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             throw;
+        }
+        finally
+        {
+            FlashFile.Free(buffer);
+            FlashFile.Free(window);
         }
 
         // On flash now, and only there.
@@ -215,33 +231,55 @@ public sealed class FfnStore
     /// How many of the store's tensors differ from <paramref name="model"/>'s, repacked again; 0 for a faithful store.
     /// Reads every tensor and lets each go after.
     /// </summary>
-    public unsafe int Verify(GgufFile model)
+    public unsafe int Verify(GgufFile model, int channels = 4, int readBytes = 1 << 20)
     {
         ArgumentNullException.ThrowIfNull(model);
         var wrong = 0;
         using var file = FlashFile.Open(FilePath);
+        using var source = FlashFile.Open(model.FilePath);
         var most = Entries.Max(e => FlashFile.Pages(e.WeightsBytes) + FlashFile.Pages(e.ScaleCount * sizeof(float)));
         var read = FlashFile.Allocate(most);
+        var expected = FlashFile.Allocate(most);
+        var window = FlashFile.Allocate(Entries.Max(SourceSpan));
         try
         {
-            var expected = new byte[most];
             foreach (var e in Entries)
             {
                 var length = (int)(e.ScalesOffset - e.WeightsOffset + FlashFile.Pages(e.ScaleCount * sizeof(float)));
-                var got = file.Read(read, length, DataOffset + e.WeightsOffset);
-                file.Drop(DataOffset + e.WeightsOffset, length);
+                var got = file.ReadChannels(read, length, DataOffset + e.WeightsOffset, channels, readBytes);
+                var rows = ReadTensor(source, e, window, channels, readBytes);
                 var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
-                var again = expected.AsSpan(0, length);
+                var again = new Span<byte>(expected, length);
                 again.Clear();
-                Repack(model, e, again[..weightsLength], System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(again[weightsLength..]));
+                Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, again[..weightsLength],
+                    System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(again[weightsLength..]), RepackDegree);
                 if (got < length || !new ReadOnlySpan<byte>(read, length).SequenceEqual(again)) wrong++;
             }
         }
         finally
         {
             FlashFile.Free(read);
+            FlashFile.Free(expected);
+            FlashFile.Free(window);
         }
         return wrong;
+    }
+
+    // Threads a repack is shared over: half the cores, the rest left to the phone.
+    private static int RepackDegree => Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
+
+    // The page-aligned span of the model's file that holds a tensor's rows.
+    private static long SourceSpan(Entry e) => FlashFile.Pages(e.GgufOffset + e.GgufBytes) - (e.GgufOffset & ~(long)(FlashFile.Page - 1));
+
+    // A tensor's rows, read from the model's file into window past the cache: the page-aligned span that holds them, in
+    // the device's reads on its channels. The rows are where they fall in it.
+    private static unsafe ReadOnlySpan<byte> ReadTensor(FlashFile source, Entry e, byte* window, int channels, int readBytes)
+    {
+        var start = e.GgufOffset & ~(long)(FlashFile.Page - 1);
+        var got = source.ReadChannels(window, SourceSpan(e), start, channels, readBytes);
+        var skip = e.GgufOffset - start;
+        if (got < skip + e.GgufBytes) throw new InvalidDataException($"{source.FilePath} ends inside blk.{e.Layer}.{Kinds[e.Kind]}.weight.");
+        return new ReadOnlySpan<byte>(window + skip, checked((int)e.GgufBytes));
     }
 
     /// <summary>
@@ -303,13 +341,6 @@ public sealed class FfnStore
         {
             file.Dispose();
         }
-    }
-
-    // A tensor of the model, repacked into the vector kernel's tiles and scales.
-    private static void Repack(GgufFile model, Entry e, Span<byte> weights, Span<float> scales)
-    {
-        var tensor = model.Tensor($"blk.{e.Layer}.{Kinds[e.Kind]}.weight")!;
-        Ptq1PairMatrix.Repack(model.Bytes(tensor), e.Rows, e.Columns, weights, scales);
     }
 
     private static void WriteEntry(Span<byte> at, Entry e)

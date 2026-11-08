@@ -1440,10 +1440,14 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var ffnPath = FfnPath(directory, ggufPath);
             if (FfnStore.Unreadable(file) is null && FfnStore.Open(file, ffnPath) is null)
             {
+                // ON THE DEVICE'S RECIPE when it has measured its flash before (1 MB reads on four channels on the P30).
+                var recipe = FlashProfile.Remembered(directory);
+                var channels = recipe?.Channels ?? 4;
+                var readBytes = recipe?.ChunkBytes ?? 1 << 20;
                 var started = Stopwatch.GetTimestamp();
-                var ffn = FfnStore.Write(file, ffnPath);
+                var ffn = FfnStore.Write(file, ffnPath, CancellationToken.None, channels, readBytes);
                 var written = Stopwatch.GetElapsedTime(started);
-                var wrong = ffn.Verify(file);
+                var wrong = ffn.Verify(file, channels, readBytes);
                 CircleLog.Info(Area, Invariant($"split before the load: the feed-forward's store written, {ffn.Entries.Count} tensors, {ffn.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {ffn.Entries.Count} differ from the model"));
                 if (wrong != 0) File.Delete(ffnPath);
             }
