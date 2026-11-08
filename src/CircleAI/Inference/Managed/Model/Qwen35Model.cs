@@ -92,7 +92,7 @@ public sealed class Qwen35Model
     private float[] _headScores = [];
     private readonly Ptq1PairView _headView = new();
 
-    private Qwen35Model(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride)
+    private Qwen35Model(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore, bool? pairedOverride)
     {
         Config = Qwen35Config.FromGguf(file);
         var c = Config;
@@ -107,7 +107,9 @@ public sealed class Qwen35Model
         var paired = _paired = pairedOverride ?? WouldPair(file);
         HeadFromStore = headFromStore;
         if (ffnFromStore && !paired) throw new ArgumentException("The feed-forward is read from its store only in the vector kernel's tiles.", nameof(ffnFromStore));
+        if (mixFromStore && !ffnFromStore) throw new ArgumentException("The mixing is read from its store only with the feed-forward: a stream serves whole layers.", nameof(mixFromStore));
         FfnFromStore = ffnFromStore;
+        MixFromStore = mixFromStore;
         var packingStarted = Stopwatch.GetTimestamp();
 
         // AN UNTIED HEAD (the 27B): the head is a table of its own, its input turned as prism.hadamard lists it, and the
@@ -124,15 +126,17 @@ public sealed class Qwen35Model
         _outputNorm = Floats(file, "output_norm.weight", c.Embedding);
 
         _layers = new Layer[c.Layers];
-        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing, paired ? pool : null, paired, ffnFromStore);
+        for (var il = 0; il < c.Layers; il++) _layers[il] = new Layer(file, _hadamard, c, il, Packing, paired ? pool : null, paired, ffnFromStore, mixFromStore);
         if (c.MtpLayers == 1) _mtp = new MtpHead(file, c, c.Layers);
         if (paired)
         {
-            var kept = (headFromStore, ffnFromStore) switch
+            var kept = (headFromStore, ffnFromStore, mixFromStore) switch
             {
-                (true, true) => "; the head and the feed-forward are read from their stores on flash, no copy of them in RAM",
-                (true, false) => "; the head is read from its store on flash, no copy of it in RAM",
-                (false, true) => "; the feed-forward is read from its store on flash, no copy of it in RAM",
+                (true, true, true) => "; the head and every layer are read from their stores on flash, no copy of them in RAM",
+                (false, true, true) => "; every layer is read from its stores on flash, no copy of them in RAM",
+                (true, true, false) => "; the head and the feed-forward are read from their stores on flash, no copy of them in RAM",
+                (true, false, _) => "; the head is read from its store on flash, no copy of it in RAM",
+                (false, true, false) => "; the feed-forward is read from its store on flash, no copy of it in RAM",
                 _ => string.Empty,
             };
             CircleAI.Core.Logging.CircleLog.Info("Engine", string.Create(System.Globalization.CultureInfo.InvariantCulture,
@@ -209,11 +213,73 @@ public sealed class Qwen35Model
     /// <summary>Whether a warm feed-forward is armed, so tokens can run.</summary>
     public bool FfnArmed { get; private set; }
 
+    /// <summary>
+    /// Whether every layer's mixing is read from its store on flash too (<see cref="MixStore"/>): no copy of any layer is
+    /// kept, and no token runs until a stream serves the layers (<see cref="Stream"/>).
+    /// </summary>
+    public bool MixFromStore { get; }
+
+    private LayerStream? _stream;
+
+    /// <summary>
+    /// Where the layers' weights come from while it is set: a stream bringing each layer in from flash as the pass reaches
+    /// it (<see cref="LayerStream"/>). For a model that reads its mixing and its feed-forward from their stores; null
+    /// takes it away, and no token runs until one is set again.
+    /// </summary>
+    public LayerStream? Stream
+    {
+        get => _stream;
+        set
+        {
+            if (value is not null)
+            {
+                if (!MixFromStore) throw new InvalidOperationException("A stream serves a model that reads every layer from its stores.");
+                if (FfnArmed) throw new InvalidOperationException("A warm feed-forward is armed; it is released before a stream serves the layers.");
+                if (value.Layers != _layers.Length) throw new ArgumentException($"The stream holds {value.Layers} layers; this model has {_layers.Length}.", nameof(value));
+            }
+            _stream = value;
+        }
+    }
+
+    // A LAYER'S WEIGHTS IN RAM FOR ITS TURN: taken from the stream as the pass reaches it, given back when it is done.
+    private void Bind(int il)
+    {
+        if (_stream is not { } stream) return;
+        var tiles = stream.Acquire(il);
+        var layer = _layers[il];
+        Take(layer.Qkv, tiles.Mixing, 0, il);
+        Take(layer.Z, tiles.Mixing, 1, il);
+        Take(layer.SsmOut, tiles.Mixing, 2, il);
+        Take(layer.Q, tiles.Mixing, 3, il);
+        Take(layer.K, tiles.Mixing, 4, il);
+        Take(layer.V, tiles.Mixing, 5, il);
+        Take(layer.Output, tiles.Mixing, 6, il);
+        Take(layer.FfnGate, tiles.FeedForward, 0, il);
+        Take(layer.FfnUp, tiles.FeedForward, 1, il);
+        Take(layer.FfnDown, tiles.FeedForward, 2, il);
+
+        static void Take(TernaryMatrix? matrix, Ptq1PairMatrix?[] tiles, int kind, int il)
+        {
+            if (matrix is null) return;
+            matrix.Pair = tiles[kind] ?? throw new InvalidDataException($"The stream brought layer {il} without a tensor of kind {kind}.");
+        }
+    }
+
+    private void Unbind(int il)
+    {
+        if (_stream is not { } stream) return;
+        var layer = _layers[il];
+        foreach (var matrix in new[] { layer.Qkv, layer.Z, layer.SsmOut, layer.Q, layer.K, layer.V, layer.Output, layer.FfnGate, layer.FfnUp, layer.FfnDown })
+            if (matrix is not null) matrix.Pair = null;
+        stream.Release(il);
+    }
+
     /// <summary>The layers read <paramref name="warm"/>'s feed-forward where it lies, until <see cref="ReleaseFfn"/>.</summary>
     public void ArmFfn(FfnWarm warm)
     {
         ArgumentNullException.ThrowIfNull(warm);
         if (!FfnFromStore) throw new InvalidOperationException("This model keeps its own feed-forward.");
+        if (_stream is not null) throw new InvalidOperationException("A stream serves this model's layers; it is taken away before a warm feed-forward is armed.");
         for (var il = 0; il < _layers.Length; il++)
         {
             _layers[il].FfnGate.Pair = warm.View(il, 0);
@@ -285,9 +351,12 @@ public sealed class Qwen35Model
         if (il == Config.Layers - 1) _ffnActivityTokens++;
     }
 
-    // No token runs on a feed-forward that is not there.
+    // No token runs on layers that are not there.
     private void CheckFfn()
     {
+        if (_stream is not null) return;
+        if (MixFromStore)
+            throw new InvalidOperationException("This model's layers are read from their stores on flash: a stream serves them before a token runs.");
         if (FfnFromStore && !FfnArmed)
             throw new InvalidOperationException("This model's feed-forward is read from its store on flash: a warm one is armed before a token runs.");
     }
@@ -332,14 +401,22 @@ public sealed class Qwen35Model
     public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore) =>
         Load(file, pool, headFromStore, ffnFromStore, pairedOverride: null);
 
+    /// <summary>
+    /// As <see cref="Load(GgufFile, WorkerPool?, bool, bool)"/>; with <paramref name="mixFromStore"/> every layer's mixing
+    /// is not copied into RAM either - no layer is - because the stores on flash serve whole layers through a stream
+    /// (<see cref="MixFromStore"/>, <see cref="Stream"/>).
+    /// </summary>
+    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore) =>
+        Load(file, pool, headFromStore, ffnFromStore, pairedOverride: null, mixFromStore);
+
     // The same, with the vector kernel's repack forced on or off. For tests.
     internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool? pairedOverride) =>
         Load(file, pool, headFromStore, ffnFromStore: false, pairedOverride);
 
-    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride)
+    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride, bool mixFromStore = false)
     {
         ArgumentNullException.ThrowIfNull(file);
-        return new Qwen35Model(file, pool, headFromStore, ffnFromStore, pairedOverride);
+        return new Qwen35Model(file, pool, headFromStore, ffnFromStore, mixFromStore, pairedOverride);
     }
 
     /// <summary>A new, empty conversation state holding up to <paramref name="capacity"/> tokens.</summary>
@@ -523,14 +600,22 @@ public sealed class Qwen35Model
         for (var il = 0; il < c.Layers; il++)
         {
             var layer = _layers[il];
-            RmsNorm(_x, layer.AttnNorm, _h, c.RmsEps);
-            if (c.IsRecurrent(il)) DeltaNet(il, layer, state);
-            else Attention(il, layer, state);
-            Add(_x, _mixOut);
+            Bind(il);
+            try
+            {
+                RmsNorm(_x, layer.AttnNorm, _h, c.RmsEps);
+                if (c.IsRecurrent(il)) DeltaNet(il, layer, state);
+                else Attention(il, layer, state);
+                Add(_x, _mixOut);
 
-            RmsNorm(_x, layer.PostNorm, _h, c.RmsEps);
-            FeedForward(il, layer);
-            Add(_x, _ffnOut);
+                RmsNorm(_x, layer.PostNorm, _h, c.RmsEps);
+                FeedForward(il, layer);
+                Add(_x, _ffnOut);
+            }
+            finally
+            {
+                Unbind(il);
+            }
             LayerOutput?.Invoke(il, _x);
         }
         state.Position++;
@@ -634,47 +719,56 @@ public sealed class Qwen35Model
         for (var il = 0; il < c.Layers; il++)
         {
             var layer = _layers[il];
-            for (var i = 0; i < n; i++) RmsNorm(b.X[i], layer.AttnNorm, b.H[i], c.RmsEps);
-            if (c.IsRecurrent(il))
+            // A LAYER READ FROM FLASH ONCE FOR THE WHOLE BATCH: every token of it computes on the same tiles.
+            Bind(il);
+            try
             {
-                Products(b.H, n, layer.Qkv!.Input, (layer.Qkv!, b.Qkv), (layer.Z!, b.Z));
+                for (var i = 0; i < n; i++) RmsNorm(b.X[i], layer.AttnNorm, b.H[i], c.RmsEps);
+                if (c.IsRecurrent(il))
+                {
+                    Products(b.H, n, layer.Qkv!.Input, (layer.Qkv!, b.Qkv), (layer.Z!, b.Z));
+                    for (var i = 0; i < n; i++)
+                    {
+                        b.H[i].CopyTo(_h, 0);
+                        b.Qkv[i].CopyTo(_qkv, 0);
+                        b.Z[i].CopyTo(_z, 0);
+                        DeltaCore(il, layer, state);
+                        _o.CopyTo(b.O[i], 0);
+                    }
+                    Products(b.O, n, layer.SsmOut!.Input, (layer.SsmOut!, b.Mix));
+                }
+                else
+                {
+                    Products(b.H, n, layer.Q!.Input, (layer.Q!, b.Qg), (layer.K!, b.K), (layer.V!, b.V));
+                    for (var i = 0; i < n; i++)
+                    {
+                        b.Qg[i].CopyTo(_qg, 0);
+                        b.K[i].CopyTo(_k, 0);
+                        b.V[i].CopyTo(_v, 0);
+                        RopeAngles(rope + i, rope + i, rope + i);
+                        AttentionCore(il, layer, state, position + i);
+                        _attn.CopyTo(b.Attn[i], 0);
+                    }
+                    Products(b.Attn, n, layer.Output!.Input, (layer.Output!, b.Mix));
+                }
                 for (var i = 0; i < n; i++)
                 {
-                    b.H[i].CopyTo(_h, 0);
-                    b.Qkv[i].CopyTo(_qkv, 0);
-                    b.Z[i].CopyTo(_z, 0);
-                    DeltaCore(il, layer, state);
-                    _o.CopyTo(b.O[i], 0);
+                    Add(b.X[i], b.Mix[i]);
+                    RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
                 }
-                Products(b.O, n, layer.SsmOut!.Input, (layer.SsmOut!, b.Mix));
-            }
-            else
-            {
-                Products(b.H, n, layer.Q!.Input, (layer.Q!, b.Qg), (layer.K!, b.K), (layer.V!, b.V));
+                Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
                 for (var i = 0; i < n; i++)
                 {
-                    b.Qg[i].CopyTo(_qg, 0);
-                    b.K[i].CopyTo(_k, 0);
-                    b.V[i].CopyTo(_v, 0);
-                    RopeAngles(rope + i, rope + i, rope + i);
-                    AttentionCore(il, layer, state, position + i);
-                    _attn.CopyTo(b.Attn[i], 0);
+                    Gate(b.Gate[i], b.Up[i]);
+                    RecordGroups(il, b.Gate[i]);
                 }
-                Products(b.Attn, n, layer.Output!.Input, (layer.Output!, b.Mix));
+                Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
+                for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
             }
-            for (var i = 0; i < n; i++)
+            finally
             {
-                Add(b.X[i], b.Mix[i]);
-                RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
+                Unbind(il);
             }
-            Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
-            for (var i = 0; i < n; i++)
-            {
-                Gate(b.Gate[i], b.Up[i]);
-                RecordGroups(il, b.Gate[i]);
-            }
-            Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
-            for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
         }
         state.Position += n;
         state.RopePosition = rope + n;
@@ -1855,10 +1949,12 @@ public sealed class Qwen35Model
 
     private sealed class Layer
     {
-        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired, bool ffnFromStore)
+        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired, bool ffnFromStore,
+            bool mixFromStore)
         {
             string Name(string part) => $"blk.{il}.{part}";
-            TernaryMatrix Ternary(string part, int columns, int rows) => new(file, Name(part), hadamard, columns, rows, packing, pool, paired);
+            TernaryMatrix Ternary(string part, int columns, int rows) =>
+                new(file, Name(part), hadamard, columns, rows, packing, pool, paired && !mixFromStore, lean: mixFromStore);
             TernaryMatrix Stored(string part, int columns, int rows) =>
                 new(file, Name(part), hadamard, columns, rows, packing, pool, paired && !ffnFromStore, lean: ffnFromStore);
             AttnNorm = Floats(file, Name("attn_norm.weight"), c.Embedding);

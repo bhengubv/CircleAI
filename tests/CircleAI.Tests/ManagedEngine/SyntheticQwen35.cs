@@ -36,13 +36,15 @@ internal static class SyntheticQwen35
     /// its own rows, or the embedding's rows copied into a table of its own. Written last, so the trunk is the tied model's.</param>
     /// <param name="bf16Gates">Writes the DeltaNet gates (ssm_beta, ssm_alpha) in BF16, as the 27B keeps them: the same values,
     /// rounded to BF16.</param>
+    /// <param name="layers">Layers in the trunk, DeltaNet and full attention by turns: more than two give a stream of layers
+    /// a ring to go round.</param>
     public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false,
-        Head head = Head.Tied, bool bf16Gates = false)
+        Head head = Head.Tied, bool bf16Gates = false, int layers = Layers)
     {
         var rng = new Random(seed);
         var b = new GgufBuilder()
             .String("general.architecture", "qwen35")
-            .Key("qwen35.block_count", GgufType.UInt32, w => w.Write((uint)(Layers + (mtp ? 1 : 0))))
+            .Key("qwen35.block_count", GgufType.UInt32, w => w.Write((uint)(layers + (mtp ? 1 : 0))))
             .Key("qwen35.embedding_length", GgufType.UInt32, w => w.Write((uint)Embedding))
             .Key("qwen35.feed_forward_length", GgufType.UInt32, w => w.Write((uint)FeedForward))
             .Key("qwen35.attention.head_count", GgufType.UInt32, w => w.Write((uint)Heads))
@@ -101,7 +103,7 @@ internal static class SyntheticQwen35
 
         var embedding = Ternary("token_embd.weight", Embedding, Vocabulary, 0.25f);
         Floats("output_norm.weight", [Embedding], _ => Near(1f, 0.1f));
-        for (var il = 0; il < Layers; il++)
+        for (var il = 0; il < layers; il++)
         {
             var p = $"blk.{il}.";
             Floats(p + "attn_norm.weight", [Embedding], _ => Near(1f, 0.1f));
@@ -134,7 +136,7 @@ internal static class SyntheticQwen35
         if (mtp)
         {
             b.Key("qwen35.nextn_predict_layers", GgufType.UInt32, w => w.Write(1u));
-            var p = $"blk.{Layers}.";
+            var p = $"blk.{layers}.";
             void Q8(string name, int columns, int rows) => b.Tensor(name, [columns, rows], (uint)GgmlType.Q8_0, PackQ8(rng, columns, rows));
             Q8(p + "nextn.eh_proj.weight", 2 * Embedding, Embedding);
             Floats(p + "nextn.enorm.weight", [Embedding], _ => Near(1f, 0.1f));

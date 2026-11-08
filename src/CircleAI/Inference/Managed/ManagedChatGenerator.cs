@@ -225,7 +225,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // THE FEED-FORWARD'S STORE, when this load reads its feed-forward from flash: armed warm before a token runs, kept
     // while turns keep coming, and let go once the engine has been idle for the recipe's time (Stopwatch ticks).
-    private FfnStore? _ffnStore;
+    private TileStore? _ffnStore;
+    private TileStore? _mixStore;
+    private LayerStream? _stream;
     private FfnWarm? _ffnWarm;
     private long _ffnUsed;
     private long _ffnKeepTicks = (long)(180 * (double)Stopwatch.Frequency);
@@ -516,10 +518,14 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 // SPLIT BEFORE THE LOAD (download, split, store, then index): the stores are written from the file
                 // first, so the copy they replace never exists - a model that would not fit in RAM as a copy (the 4B
                 // on a P30) loads at all.
+                // AND THE MIXING'S: with both, no layer is copied at all - a turn streams them in (LayerStream), all warm
+                // where they fit, a layer ahead of the one computing where they do not (the 27B on the P30).
                 SplitBeforeLoad(ggufPath, file, options);
                 var store = ExistingHeadStore(ggufPath, file, options);
                 var ffn = ExistingFfnStore(ggufPath, file, options);
-                var model = Qwen35Model.Load(file, pool, headFromStore: store is not null && Qwen35Model.WouldPair(file), ffnFromStore: ffn is not null);
+                var mix = ffn is null ? null : ExistingMixStore(ggufPath, file, options);
+                var model = Qwen35Model.Load(file, pool, headFromStore: store is not null && Qwen35Model.WouldPair(file), ffnFromStore: ffn is not null,
+                    mixFromStore: mix is not null);
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
                 var tower = FindTower(ggufPath, options.VisionTowerPath, file, model.Config);
@@ -530,7 +536,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var drafting = generator._speculator is { } s ? $", the MTP head drafting {s.Drafts} ahead" : model.HasMtp ? ", its MTP head unused" : "";
                 var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
                 CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Packing}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}{drafting}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
-                generator.StartStore(ggufPath, store, ffn);
+                generator.StartStore(ggufPath, store, ffn, mix);
                 return generator;
             }
             catch
@@ -919,7 +925,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 // AN ANSWER'S TOKENS GO IN TOGETHER, up to the next place the state is kept: the same
                 // sums, each weight read once for all of them. Reading ahead goes a token at a time, so
                 // that whatever real comes along need not wait.
-                var together = options.JustRead || built.Slots is not null || _speculator is not null ? 1 : Together(i, readTo, primed, lastTurn);
+                // A MODEL WHOSE LAYERS STREAM FROM FLASH reads its whole prompt in passes as big as it can: every pass reads every
+                // layer, so token by token or eight by eight would read the 27B's 6.8 GB that many times.
+                var streaming = _stream is { Slots: > 0 };
+                var together = (options.JustRead && !streaming) || built.Slots is not null || _speculator is not null ? 1
+                    : Together(i, readTo, primed, lastTurn, streaming ? StreamedReadTogether : Qwen35Model.ReadTogether);
                 if (together > 1)
                 {
                     var read = new float[]?[together];
@@ -1437,19 +1447,20 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 CircleLog.Info(Area, Invariant($"split before the load: the head's store written (Paired), {head.Bytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {head.Rows:N0} rows differ from the model"));
                 if (wrong != 0) File.Delete(headPath);
             }
-            var ffnPath = FfnPath(directory, ggufPath);
-            if (FfnStore.Unreadable(file) is null && FfnStore.Open(file, ffnPath) is null)
+            // ON THE DEVICE'S RECIPE when it has measured its flash before (1 MB reads on four channels on the P30): the
+            // feed-forward's store, then the mixing's - with both, no layer is copied into RAM.
+            var recipe = FlashProfile.Remembered(directory);
+            var channels = recipe?.Channels ?? 4;
+            var readBytes = recipe?.ChunkBytes ?? 1 << 20;
+            foreach (var (set, path) in new[] { (TileSet.FeedForward, FfnPath(directory, ggufPath)), (TileSet.Mixing, MixPath(directory, ggufPath)) })
             {
-                // ON THE DEVICE'S RECIPE when it has measured its flash before (1 MB reads on four channels on the P30).
-                var recipe = FlashProfile.Remembered(directory);
-                var channels = recipe?.Channels ?? 4;
-                var readBytes = recipe?.ChunkBytes ?? 1 << 20;
+                if (TileStore.Unreadable(file, set) is not null || TileStore.Open(file, path, set) is not null) continue;
                 var started = Stopwatch.GetTimestamp();
-                var ffn = FfnStore.Write(file, ffnPath, CancellationToken.None, channels, readBytes);
+                var store = TileStore.Write(file, path, set, CancellationToken.None, channels, readBytes);
                 var written = Stopwatch.GetElapsedTime(started);
-                var wrong = ffn.Verify(file, channels, readBytes);
-                CircleLog.Info(Area, Invariant($"split before the load: the feed-forward's store written, {ffn.Entries.Count} tensors, {ffn.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {ffn.Entries.Count} differ from the model"));
-                if (wrong != 0) File.Delete(ffnPath);
+                var wrong = store.Verify(file, channels, readBytes);
+                CircleLog.Info(Area, Invariant($"split before the load: the {set.Name}'s store written, {store.Entries.Count} tensors, {store.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {store.Entries.Count} differ from the model"));
+                if (wrong != 0) File.Delete(path);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException or ArgumentException)
@@ -1483,17 +1494,25 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // The feed-forward store an earlier load left that fits this model, so this load keeps no copy of its feed-forward;
     // null when there is none, it is off, or the model does not compute in the vector kernel's tiles here.
-    private static FfnStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
+    private static TileStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
         StoreDirectoryOf(options) is { } directory && Qwen35Model.WouldPair(file) ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null;
+
+    private static string MixPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".mix");
+
+    // The mixing's store an earlier load (or the split) left that fits this model: with the feed-forward's, every layer is
+    // read from flash and none is copied into RAM. Null where there is none or the model does not pair here.
+    private static TileStore? ExistingMixStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
+        StoreDirectoryOf(options) is { } directory && Qwen35Model.WouldPair(file) ? MixStore.Open(file, MixPath(directory, ggufPath)) : null;
 
     // Makes the stores ready in the background, once per model: the head's and the feed-forward's written and checked
     // against the model if no earlier load left them, the device's flash measured if it never was, then turns may use
     // them. Every reason one is not used is said.
-    private void StartStore(string ggufPath, HeadStore? existing, FfnStore? existingFfn)
+    private void StartStore(string ggufPath, HeadStore? existing, TileStore? existingFfn, TileStore? existingMix)
     {
         // A model that keeps no copy of its feed-forward has its store from the first turn, and lets the warm one go
         // when it has been idle long enough. The idle clock also does a fidelity run when one is asked for.
         if (existingFfn is not null) _ffnStore = existingFfn;
+        if (existingMix is not null && _model.MixFromStore) _mixStore = existingMix;
         if (StoreDirectoryOf(_options) is not null)
         {
             ReadFired();
@@ -1518,7 +1537,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _storeTask = Task.Factory.StartNew(() => PrepareStore(ggufPath, directory, existing, existingFfn, ct), ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
-    private void PrepareStore(string ggufPath, string directory, HeadStore? existing, FfnStore? existingFfn, CancellationToken ct)
+    private void PrepareStore(string ggufPath, string directory, HeadStore? existing, TileStore? existingFfn, CancellationToken ct)
     {
         FlashProfile? profile = null;
         try
@@ -1595,7 +1614,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // THE FEED-FORWARD'S STORE, for a model that computes in the vector kernel's tiles: found, and its recipe set - how
     // long a warm one stays after a turn - or written and checked for the next load, whose feed-forward is then read
     // from flash and kept in RAM only while it is warm.
-    private void PrepareFfn(string ggufPath, string directory, FfnStore? existing, FlashProfile? profile, CancellationToken ct)
+    private void PrepareFfn(string ggufPath, string directory, TileStore? existing, FlashProfile? profile, CancellationToken ct)
     {
         try
         {
@@ -1647,9 +1666,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private static readonly TimeSpan FfnStreamEveryTurnBelow = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan FfnKeptWarm = TimeSpan.FromMinutes(3);
 
-    // THE FEED-FORWARD IS ARMED BEFORE A TOKEN RUNS, streamed in from flash when it is cold. Under the gate.
+    // THE FEED-FORWARD IS ARMED BEFORE A TOKEN RUNS, streamed in from flash when it is cold - or, for a model that reads
+    // every layer from flash, the layers' stream is opened. Under the gate.
     private void EnsureFfnWarm()
     {
+        if (_model.MixFromStore)
+        {
+            EnsureLayers();
+            return;
+        }
         if (!_model.FfnFromStore || _ffnWarm is not null) return;
         var store = _ffnStore ?? throw new InvalidOperationException("The feed-forward is read from its store, and this load found none.");
         var warm = store.Load(Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
@@ -1658,17 +1683,63 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         CircleLog.Info(Area, Invariant($"feed-forward: {warm.Bytes / 1048576.0:F0} MB streamed in from flash in {warm.Elapsed.TotalMilliseconds:F0} ms on {warm.Channels} channel(s){(warm.Direct ? ", past the cache" : ", dropped from the cache")} - it was cold"));
     }
 
+    // THE LAYERS' STREAM FOR A MODEL THAT READS EVERY LAYER FROM FLASH, opened when a turn needs it: every layer warm where
+    // they all fit beside what the phone keeps for itself; else as many as fit beside a ring of two slots, the rest read a
+    // layer ahead of the one computing. Under the gate.
+    private void EnsureLayers()
+    {
+        if (_stream is not null) return;
+        var mix = _mixStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no mixing store.");
+        var ffn = _ffnStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no feed-forward store.");
+        var (warm, slots, available) = LayerRecipe(mix, ffn);
+        var channels = Volatile.Read(ref _channels);
+        var stream = new LayerStream(mix, ffn, channels, Volatile.Read(ref _readBytes), warm, slots);
+        _model.Stream = stream;
+        _stream = stream;
+        CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
+    }
+
+    // Kept for the phone itself when every layer stays warm, and when some stream.
+    private const long AllWarmReserve = 128L << 20;
+    private const long StreamingReserve = 512L << 20;
+
+    // HOW MANY LAYERS STAY WARM: every one when they fit with room to spare (the 2B on the P30: 345 MB); else the RAM left
+    // beside the phone's share and a ring of two slots, the rest streamed (the 27B: 6.8 GB of layers).
+    private static (long Warm, int Slots, long? Available) LayerRecipe(TileStore mix, TileStore ffn)
+    {
+        var available = MemoryNow.AvailableBytes();
+        var total = mix.DataBytes + ffn.DataBytes;
+        if (available is not { } room || total + AllWarmReserve <= room) return (long.MaxValue, 0, available);
+        var slot = 0L;
+        for (var il = 0; il < mix.Layers; il++) slot = Math.Max(slot, mix.LayerRange(il).Length + ffn.LayerRange(il).Length);
+        const int Slots = 2;
+        return (Math.Max(0, room - StreamingReserve - Slots * slot), Slots, available);
+    }
+
     // A call has used the feed-forward: the idle clock starts again, and where it streams every turn it goes now. Under the gate.
     private void UsedFfn()
     {
-        if (_ffnWarm is null) return;
+        if (_ffnWarm is null && _stream is null) return;
         Volatile.Write(ref _ffnUsed, Stopwatch.GetTimestamp());
+        if (_stream is { Slots: > 0 } streaming)
+        {
+            var (waited, read, reading) = streaming.TakeCounts();
+            CircleLog.Info(Area, Invariant($"layers: {read / 1048576.0:F0} MB read from flash in {reading.TotalMilliseconds:F0} ms ({(reading.TotalSeconds > 0 ? read / 1048576.0 / reading.TotalSeconds : 0):F0} MB/s); the pass waited {waited.TotalMilliseconds:F0} ms for them"));
+        }
         if (Volatile.Read(ref _ffnKeepTicks) == 0) LetFfnGo("it streams in every turn here");
     }
 
-    // The warm feed-forward goes: the layers let go of it, then its memory. Under the gate.
+    // The warm feed-forward goes: the layers let go of it, then its memory - or the layers' stream closes. Under the gate.
     private void LetFfnGo(string why)
     {
+        if (_stream is { } stream)
+        {
+            _model.Stream = null;
+            _stream = null;
+            var bytes = stream.Bytes;
+            stream.Dispose();
+            CircleLog.Info(Area, Invariant($"layers let go ({why}): RAM holds none of their {bytes / 1048576.0:F0} MB"));
+        }
         if (_ffnWarm is not { } warm) return;
         _model.ReleaseFfn();
         _ffnWarm = null;
@@ -1682,7 +1753,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         var request = StoreDirectoryOf(_options) is { } directory ? Path.Combine(directory, FfnFidelityFile) : null;
         var fidelity = request is not null && File.Exists(request);
-        var idle = _ffnWarm is not null && Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed) >= Volatile.Read(ref _ffnKeepTicks);
+        var idle = (_ffnWarm is not null || _stream is not null) && Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed) >= Volatile.Read(ref _ffnKeepTicks);
         if (!fidelity && !idle) return;
         if (!_gate.Wait(0)) return;
         try
@@ -1768,9 +1839,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     // How many tokens from i can be read together: to the end, or the next place the state is kept.
-    private static int Together(int i, int readTo, int primed, int lastTurn)
+    // The most prompt tokens a streamed model reads in one pass: a pass reads every layer from flash, and each token's
+    // buffers for the 27B are about 400 KB.
+    private const int StreamedReadTogether = 128;
+
+    private static int Together(int i, int readTo, int primed, int lastTurn, int most)
     {
-        var end = Math.Min(readTo, i + Qwen35Model.ReadTogether);
+        var end = Math.Min(readTo, i + most);
         if (i < primed) end = Math.Min(end, primed);
         if (i < lastTurn) end = Math.Min(end, lastTurn);
         return end - i;
