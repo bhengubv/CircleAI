@@ -43,8 +43,8 @@ public sealed class FfnStoreTests
         {
             var store = FfnStore.Write(file, Path.Combine(directory, "model.ffn"));
             using var pool = pooled ? new WorkerPool(2) : null;
-            var copy = Qwen35Model.Load(file, pool, headFromStore: false, ffnFromStore: false, pairedOverride: true);
-            var served = Qwen35Model.Load(file, pool, headFromStore: false, ffnFromStore: true, pairedOverride: true);
+            var copy = LanguageModel.Load(file, pool, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            var served = LanguageModel.Load(file, pool, headFromStore: false, ffnFromStore: true, pairedOverride: true);
             Assert.True(served.FfnFromStore);
             Assert.False(served.FfnArmed);
 
@@ -74,8 +74,8 @@ public sealed class FfnStoreTests
         {
             var heads = HeadStore.Write(file, Path.Combine(directory, "model.head"), t => Script.Latin, chunkRows: 16, layout: HeadLayout.Paired);
             var ffn = FfnStore.Write(file, Path.Combine(directory, "model.ffn"));
-            var copy = Qwen35Model.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
-            var served = Qwen35Model.Load(file, null, headFromStore: true, ffnFromStore: true, pairedOverride: true);
+            var copy = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            var served = LanguageModel.Load(file, null, headFromStore: true, ffnFromStore: true, pairedOverride: true);
             using var surface = heads.Load(heads.Groups, channels: 2);
             using var warm = ffn.Load(channels: 2);
             served.Head = surface;
@@ -85,7 +85,7 @@ public sealed class FfnStoreTests
     }
 
     // A token at a time, then a prompt's batch of eight (the vector kernel's lanes): every logit the same, to the bit.
-    private static void Same(Qwen35Model copy, Qwen35Model served)
+    private static void Same(LanguageModel copy, LanguageModel served)
     {
         var a = copy.NewState(32);
         var b = served.NewState(32);

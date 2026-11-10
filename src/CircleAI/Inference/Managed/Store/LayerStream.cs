@@ -10,6 +10,10 @@
 //
 // Loads go in pass order, warm and streamed alike, so the first layer computes as soon as it is in rather than when
 // everything is. The same tiles through the same kernel: a streamed layer computes exactly what the copy did.
+//
+// FROM THE MODEL'S OWN FILE where its sets are read in place (TileStore.InPlace): each tensor read past the cache into one
+// window and repacked into the slot - the bytes a written store holds - so flash keeps one copy of the weights, at the
+// file's 1.75 bits a weight rather than a store's 2.25.
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -54,6 +58,7 @@ public sealed unsafe class LayerStream : IDisposable
     private readonly Holder[] _ring;
     private readonly int[] _streamed;   // the layers that come through the ring, in pass order
     private readonly int _channels, _readBytes;
+    private readonly byte* _window;     // one tensor of the model's file, for a set read in place; null otherwise
     private readonly object _gate = new();
     private readonly BlockingCollection<(int Layer, Holder Holder)> _loads = new();
     private readonly Thread _loader;
@@ -102,6 +107,9 @@ public sealed unsafe class LayerStream : IDisposable
         _mixFile = FlashFile.Open(mixing.FilePath);
         _ffnFile = FlashFile.Open(feedForward.FilePath);
         Direct = _mixFile.Direct && _ffnFile.Direct;
+        InPlace = mixing.InPlace || feedForward.InPlace;
+        if (InPlace)
+            _window = FlashFile.Allocate(Math.Max(mixing.InPlace ? mixing.MostSourceBytes : 0, feedForward.InPlace ? feedForward.MostSourceBytes : 0));
         _loader = new Thread(Load) { IsBackground = true, Name = "layer-stream" };
         _loader.Start();
 
@@ -145,6 +153,9 @@ public sealed unsafe class LayerStream : IDisposable
 
     /// <summary>Whether its reads go past the OS's cache.</summary>
     public bool Direct { get; }
+
+    /// <summary>Whether a set is read from the model's own file and repacked as it lands (TileStore.InPlace).</summary>
+    public bool InPlace { get; }
 
     /// <summary>Layer <paramref name="layer"/>'s tiles, once they are in RAM; give them back with <see cref="Release"/>.</summary>
     public LayerTiles Acquire(int layer)
@@ -203,10 +214,11 @@ public sealed unsafe class LayerStream : IDisposable
     }
 
     /// <summary>The stream in a line, for the log.</summary>
-    public string Describe() => _ring.Length == 0
+    public string Describe() => (_ring.Length == 0
         ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"every one of {Layers} layers warm, {WarmBytes / 1048576.0:F0} MB")
         : string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"{WarmLayers} of {Layers} layers warm ({WarmBytes / 1048576.0:F0} MB), {_streamed.Length} streamed ({StreamedBytes / 1048576.0:F0} MB a pass) through {Slots} slots of {SlotBytes / 1048576.0:F0} MB");
+            $"{WarmLayers} of {Layers} layers warm ({WarmBytes / 1048576.0:F0} MB), {_streamed.Length} streamed ({StreamedBytes / 1048576.0:F0} MB a pass as tiles) through {Slots} slots of {SlotBytes / 1048576.0:F0} MB"))
+        + (InPlace ? ", from the model's own file" : string.Empty);
 
     // The slot that holds or is loading `layer`, free to be taken.
     private Holder? Slot(int layer)
@@ -248,8 +260,8 @@ public sealed unsafe class LayerStream : IDisposable
                 try
                 {
                     var place = _places[layer];
-                    Read(_mixFile, _mixing, holder.Buffer, place.MixStart, place.MixLength);
-                    Read(_ffnFile, _feedForward, holder.Buffer + place.MixLength, place.FfnStart, place.FfnLength);
+                    Read(_mixFile, _mixing, layer, holder.Buffer, place.MixStart, place.MixLength);
+                    Read(_ffnFile, _feedForward, layer, holder.Buffer + place.MixLength, place.FfnStart, place.FfnLength);
                     holder.Tiles = new LayerTiles(
                         Views(_mixing, layer, holder.Buffer, place.MixStart),
                         Views(_feedForward, layer, holder.Buffer + place.MixLength, place.FfnStart));
@@ -273,9 +285,14 @@ public sealed unsafe class LayerStream : IDisposable
         }
     }
 
-    private void Read(FlashFile file, TileStore store, byte* into, long start, long length)
+    private void Read(FlashFile file, TileStore store, int layer, byte* into, long start, long length)
     {
         if (length == 0) return;
+        if (store.InPlace)
+        {
+            store.ReadLayer(file, layer, into, start, _window, _channels, _readBytes);
+            return;
+        }
         var got = file.ReadChannels(into, length, store.DataOffset + start, _channels, _readBytes);
         if (got < length) throw new InvalidDataException($"{store.FilePath} ends inside its data.");
     }
@@ -306,5 +323,6 @@ public sealed unsafe class LayerStream : IDisposable
         }
         _mixFile.Dispose();
         _ffnFile.Dispose();
+        FlashFile.Free(_window);
     }
 }

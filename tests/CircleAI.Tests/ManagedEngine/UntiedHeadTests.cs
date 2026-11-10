@@ -25,8 +25,8 @@ public sealed class UntiedHeadTests
         With(SyntheticQwen35.Build(packing, 41), tiedFile =>
             With(SyntheticQwen35.Build(packing, 41, head: SyntheticQwen35.Head.EmbeddingsCopy), untiedFile =>
             {
-                var tied = Qwen35Model.Load(tiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: paired);
-                var untied = Qwen35Model.Load(untiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: paired);
+                var tied = LanguageModel.Load(tiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: paired);
+                var untied = LanguageModel.Load(untiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: paired);
                 Assert.False(tied.UntiedHead);
                 Assert.True(untied.UntiedHead);
                 Same(tied, untied);
@@ -40,8 +40,8 @@ public sealed class UntiedHeadTests
         With(SyntheticQwen35.Build(GgmlType.PTQ1_0, 43), tiedFile =>
             With(SyntheticQwen35.Build(GgmlType.PTQ1_0, 43, head: SyntheticQwen35.Head.Own), untiedFile =>
             {
-                var tied = Qwen35Model.Load(tiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
-                var untied = Qwen35Model.Load(untiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
+                var tied = LanguageModel.Load(tiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
+                var untied = LanguageModel.Load(untiedFile, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
                 var x = new float[SyntheticQwen35.Vocabulary];
                 var y = new float[SyntheticQwen35.Vocabulary];
                 tied.Forward(5, tied.NewState(16), x);
@@ -63,8 +63,8 @@ public sealed class UntiedHeadTests
                 var heads = HeadStore.Write(file, Path.Combine(directory, "model.head"), t => Script.Latin, chunkRows: 16, layout: HeadLayout.Paired);
                 Assert.Equal(0, heads.Verify(file));
                 var ffn = FfnStore.Write(file, Path.Combine(directory, "model.ffn"));
-                var copy = Qwen35Model.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
-                var served = Qwen35Model.Load(file, null, headFromStore: true, ffnFromStore: true, pairedOverride: true);
+                var copy = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+                var served = LanguageModel.Load(file, null, headFromStore: true, ffnFromStore: true, pairedOverride: true);
                 using var surface = heads.Load(heads.Groups, channels: 2);
                 using var warm = ffn.Load(channels: 2);
                 served.Head = surface;
@@ -137,8 +137,8 @@ public sealed class UntiedHeadTests
         With(SyntheticQwen35.Build(GgmlType.PTQ1_0, 53), f32File =>
             With(SyntheticQwen35.Build(GgmlType.PTQ1_0, 53, bf16Gates: true), bf16File =>
             {
-                var f32 = Qwen35Model.Load(f32File, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
-                var bf16 = Qwen35Model.Load(bf16File, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
+                var f32 = LanguageModel.Load(f32File, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
+                var bf16 = LanguageModel.Load(bf16File, null, headFromStore: false, ffnFromStore: false, pairedOverride: false);
                 var a = f32.NewState(16);
                 var b = bf16.NewState(16);
                 var x = new float[SyntheticQwen35.Vocabulary];
@@ -158,7 +158,7 @@ public sealed class UntiedHeadTests
     }
 
     // A token at a time, then a prompt's batch of eight: every logit the same, to the bit.
-    private static void Same(Qwen35Model a, Qwen35Model b)
+    private static void Same(LanguageModel a, LanguageModel b)
     {
         var sa = a.NewState(32);
         var sb = b.NewState(32);

@@ -20,7 +20,7 @@ public sealed class VisionTowerDiscoveryTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"circleai-towers-{Guid.NewGuid():N}");
 
     // A model of embedding width 8 named "Tiny-2B".
-    private static readonly Qwen35Config Model = new(4, 8, 16, 2, 1, 4, 4, 10000f, 1e-6f, 4, 64, 4, 8, 4, 2, 2, 32);
+    private static readonly ModelConfig Model = new(4, 8, 16, 2, 1, 4, 4, 10000f, 1e-6f, 4, 64, 4, 8, 4, 2, 2, 32);
 
     public void Dispose()
     {

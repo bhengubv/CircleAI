@@ -10,7 +10,7 @@
 //   - A PQ2_0 product sums exact integers, so the model gives the same logits to the bit on one
 //     thread and on several.
 //   - A file that mixes packings is refused with its name: one packing throughout is read.
-// The real PQ2_0 files are held to the pinned fork by the parity tests (Qwen35ModelTests).
+// The real PQ2_0 files are held to the pinned fork by the parity tests (LanguageModelTests).
 
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Model;
@@ -30,7 +30,7 @@ public sealed class Pq2ModelTests
         GgufBuilder.WithFile(model, path =>
         {
             using var file = GgufFile.Open(path);
-            var m = Qwen35Model.Load(file, pool);
+            var m = LanguageModel.Load(file, pool);
             read = m.Packing;
             var state = m.NewState(16);
             foreach (var token in Tokens)
@@ -107,8 +107,8 @@ public sealed class Pq2ModelTests
     [Fact]
     public void The_packing_is_read_off_the_embedding_table()
     {
-        GgufBuilder.Read(SyntheticQwen35.Build(GgmlType.PQ2_0), file => Assert.Equal(GgmlType.PQ2_0, Qwen35Model.TernaryPackingOf(file)));
-        GgufBuilder.Read(SyntheticQwen35.Build(GgmlType.PTQ1_0), file => Assert.Equal(GgmlType.PTQ1_0, Qwen35Model.TernaryPackingOf(file)));
+        GgufBuilder.Read(SyntheticQwen35.Build(GgmlType.PQ2_0), file => Assert.Equal(GgmlType.PQ2_0, LanguageModel.TernaryPackingOf(file)));
+        GgufBuilder.Read(SyntheticQwen35.Build(GgmlType.PTQ1_0), file => Assert.Equal(GgmlType.PTQ1_0, LanguageModel.TernaryPackingOf(file)));
     }
 
     [Theory]

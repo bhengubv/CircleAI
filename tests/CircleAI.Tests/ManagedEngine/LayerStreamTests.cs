@@ -65,8 +65,8 @@ public sealed class LayerStreamTests
                 var (_, d) = ffn.LayerRange(1);
                 warm = a + b + c + d;
             }
-            var copy = Qwen35Model.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
-            var streamed = Qwen35Model.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
+            var copy = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            var streamed = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
             Assert.True(streamed.MixFromStore);
             using var stream = new LayerStream(mix, ffn, channels: 2, readBytes: FlashFile.Page, warmBudget: warm, slots: slots);
             Assert.Equal(Layers, stream.Layers);
@@ -100,6 +100,75 @@ public sealed class LayerStreamTests
         });
     }
 
+    // ONE COPY OF THE WEIGHTS (2026-11-09): a set read in place from the model's own file lays out as its written store does
+    // and reads, layer by layer, as the very bytes that store holds.
+    [Fact]
+    public unsafe void A_set_read_in_place_is_its_written_stores_bytes_to_the_bit()
+    {
+        WithModel(79, (file, directory) =>
+        {
+            foreach (var (set, name) in new[] { (TileSet.Mixing, "model.mix"), (TileSet.FeedForward, "model.ffn") })
+            {
+                var written = TileStore.Write(file, Path.Combine(directory, name), set);
+                var inPlace = TileStore.OverModel(file, set);
+                Assert.True(inPlace.InPlace);
+                Assert.False(written.InPlace);
+                Assert.Equal(file.FilePath, inPlace.FilePath);
+                Assert.Equal(written.Entries, inPlace.Entries);
+                Assert.Equal(written.DataBytes, inPlace.DataBytes);
+                Assert.Equal(0, inPlace.Verify(file));
+
+                var bytes = File.ReadAllBytes(written.FilePath);
+                using var source = FlashFile.Open(file.FilePath);
+                var window = FlashFile.Allocate(inPlace.MostSourceBytes);
+                try
+                {
+                    for (var il = 0; il < Layers; il++)
+                    {
+                        var (start, length) = inPlace.LayerRange(il);
+                        if (length == 0) continue;
+                        var into = FlashFile.Allocate(length);
+                        try
+                        {
+                            inPlace.ReadLayer(source, il, into, start, window, channels: 2, readBytes: FlashFile.Page);
+                            Assert.True(new ReadOnlySpan<byte>(into, (int)length).SequenceEqual(bytes.AsSpan((int)(written.DataOffset + start), (int)length)),
+                                $"layer {il} of the {set.Name} read in place is not its store's bytes");
+                        }
+                        finally
+                        {
+                            FlashFile.Free(into);
+                        }
+                    }
+                }
+                finally
+                {
+                    FlashFile.Free(window);
+                }
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(0L, 2)]
+    [InlineData(-1L, 1)]           // room for two layers warm, the rest through the ring
+    [InlineData(long.MaxValue, 2)] // every layer warm, read once from the file
+    public void A_model_streamed_from_its_own_file_computes_what_the_copy_did(long warm, int slots)
+    {
+        WithModel(83, (file, _) =>
+        {
+            var mix = TileStore.OverModel(file, TileSet.Mixing);
+            var ffn = TileStore.OverModel(file, TileSet.FeedForward);
+            if (warm == -1) warm = mix.LayerRange(0).Length + ffn.LayerRange(0).Length + mix.LayerRange(1).Length + ffn.LayerRange(1).Length;
+            var copy = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            var streamed = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
+            using var stream = new LayerStream(mix, ffn, channels: 2, readBytes: FlashFile.Page, warmBudget: warm, slots: slots);
+            Assert.True(stream.InPlace);
+            streamed.Stream = stream;
+            Same(copy, streamed);
+            Same(copy, streamed); // and again, the ring going round
+        });
+    }
+
     [Fact]
     public void No_token_runs_on_layers_that_are_not_there()
     {
@@ -107,7 +176,7 @@ public sealed class LayerStreamTests
         {
             MixStore.Write(file, Path.Combine(directory, "model.mix"));
             FfnStore.Write(file, Path.Combine(directory, "model.ffn"));
-            var streamed = Qwen35Model.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
+            var streamed = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
             Assert.Throws<InvalidOperationException>(() => streamed.Forward(3, streamed.NewState(16)));
         });
     }
@@ -125,7 +194,7 @@ public sealed class LayerStreamTests
     }
 
     // A token at a time, then a prompt's batch of eight: every logit the same, to the bit.
-    private static void Same(Qwen35Model copy, Qwen35Model streamed)
+    private static void Same(LanguageModel copy, LanguageModel streamed)
     {
         var a = copy.NewState(32);
         var b = streamed.NewState(32);

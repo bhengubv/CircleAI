@@ -242,6 +242,13 @@ public sealed class SoakReceiver : BroadcastReceiver
                 //   ... --es do ffn-fidelity --es percents 75,50
                 WriteStoreControl("ffn-fidelity.txt", intent?.GetStringExtra("percents") is { Length: > 0 } percents ? percents : "75,50");
                 break;
+            case "index":
+                // THE INDEXED MIND, BUILT ON THE PHONE when the brain is next idle: Watch over a text, the core index on
+                // flash, the cached index, then served with its warm part in RAM; the "index:" log lines say each step.
+                //   ... --es do index --ei groups 8 --ei percent 15
+                WriteStoreControl("index.txt", string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"{Math.Clamp(intent?.GetIntExtra("groups", 8) ?? 8, 1, 64)},{Math.Clamp(intent?.GetIntExtra("percent", 15) ?? 15, 1, 100)}"));
+                break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
                 break;

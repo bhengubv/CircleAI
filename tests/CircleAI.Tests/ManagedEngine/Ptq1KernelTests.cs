@@ -294,6 +294,38 @@ public sealed class Ptq1KernelTests
         Assert.Equal((float)(Half)1f, q.Scales[0]);
     }
 
+    // The index writes ffn_down's re-quantised columns with Ptq1.Pack; it must decode back to the trits it chose, or the
+    // served weights are not the ones packed. The scale is the block's absolute maximum, each weight the nearest of -d, 0, +d.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(7)]
+    [InlineData(99)]
+    public void Pack_writes_a_block_the_decode_reads_back(int seed)
+    {
+        var rng = new Random(seed);
+        var weights = new float[Ptq1.BlockWeights];
+        for (var i = 0; i < weights.Length; i++) weights[i] = (float)(rng.NextDouble() * 2 - 1) * 0.05f;
+        var max = weights.Max(MathF.Abs);
+        var block = new byte[Ptq1.BlockBytes];
+        Ptq1.Pack(weights, block);
+        Assert.Equal((float)(Half)max, Ptq1.Scale(block));
+        var trits = new sbyte[Ptq1.BlockWeights];
+        Ptq1.DecodeScalar(block, trits);
+        for (var i = 0; i < weights.Length; i++)
+            Assert.Equal((sbyte)Math.Clamp((int)MathF.Round(weights[i] / max), -1, 1), trits[i]);
+    }
+
+    [Fact]
+    public void Pack_of_all_zero_weights_is_all_zero_trits()
+    {
+        var block = new byte[Ptq1.BlockBytes];
+        Ptq1.Pack(new float[Ptq1.BlockWeights], block);
+        var trits = new sbyte[Ptq1.BlockWeights];
+        Ptq1.DecodeScalar(block, trits);
+        Assert.All(trits.ToArray(), t => Assert.Equal(0, t));
+    }
+
     [Fact]
     public void The_best_path_is_one_this_machine_can_run()
     {

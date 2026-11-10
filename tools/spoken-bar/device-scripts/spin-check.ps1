@@ -7,7 +7,7 @@ $repo = 'C:\Dev\Solutions\com.bhengubv\CircleAI'
 $classes = @(
     'ByteLevelBpeTests', 'GgufFileTests', 'JinjaTemplateTests', 'ManagedChatGeneratorTests', 'ManagedEngineSeamTests',
     'ManagedToolCallTests', 'ManagedVisionTests', 'Pq2KernelTests', 'Pq2ModelTests', 'PrismHadamardTests', 'Ptq1KernelTests',
-    'Q8WeightsTests', 'Qwen35ModelTests', 'SpeculativeDecodingTests', 'TokenSamplerTests', 'ToolCallGrammarTests',
+    'Q8WeightsTests', 'LanguageModelTests', 'SpeculativeDecodingTests', 'TokenSamplerTests', 'ToolCallGrammarTests',
     'TurboKvCacheTests', 'VisionImageTests', 'VisionTowerDiscoveryTests', 'WeightMatrixTests', 'WorkerPoolTests',
     'Bonsai2FleetTests', 'BrainBalanceTests', 'BrainPlanTests', 'BrainTuningTests', 'FirstRunFetchStartsByItselfTests',
     'HealingVerbTests', 'HealthEventSiteTests', 'KernelThreadsTests', 'ManagedThinkingBudgetTests', 'PictureAcrossTheLinkTests',

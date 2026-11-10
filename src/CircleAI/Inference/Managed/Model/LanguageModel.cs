@@ -1,4 +1,4 @@
-// Qwen35Model.cs
+// LanguageModel.cs
 //
 // The qwen35 architecture - the whole Bonsai 2 fleet - run one token at a time in C#, the way
 // the pinned fork's graph runs it (src/models/qwen35.cpp, delta-net-base.cpp, ggml-cpu ops):
@@ -43,7 +43,7 @@ using CircleAI.Inference.Managed.Store;
 namespace CircleAI.Inference.Managed.Model;
 
 /// <summary>A qwen35 model (Bonsai 2) loaded from a mapped GGUF file, run one token at a time.</summary>
-public sealed class Qwen35Model
+public sealed class LanguageModel
 {
     private readonly PrismHadamard? _hadamard;
     private readonly WorkerPool? _pool;
@@ -90,11 +90,12 @@ public sealed class Qwen35Model
     // One chunk of a head surface's scores, before they go to their tokens, and the vector kernel over a
     // paired chunk where it lies.
     private float[] _headScores = [];
+    private InputTables[] _headTables = []; // a checked batch's positions, each its own (ScoreHeads)
     private readonly Ptq1PairView _headView = new();
 
-    private Qwen35Model(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore, bool? pairedOverride)
+    private LanguageModel(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore, bool? pairedOverride)
     {
-        Config = Qwen35Config.FromGguf(file);
+        Config = ModelConfig.FromGguf(file);
         var c = Config;
         _hadamard = PrismHadamard.FromGguf(file);
         _pool = pool;
@@ -187,7 +188,7 @@ public sealed class Qwen35Model
     }
 
     /// <summary>The model's shape.</summary>
-    public Qwen35Config Config { get; }
+    public ModelConfig Config { get; }
 
     /// <summary>How the file packs its ternary weights: PTQ1_0 or PQ2_0, one packing throughout.</summary>
     public GgmlType Packing { get; }
@@ -254,8 +255,12 @@ public sealed class Qwen35Model
         Take(layer.K, tiles.Mixing, 4, il);
         Take(layer.V, tiles.Mixing, 5, il);
         Take(layer.Output, tiles.Mixing, 6, il);
-        Take(layer.FfnGate, tiles.FeedForward, 0, il);
-        Take(layer.FfnUp, tiles.FeedForward, 1, il);
+        if (Index is null)
+        {
+            // THE INDEX SERVES GATE AND UP where it is on: the stream brings ffn_down and the mixing alone.
+            Take(layer.FfnGate, tiles.FeedForward, 0, il);
+            Take(layer.FfnUp, tiles.FeedForward, 1, il);
+        }
         Take(layer.FfnDown, tiles.FeedForward, 2, il);
 
         static void Take(TernaryMatrix? matrix, Ptq1PairMatrix?[] tiles, int kind, int il)
@@ -318,6 +323,71 @@ public sealed class Qwen35Model
     /// <summary>Whether each feed-forward group's activity is added up as tokens run (<see cref="TakeFfnActivity"/>).</summary>
     public bool RecordFfn { get; set; }
 
+    /// <summary>
+    /// The layers a word skips: true at a layer the word need not run (<see cref="Store.LayerSkip"/> marks the layers an
+    /// easy word can skip - the design's "index which layers an easy word can skip"). A skipped layer adds nothing to the
+    /// thought, which is lossless only where the layer's contribution is near zero. Null runs every layer.
+    /// </summary>
+    public bool[]? Skip
+    {
+        get => _skip;
+        set
+        {
+            if (value is not null && value.Length != Config.Layers) throw new ArgumentException($"Skip is a flag per layer, {Config.Layers} of them, not {value.Length}.", nameof(value));
+            _skip = value;
+        }
+    }
+
+    private bool[]? _skip;
+
+    /// <summary>
+    /// A watch recording, for every word at every layer, the thought entering the feed-forward and the neurons it fired
+    /// strongly (<see cref="ThoughtWatch"/>): the record the index is built from. Null when no watch is on.
+    /// </summary>
+    public ThoughtWatch? Watch { get; set; }
+
+    /// <summary>
+    /// The index serving the feed-forward's gate and up (<see cref="IndexedFeedForward"/>): a word's thought finds its group,
+    /// and only that group's neurons are computed - from RAM, the cached index or the core - every other neuron zero. Null
+    /// computes every neuron. The vector kernel's: a model that does not pair cannot take one.
+    /// </summary>
+    public IndexedFeedForward? Index
+    {
+        get => _index;
+        set
+        {
+            if (value is not null && !_paired) throw new InvalidOperationException("The index's pieces are the vector kernel's tiles; this model does not pair.");
+            if (value is not null && value.Core.FeedForward != Config.FeedForward) throw new ArgumentException("The index was built for another feed-forward.", nameof(value));
+            _index = value;
+        }
+    }
+
+    private IndexedFeedForward? _index;
+    private float[] _indexGate = [], _indexUp = [];
+
+    // THE INDEX'S GATE AND UP: the thought's group's neurons from its piece, scattered into full width, every other neuron zero.
+    private void IndexedScatter(IndexPiece piece, Ptq1PairInput input, float[] gate, float[] up)
+    {
+        var n = piece.Neurons.Length;
+        if (_indexGate.Length < n)
+        {
+            _indexGate = new float[n];
+            _indexUp = new float[n];
+        }
+        var started = Stopwatch.GetTimestamp();
+        piece.Gate.MatVec(input, _indexGate.AsSpan(0, n), _pool);
+        piece.Up.MatVec(input, _indexUp.AsSpan(0, n), _pool);
+        _tProducts += Stopwatch.GetTimestamp() - started;
+        Array.Clear(gate);
+        Array.Clear(up);
+        var neurons = piece.Neurons;
+        for (var i = 0; i < n; i++)
+        {
+            gate[neurons[i]] = _indexGate[i];
+            up[neurons[i]] = _indexUp[i];
+        }
+    }
+
     private double[]? _ffnActivity;
     private long _ffnActivityTokens;
 
@@ -357,8 +427,8 @@ public sealed class Qwen35Model
         if (_stream is not null) return;
         if (MixFromStore)
             throw new InvalidOperationException("This model's layers are read from their stores on flash: a stream serves them before a token runs.");
-        if (FfnFromStore && !FfnArmed)
-            throw new InvalidOperationException("This model's feed-forward is read from its store on flash: a warm one is armed before a token runs.");
+        if (FfnFromStore && !FfnArmed && Index is null)
+            throw new InvalidOperationException("This model's feed-forward is read from its store on flash: a warm one is armed, or an index serves it, before a token runs.");
     }
 
     /// <summary>
@@ -386,19 +456,19 @@ public sealed class Qwen35Model
     /// Binds every weight of <paramref name="file"/> (which must stay open while the model is used)
     /// and checks every shape. Products share <paramref name="pool"/>'s threads when one is given.
     /// </summary>
-    public static Qwen35Model Load(GgufFile file, WorkerPool? pool = null) => Load(file, pool, headFromStore: false);
+    public static LanguageModel Load(GgufFile file, WorkerPool? pool = null) => Load(file, pool, headFromStore: false);
 
     /// <summary>
     /// As <see cref="Load(GgufFile, WorkerPool?)"/>; with <paramref name="headFromStore"/> the head's weights are not
     /// copied into RAM, because its store on flash serves them (<see cref="HeadFromStore"/>).
     /// </summary>
-    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore) => Load(file, pool, headFromStore, ffnFromStore: false);
+    public static LanguageModel Load(GgufFile file, WorkerPool? pool, bool headFromStore) => Load(file, pool, headFromStore, ffnFromStore: false);
 
     /// <summary>
     /// As <see cref="Load(GgufFile, WorkerPool?, bool)"/>; with <paramref name="ffnFromStore"/> the feed-forward's
     /// weights are not copied into RAM either, because its store on flash serves them (<see cref="FfnFromStore"/>).
     /// </summary>
-    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore) =>
+    public static LanguageModel Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore) =>
         Load(file, pool, headFromStore, ffnFromStore, pairedOverride: null);
 
     /// <summary>
@@ -406,28 +476,28 @@ public sealed class Qwen35Model
     /// is not copied into RAM either - no layer is - because the stores on flash serve whole layers through a stream
     /// (<see cref="MixFromStore"/>, <see cref="Stream"/>).
     /// </summary>
-    public static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore) =>
+    public static LanguageModel Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool mixFromStore) =>
         Load(file, pool, headFromStore, ffnFromStore, pairedOverride: null, mixFromStore);
 
     // The same, with the vector kernel's repack forced on or off. For tests.
-    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool? pairedOverride) =>
+    internal static LanguageModel Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool? pairedOverride) =>
         Load(file, pool, headFromStore, ffnFromStore: false, pairedOverride);
 
-    internal static Qwen35Model Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride, bool mixFromStore = false)
+    internal static LanguageModel Load(GgufFile file, WorkerPool? pool, bool headFromStore, bool ffnFromStore, bool? pairedOverride, bool mixFromStore = false)
     {
         ArgumentNullException.ThrowIfNull(file);
-        return new Qwen35Model(file, pool, headFromStore, ffnFromStore, mixFromStore, pairedOverride);
+        return new LanguageModel(file, pool, headFromStore, ffnFromStore, mixFromStore, pairedOverride);
     }
 
     /// <summary>A new, empty conversation state holding up to <paramref name="capacity"/> tokens.</summary>
-    public Qwen35State NewState(int capacity) => NewState(capacity, KvCompressionMode.Off, TurboQuantForm.Mse);
+    public ModelState NewState(int capacity) => NewState(capacity, KvCompressionMode.Off, TurboQuantForm.Mse);
 
     /// <summary>
     /// A new, empty conversation state holding up to <paramref name="capacity"/> tokens, its attention
     /// keys and values held in <paramref name="kvMode"/> - the keys in <paramref name="keyForm"/>
     /// when compressed.
     /// </summary>
-    public Qwen35State NewState(int capacity, KvCompressionMode kvMode, TurboQuantForm keyForm) =>
+    public ModelState NewState(int capacity, KvCompressionMode kvMode, TurboQuantForm keyForm) =>
         new(Config, Math.Min(capacity, Config.ContextLength), kvMode, keyForm);
 
     /// <summary>Whether the file carries a multi-token-prediction head (Bonsai 2's PQ2_0-MTP files).</summary>
@@ -536,7 +606,7 @@ public sealed class Qwen35Model
     /// <paramref name="nextn"/> is given (one value per embedding dimension) it receives the final
     /// hidden state after the output norm - what the fork calls h_nextn, the MTP head's input.
     /// </summary>
-    public void Forward(int token, Qwen35State state, Span<float> logits = default, Span<float> nextn = default)
+    public void Forward(int token, ModelState state, Span<float> logits = default, Span<float> nextn = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         var c = Config;
@@ -558,9 +628,9 @@ public sealed class Qwen35Model
     /// as the input in place of a token's row - at the state's next position, placed as the fork
     /// places image tokens (mtmd_image_tokens_get_decoder_pos): from p, where the image starts,
     /// (t, h, w) = (p, p + row, p + column). After its last token the next text sits at
-    /// p + max(columns, rows). Logits as <see cref="Forward(int, Qwen35State, Span{float}, Span{float})"/>.
+    /// p + max(columns, rows). Logits as <see cref="Forward(int, ModelState, Span{float}, Span{float})"/>.
     /// </summary>
-    public void ForwardImageToken(ReadOnlySpan<float> embedding, int index, int columns, int rows, Qwen35State state, Span<float> logits = default)
+    public void ForwardImageToken(ReadOnlySpan<float> embedding, int index, int columns, int rows, ModelState state, Span<float> logits = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         var c = Config;
@@ -577,7 +647,7 @@ public sealed class Qwen35Model
         if (index == columns * rows - 1) state.RopePosition = p + Math.Max(columns, rows);
     }
 
-    private void Check(Qwen35State state, Span<float> logits)
+    private void Check(ModelState state, Span<float> logits)
     {
         if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
         if (logits.Length != 0 && logits.Length != Config.Vocabulary) throw new ArgumentException($"Logits take {Config.Vocabulary} values.", nameof(logits));
@@ -592,13 +662,19 @@ public sealed class Qwen35Model
 
     // One position through every layer, its input in _x and its rotary position (t, h, w); then the
     // head when logits (or the MTP head's input, h_nextn) are wanted.
-    private void Step(Qwen35State state, int t, int h, int w, Span<float> logits, Span<float> nextn, long started)
+    private void Step(ModelState state, int t, int h, int w, Span<float> logits, Span<float> nextn, long started)
     {
         var c = Config;
         var faults = PageFaults.Now();
         RopeAngles(t, h, w);
         for (var il = 0; il < c.Layers; il++)
         {
+            if (_skip is { } skip && skip[il])
+            {
+                // A SKIPPED LAYER: the thought passes through unchanged. Lossless where the layer adds nothing.
+                LayerOutput?.Invoke(il, _x);
+                continue;
+            }
             var layer = _layers[il];
             Bind(il);
             try
@@ -670,20 +746,57 @@ public sealed class Qwen35Model
         for (var chunk = 0; chunk < head.ChunkCount; chunk++)
         {
             head.Chunk(chunk, out var rows, out var scales, out var tokens);
-            var scores = _headScores.AsSpan(0, tokens.Length);
-            if (_paired) _headView.MatVec(rows, scales, tokens.Length, Config.Embedding, tables.Pair, scores, _pool);
-            else if (Packing == GgmlType.PQ2_0)
-            {
-                if (_pool is null) tables.Pq2.MatVec(rows, scales, scores);
-                else tables.Pq2.MatVec(rows, scales, scores, _pool);
-            }
-            else if (_pool is null) tables.Ptq1.MatVec(rows, scales, scores);
-            else tables.Ptq1.MatVec(rows, scales, scores, _pool);
-            for (var i = 0; i < tokens.Length; i++)
-            {
-                var token = tokens[i];
-                if (token >= 0) logits[token] = scores[i];
-            }
+            ScoreChunk(rows, scales, tokens, tables, logits);
+        }
+    }
+
+    // SEVERAL POSITIONS FROM ONE READ OF THE HEAD'S ROWS: chunk by chunk, every position scored on the chunk in hand. A
+    // head read from flash as it is scored (HeadStream) reads its rows once for a checked batch, not once a position.
+    // Each position has tables of its own, built as Prepare builds them, so its logits are ScoreHead's to the bit.
+    private void ScoreHeads(float[][] inputs, int heads, float[][] outputs)
+    {
+        var head = Head;
+        if (heads == 1 || head is null || head.Layout != (_paired ? HeadLayout.Paired : HeadLayout.Rows))
+        {
+            for (var j = 0; j < heads; j++) ScoreHead(Prepare(inputs[j], HeadTable.Input), outputs[j]);
+            return;
+        }
+        if (_headTables.Length < heads)
+        {
+            var grown = new InputTables[heads];
+            _headTables.CopyTo(grown, 0);
+            for (var j = _headTables.Length; j < heads; j++) grown[j] = new InputTables(Config.Embedding, Packing, _paired);
+            _headTables = grown;
+        }
+        for (var j = 0; j < heads; j++)
+        {
+            PrepareInto(_headTables[j], inputs[j], HeadTable.Input);
+            outputs[j].AsSpan().Fill(float.NegativeInfinity);
+        }
+        if (_headScores.Length < head.MostRows) _headScores = new float[head.MostRows];
+        for (var chunk = 0; chunk < head.ChunkCount; chunk++)
+        {
+            head.Chunk(chunk, out var rows, out var scales, out var tokens);
+            for (var j = 0; j < heads; j++) ScoreChunk(rows, scales, tokens, _headTables[j], outputs[j]);
+        }
+    }
+
+    // One chunk of the head's rows through the kernel, its scores sent to their tokens.
+    private void ScoreChunk(ReadOnlySpan<byte> rows, ReadOnlySpan<float> scales, ReadOnlySpan<int> tokens, InputTables tables, Span<float> logits)
+    {
+        var scores = _headScores.AsSpan(0, tokens.Length);
+        if (_paired) _headView.MatVec(rows, scales, tokens.Length, Config.Embedding, tables.Pair, scores, _pool);
+        else if (Packing == GgmlType.PQ2_0)
+        {
+            if (_pool is null) tables.Pq2.MatVec(rows, scales, scores);
+            else tables.Pq2.MatVec(rows, scales, scores, _pool);
+        }
+        else if (_pool is null) tables.Ptq1.MatVec(rows, scales, scores);
+        else tables.Ptq1.MatVec(rows, scales, scores, _pool);
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+            if (token >= 0) logits[token] = scores[i];
         }
     }
 
@@ -697,7 +810,7 @@ public sealed class Qwen35Model
     /// <param name="state">The state they extend.</param>
     /// <param name="logits">Per token: its next-token logits, or null when nobody reads them.</param>
     /// <param name="nextn">Per token: its h_nextn (see <see cref="Forward"/>), or null.</param>
-    public void ForwardBatch(ReadOnlySpan<int> tokens, Qwen35State state, IReadOnlyList<float[]?> logits, IReadOnlyList<float[]?>? nextn = null)
+    public void ForwardBatch(ReadOnlySpan<int> tokens, ModelState state, IReadOnlyList<float[]?> logits, IReadOnlyList<float[]?>? nextn = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(logits);
@@ -718,6 +831,7 @@ public sealed class Qwen35Model
         var rope = state.RopePosition; // text: each token one further, as Forward places it
         for (var il = 0; il < c.Layers; il++)
         {
+            if (_skip is { } skip && skip[il]) continue;   // a skipped layer adds nothing to any of the batch's thoughts
             var layer = _layers[il];
             // A LAYER READ FROM FLASH ONCE FOR THE WHOLE BATCH: every token of it computes on the same tiles.
             Bind(il);
@@ -759,13 +873,34 @@ public sealed class Qwen35Model
                     Add(b.X[i], b.Mix[i]);
                     RmsNorm(b.X[i], layer.PostNorm, b.H[i], c.RmsEps);
                 }
-                Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
-                for (var i = 0; i < n; i++)
+                if (Index is { } index && layer.FfnDown.Pair is null)
                 {
-                    Gate(b.Gate[i], b.Up[i]);
-                    RecordGroups(il, b.Gate[i]);
+                    // THE INDEX SERVES THE WHOLE KNOWLEDGE LAYER: each word in full before the next, since one read buffer
+                    // backs the pieces - its group's gate, up and down, every other neuron zero.
+                    for (var i = 0; i < n; i++)
+                    {
+                        var piece = index.Piece(il, b.H[i]);
+                        IndexedScatter(piece, Prepare(b.H[i], layer.FfnGate.Input).Pair, b.Gate[i], b.Up[i]);
+                        Gate(b.Gate[i], b.Up[i]);
+                        RecordGroups(il, b.Gate[i]);
+                        Watch?.Record(il, b.H[i], b.Gate[i]);
+                        piece.Down.Project(b.Gate[i], piece.Neurons, b.Mix[i]);
+                    }
                 }
-                Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
+                else
+                {
+                    if (Index is { } served)
+                        for (var i = 0; i < n; i++) IndexedScatter(served.Piece(il, b.H[i]), Prepare(b.H[i], layer.FfnGate.Input).Pair, b.Gate[i], b.Up[i]);
+                    else
+                        Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
+                    for (var i = 0; i < n; i++)
+                    {
+                        Gate(b.Gate[i], b.Up[i]);
+                        RecordGroups(il, b.Gate[i]);
+                        Watch?.Record(il, b.H[i], b.Gate[i]);
+                    }
+                    Products(b.Gate, n, layer.FfnDown.Input, (layer.FfnDown, b.Mix));
+                }
                 for (var i = 0; i < n; i++) Add(b.X[i], b.Mix[i]);
             }
             finally
@@ -797,7 +932,7 @@ public sealed class Qwen35Model
             }
             if (Head is not null || HeadFromStore)
             {
-                for (var j = 0; j < heads; j++) ScoreHead(Prepare(inputs[j], HeadTable.Input), outputs[j]);
+                ScoreHeads(inputs, heads, outputs);
             }
             else
             {
@@ -823,7 +958,7 @@ public sealed class Qwen35Model
     // Per-token working buffers for ForwardBatch, sized for the largest batch seen.
     private sealed class BatchBuffers
     {
-        public BatchBuffers(Qwen35Config c, int size)
+        public BatchBuffers(ModelConfig c, int size)
         {
             Size = size;
             float[][] Rows(int width)
@@ -1041,7 +1176,7 @@ public sealed class Qwen35Model
         if (_hadamard is { InvertsEmbedding: true }) _hadamard.InvertLookup(x);
     }
 
-    private void DeltaNet(int il, Layer layer, Qwen35State state)
+    private void DeltaNet(int il, Layer layer, ModelState state)
     {
         var lut = Tables(_h, layer.Qkv!.Input);
         Product(layer.Qkv, lut, _qkv);
@@ -1092,7 +1227,7 @@ public sealed class Qwen35Model
     /// bit, as running those tokens. Then the state stands after them, at <paramref name="position"/> + count (its rotary
     /// position likewise, from <paramref name="rope"/>). The attention layers already hold those tokens: the batch wrote them.
     /// </summary>
-    internal void ReplayRecurrence(Qwen35State state, int count, int position, int rope)
+    internal void ReplayRecurrence(ModelState state, int count, int position, int rope)
     {
         ArgumentNullException.ThrowIfNull(state);
         var c = Config;
@@ -1114,7 +1249,7 @@ public sealed class Qwen35Model
     }
 
     // Layer il's conv window and recurrent state, copied aside for a checked batch to step.
-    private (float[] Conv, float[] Ssm) Aside(Qwen35State state, int il)
+    private (float[] Conv, float[] Ssm) Aside(ModelState state, int il)
     {
         var conv = state.Conv[il];
         var ssm = state.Ssm[il];
@@ -1138,7 +1273,7 @@ public sealed class Qwen35Model
     // One token's step through a DeltaNet layer, between its products: beta and alpha from _h, the
     // conv over _qkv, the delta rule and the gated norm with _z, into _o. The batched forward runs
     // the same step for each of its tokens in turn.
-    private void DeltaCore(int il, Layer layer, Qwen35State state) => DeltaCore(layer, state.Conv[il], state.Ssm[il]);
+    private void DeltaCore(int il, Layer layer, ModelState state) => DeltaCore(layer, state.Conv[il], state.Ssm[il]);
 
     // The same step on the conv window and recurrent state given: the layer's own, or a checked batch's copy aside.
     private void DeltaCore(Layer layer, float[] convState, float[] ssmState)
@@ -1305,7 +1440,7 @@ public sealed class Qwen35Model
     // Whether this runtime has real vectors: the Mono that ships does not, and would pay to pretend.
     private static bool Vectored => AdvSimd.Arm64.IsSupported || Fma.IsSupported;
 
-    private void Attention(int il, Layer layer, Qwen35State state)
+    private void Attention(int il, Layer layer, ModelState state)
     {
         var lut = Tables(_h, layer.Q!.Input);
         Product(layer.Q, lut, _qg);
@@ -1318,7 +1453,7 @@ public sealed class Qwen35Model
     // One token's attention at <paramref name="position"/>, between its products: q [| gate], k and v
     // from _qg, _k, _v; norms, RoPE, this token's keys and values into the cache, attention over every
     // position up to it, the gate - into _attn.
-    private void AttentionCore(int il, Layer layer, Qwen35State state, int position)
+    private void AttentionCore(int il, Layer layer, ModelState state, int position)
     {
         var c = Config;
         var hd = c.HeadDim;
@@ -1436,6 +1571,23 @@ public sealed class Qwen35Model
     {
         var lut = Tables(_h, layer.FfnGate.Input);
 
+        // THE INDEX (the indexed mind): the thought's group's neurons only - their gate, up and down from the warm index, the
+        // cached index or the core - every other neuron zero. ffn_down comes from the index too, unless a stream or a warm
+        // feed-forward is giving the layer its own ffn_down (then it is read whole, to the bit).
+        if (Index is { } index)
+        {
+            var piece = index.Piece(il, _h);
+            IndexedScatter(piece, lut.Pair, _ffnGate, _ffnUp);
+            Gate(_ffnGate, _ffnUp);
+            RecordGroups(il, _ffnGate);
+            Watch?.Record(il, _h, _ffnGate);
+            if (layer.FfnDown.Pair is not null)
+                Product(layer.FfnDown, Tables(_ffnGate, layer.FfnDown.Input), _ffnOut);
+            else
+                piece.Down.Project(_ffnGate, piece.Neurons, _ffnOut);
+            return;
+        }
+
         // A SURFACE OF NEURON GROUPS (FfnGroups), on the vector kernel: only the kept groups' gate and up rows are read,
         // the rest of the activation is zero, and the down product skips the blocks those zeros would feed.
         if (FfnGroups is { } surface && layer.FfnGate.Pair is { } gate && layer.FfnUp.Pair is { } up && layer.FfnDown.Pair is { } down)
@@ -1449,6 +1601,7 @@ public sealed class Qwen35Model
             _tProducts += Stopwatch.GetTimestamp() - started;
             Gate(_ffnGate, _ffnUp);
             RecordGroups(il, _ffnGate);
+            Watch?.Record(il, _h, _ffnGate);
             var tables = Tables(_ffnGate, layer.FfnDown.Input);
             started = Stopwatch.GetTimestamp();
             down.MatVecMasked(tables.Pair, _ffnOut, keep.Blocks, _pool);
@@ -1460,6 +1613,7 @@ public sealed class Qwen35Model
         Product(layer.FfnUp, lut, _ffnUp);
         Gate(_ffnGate, _ffnUp);
         RecordGroups(il, _ffnGate);
+        Watch?.Record(il, _h, _ffnGate);
         Product(layer.FfnDown, Tables(_ffnGate, layer.FfnDown.Input), _ffnOut);
     }
 
@@ -1483,10 +1637,16 @@ public sealed class Qwen35Model
     private InputTables Prepare(ReadOnlySpan<float> x, InputTransform? transform)
     {
         var tables = _inputs[x.Length];
+        PrepareInto(tables, x, transform);
+        return tables;
+    }
+
+    // Prepare, into tables of the caller's choosing.
+    private void PrepareInto(InputTables tables, ReadOnlySpan<float> x, InputTransform? transform)
+    {
         if (transform is null) x.CopyTo(tables.Turned);
         else transform.Apply(x, tables.Turned);
         tables.Build(_pool);
-        return tables;
     }
 
     // Prepare, its time counted as the tables'.
@@ -1635,7 +1795,7 @@ public sealed class Qwen35Model
     // One DeltaNet layer's value heads, handed out one at a time to whichever thread is free.
     // The query heads of a full-attention layer, shared out to the pool's threads; each thread has its
     // own reader of the cache and its own scores.
-    private sealed class AttendWork(Qwen35Model model) : WorkerPool.IWork
+    private sealed class AttendWork(LanguageModel model) : WorkerPool.IWork
     {
         private TurboKvCache? _cache;
         private int _count;
@@ -1675,7 +1835,7 @@ public sealed class Qwen35Model
     }
 
     // A DeltaNet layer's conv, its channels in runs to whichever thread is free.
-    private sealed class ConvWork(Qwen35Model model) : WorkerPool.IWork
+    private sealed class ConvWork(LanguageModel model) : WorkerPool.IWork
     {
         private const int Channels = 512;
         private float[]? _kernel;
@@ -1738,7 +1898,7 @@ public sealed class Qwen35Model
         }
     }
 
-    private sealed class DeltaWork(Qwen35Model model) : WorkerPool.IWork
+    private sealed class DeltaWork(LanguageModel model) : WorkerPool.IWork
     {
         private Layer? _layer;
         private float[]? _ssm;
@@ -1967,7 +2127,7 @@ public sealed class Qwen35Model
     // the trunk's tied head after its own norm - the fork's llama_model_qwen35::graph_mtp.
     private sealed class MtpHead
     {
-        public MtpHead(GgufFile file, Qwen35Config c, int il)
+        public MtpHead(GgufFile file, ModelConfig c, int il)
         {
             string Name(string part) => $"blk.{il}.{part}";
             var e = c.Embedding;
@@ -2040,7 +2200,7 @@ public sealed class Qwen35Model
 
     private sealed class Layer
     {
-        public Layer(GgufFile file, PrismHadamard? hadamard, Qwen35Config c, int il, GgmlType packing, WorkerPool? pool, bool paired, bool ffnFromStore,
+        public Layer(GgufFile file, PrismHadamard? hadamard, ModelConfig c, int il, GgmlType packing, WorkerPool? pool, bool paired, bool ffnFromStore,
             bool mixFromStore)
         {
             string Name(string part) => $"blk.{il}.{part}";
@@ -2106,7 +2266,7 @@ public sealed class Qwen35Model
     }
 }
 
-/// <summary>Where the time of some <see cref="Qwen35Model.Forward"/> calls went.</summary>
+/// <summary>Where the time of some <see cref="LanguageModel.Forward"/> calls went.</summary>
 /// <param name="Tokens">Forward calls counted.</param>
 /// <param name="Total">All of it.</param>
 /// <param name="Tables">Turning, quantising and tabling the activations the ternary products read.</param>

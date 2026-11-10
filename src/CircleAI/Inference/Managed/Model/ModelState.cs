@@ -1,4 +1,4 @@
-// Qwen35State.cs
+// ModelState.cs
 //
 // What one conversation has built up in a qwen35 model: the full-attention layers' keys and
 // values - fp16, as the fork's default cache holds them, or TurboQuant codes (TurboKvCache) in a
@@ -23,7 +23,7 @@ namespace CircleAI.Inference.Managed.Model;
 /// </summary>
 public sealed class MtpState
 {
-    internal MtpState(Qwen35Config config, int capacity)
+    internal MtpState(ModelConfig config, int capacity)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         Capacity = capacity;
@@ -40,10 +40,10 @@ public sealed class MtpState
     internal Half[] Values { get; }
 }
 
-/// <summary>A conversation's state in a <see cref="Qwen35Model"/>.</summary>
-public sealed class Qwen35State
+/// <summary>A conversation's state in a <see cref="LanguageModel"/>.</summary>
+public sealed class ModelState
 {
-    internal Qwen35State(Qwen35Config config, int capacity,
+    internal ModelState(ModelConfig config, int capacity,
         KvCompressionMode kvMode = KvCompressionMode.Off, TurboQuantForm keyForm = TurboQuantForm.Mse)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -257,6 +257,28 @@ public sealed class Qwen35State
         if (_primedPosition > Position) _primedPosition = -1;
     }
 
+    /// <summary>
+    /// Lets every copy of the recurrent layers go - the mark's, the primed start's, the conversation's, the checkpoint's -
+    /// and forgets the points they kept. A trunk that streams its layers keeps none: each is 151 MB for the 27B.
+    /// </summary>
+    internal void ForgetCopies()
+    {
+        ForgetPoints();
+        _markedConv = _markedSsm = null;
+        _primedConv = _primedSsm = null;
+        _talkConv = _talkSsm = null;
+        _checkpointConv = _checkpointSsm = null;
+    }
+
+    // The points this state can go back to no longer describe it.
+    private void ForgetPoints()
+    {
+        _markedPosition = -1;
+        _primedPosition = -1;
+        _talkPosition = -1;
+        _checkpointPosition = -1;
+    }
+
     private static float[][] Allocate(float[][] like)
     {
         var copy = new float[like.Length][];
@@ -282,7 +304,7 @@ public sealed class Qwen35State
     /// values only as far as they are filled. With <paramref name="atMark"/>, the state as it
     /// stood at the mark instead.
     /// </summary>
-    internal void Write(BinaryWriter writer, Qwen35Config config, bool atMark = false)
+    internal void Write(BinaryWriter writer, ModelConfig config, bool atMark = false)
     {
         if (!BitConverter.IsLittleEndian) throw new PlatformNotSupportedException("Sessions are written little-endian.");
         if (atMark && _markedPosition < 0) throw new InvalidOperationException("Nothing is marked.");
@@ -320,9 +342,11 @@ public sealed class Qwen35State
     /// <summary>
     /// A state written by <see cref="Write"/> for a model of this shape, in the mode it was written
     /// in (a session from before the modes holds fp16; one from before images has its rotary
-    /// position at its position); anything else is refused.
+    /// position at its position); anything else is refused. Read into <paramref name="into"/> when
+    /// it holds the same capacity and working memory - no second state in RAM, its marks forgotten;
+    /// a read that fails part way leaves it to be reset - else into a new one.
     /// </summary>
-    internal static Qwen35State Read(BinaryReader reader, Qwen35Config config)
+    internal static ModelState Read(BinaryReader reader, ModelConfig config, ModelState? into = null)
     {
         if (!BitConverter.IsLittleEndian) throw new PlatformNotSupportedException("Sessions are read little-endian.");
         var magic = reader.ReadUInt64();
@@ -341,7 +365,16 @@ public sealed class Qwen35State
             form = (TurboQuantForm)reader.ReadInt32();
             if (!Enum.IsDefined(mode) || !Enum.IsDefined(form)) throw new InvalidDataException("The session names a working-memory mode this engine does not know.");
         }
-        var state = new Qwen35State(config, capacity, mode, form);
+        ModelState state;
+        if (into is not null && into.Capacity == capacity && into.KvMode == mode && into.KeyForm == form)
+        {
+            state = into;
+            state.ForgetPoints();
+        }
+        else
+        {
+            state = new ModelState(config, capacity, mode, form);
+        }
         var position = reader.ReadInt32();
         if (position < 0 || position > capacity) throw new InvalidDataException($"The session's position {position} is outside its {capacity} tokens.");
         var rope = magic == MagicRope ? reader.ReadInt32() : position;
@@ -371,7 +404,7 @@ public sealed class Qwen35State
     }
 
     // What a session must agree on with the model reading it; the last entry is the capacity.
-    private static int[] Shape(Qwen35Config c, int capacity) =>
+    private static int[] Shape(ModelConfig c, int capacity) =>
         [c.Layers, c.Embedding, c.KvHeads, c.HeadDim, c.ConvKernel, c.ConvChannels, c.SsmHeads, c.SsmState, c.FullAttentionInterval, capacity];
 
     private static void Fill(BinaryReader reader, Span<byte> destination)

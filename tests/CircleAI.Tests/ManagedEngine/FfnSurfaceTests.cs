@@ -64,7 +64,7 @@ public sealed class FfnSurfaceTests
         GgufBuilder.WithFile(SyntheticQwen35.Build(GgmlType.PTQ1_0, 41), path =>
         {
             using var file = GgufFile.Open(path);
-            var model = Qwen35Model.Load(file, null, headFromStore: false, pairedOverride: true);
+            var model = LanguageModel.Load(file, null, headFromStore: false, pairedOverride: true);
             var groups = SyntheticQwen35.FeedForward / model.FfnGroupSize;
             Assert.Equal(3, groups);
             var every = FfnSurface.Of(Enumerable.Range(0, SyntheticQwen35.Layers).Select(_ => Enumerable.Repeat(true, groups).ToArray()).ToArray(),
@@ -102,7 +102,7 @@ public sealed class FfnSurfaceTests
         GgufBuilder.WithFile(SyntheticQwen35.Build(GgmlType.PTQ1_0, 43), path =>
         {
             using var file = GgufFile.Open(path);
-            var model = Qwen35Model.Load(file, null, headFromStore: false, pairedOverride: true);
+            var model = LanguageModel.Load(file, null, headFromStore: false, pairedOverride: true);
             model.RecordFfn = true;
             var state = model.NewState(16);
             foreach (var token in new[] { 4, 9, 30 }) model.Forward(token, state);

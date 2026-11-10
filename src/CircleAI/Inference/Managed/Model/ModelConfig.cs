@@ -1,4 +1,4 @@
-// Qwen35Config.cs
+// ModelConfig.cs
 //
 // The shape of a qwen35 model - every Bonsai 2 size is one - read from its GGUF the way the
 // pinned fork's llama_model_qwen35::load_arch_hparams reads it. Nothing is assumed about the
@@ -9,7 +9,7 @@ using CircleAI.Inference.Managed.Gguf;
 namespace CircleAI.Inference.Managed.Model;
 
 /// <summary>A qwen35 model's hyperparameters.</summary>
-public sealed record Qwen35Config(
+public sealed record ModelConfig(
     int Layers,
     int Embedding,
     int FeedForward,
@@ -64,28 +64,47 @@ public sealed record Qwen35Config(
         return 3;
     }
 
-    /// <summary>The shape of <paramref name="file"/>'s qwen35 model; anything else is refused.</summary>
+    /// <summary>
+    /// The architectures whose layers this engine computes - Gated DeltaNet layers with full attention every few - by the
+    /// name a model's file gives them (general.architecture). A model of one of these needs no code; a new architecture adds
+    /// its layers to this engine and its name here.
+    /// </summary>
+    public static IReadOnlySet<string> Architectures { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "qwen35" };
+
+    /// <summary>Whether <paramref name="file"/> carries a multi-token-prediction head, read under its architecture's own name.</summary>
+    public static bool HasMtpHead(GgufFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        return file.TryGetValue(file["general.architecture"].AsString() + ".nextn_predict_layers", out _);
+    }
+
+    /// <summary>The shape of <paramref name="file"/>'s model, read from its own keys; an architecture the engine has no layers for is refused.</summary>
     /// <remarks>
+    /// THE SHAPE IS THE FILE'S, under the architecture's own name: every key is read as "{architecture}.{key}", so the engine
+    /// is named for what it computes, not for one model family.
+    /// <para>
     /// AN MTP FILE COUNTS ITS HEAD AS A BLOCK. Bonsai 2's PQ2_0-MTP files say block_count 33 and
     /// nextn_predict_layers 1: the trunk is the first 32 (the fork's n_layer() is n_layer_all minus
     /// the nextn layers) and blk.32 is the multi-token-prediction head. One head is read, as the
-    /// fork's qwen35 MTP graph reads one.
+    /// fork's MTP graph reads one.
+    /// </para>
     /// </remarks>
-    public static Qwen35Config FromGguf(GgufFile file)
+    public static ModelConfig FromGguf(GgufFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
         var arch = file["general.architecture"].AsString();
-        if (arch != "qwen35") throw new NotSupportedException($"Architecture '{arch}' is not qwen35.");
-        if (file.TryGetValue("qwen35.attention.recurrent_layers", out _))
+        if (!Architectures.Contains(arch))
+            throw new NotSupportedException($"Architecture '{arch}' has no layers in this engine; it computes {string.Join(", ", Architectures)}.");
+        if (file.TryGetValue(arch + ".attention.recurrent_layers", out _))
             throw new NotSupportedException("An explicit recurrent-layer list is not supported; the fleet sets full_attention_interval.");
-        var mtp = file.TryGetValue("qwen35.nextn_predict_layers", out var nextn) ? checked((int)nextn.AsInt64()) : 0;
-        if (mtp is not (0 or 1)) throw new NotSupportedException($"{mtp} MTP heads; the qwen35 MTP head is one block.");
+        var mtp = file.TryGetValue(arch + ".nextn_predict_layers", out var nextn) ? checked((int)nextn.AsInt64()) : 0;
+        if (mtp is not (0 or 1)) throw new NotSupportedException($"{mtp} MTP heads; the MTP head is one block.");
 
-        int Int(string key) => checked((int)file["qwen35." + key].AsInt64());
+        int Int(string key) => checked((int)file[arch + "." + key].AsInt64());
         var headDim = Int("attention.key_length");
         if (Int("attention.value_length") != headDim) throw new NotSupportedException("Key and value heads of different widths are not supported.");
 
-        var config = new Qwen35Config(
+        var config = new ModelConfig(
             Layers: Int("block_count") - mtp,
             Embedding: Int("embedding_length"),
             FeedForward: Int("feed_forward_length"),
@@ -93,9 +112,9 @@ public sealed record Qwen35Config(
             KvHeads: Int("attention.head_count_kv"),
             HeadDim: headDim,
             RopeDims: Int("rope.dimension_count"),
-            RopeBase: (float)file["qwen35.rope.freq_base"].AsDouble(),
-            RmsEps: (float)file["qwen35.attention.layer_norm_rms_epsilon"].AsDouble(),
-            FullAttentionInterval: file.TryGetValue("qwen35.full_attention_interval", out var interval) ? checked((int)interval.AsInt64()) : 4,
+            RopeBase: (float)file[arch + ".rope.freq_base"].AsDouble(),
+            RmsEps: (float)file[arch + ".attention.layer_norm_rms_epsilon"].AsDouble(),
+            FullAttentionInterval: file.TryGetValue(arch + ".full_attention_interval", out var interval) ? checked((int)interval.AsInt64()) : 4,
             ContextLength: Int("context_length"),
             ConvKernel: Int("ssm.conv_kernel"),
             SsmInner: Int("ssm.inner_size"),
@@ -105,7 +124,7 @@ public sealed record Qwen35Config(
             Vocabulary: file["tokenizer.ggml.tokens"].AsArray().Count,
             MtpLayers: mtp)
         {
-            RopeSections = file.TryGetValue("qwen35.rope.dimension_sections", out var sections) ? sections.AsArray().ToInt32Array() : [],
+            RopeSections = file.TryGetValue(arch + ".rope.dimension_sections", out var sections) ? sections.AsArray().ToInt32Array() : [],
         };
 
         if (config.Heads % config.KvHeads != 0) throw new NotSupportedException("Query heads must be whole groups of key/value heads.");
@@ -121,7 +140,7 @@ public sealed record Qwen35Config(
     // the h and w pairs. Every rotary pair must fall in the t, h or w sections: a pair falling to
     // the fourth (extra) component would take a position neither text nor an image is given, so
     // such a file is refused, not guessed at.
-    private static void CheckRope(Qwen35Config config)
+    private static void CheckRope(ModelConfig config)
     {
         if (config.RopeSections.Length == 0) return;
         if (config.RopeSections.Length < 3) throw new NotSupportedException("rope.dimension_sections needs at least three sections.");

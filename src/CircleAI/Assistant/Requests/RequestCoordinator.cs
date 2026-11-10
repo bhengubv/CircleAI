@@ -675,6 +675,10 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 {
                     if (ttftMs < 0) ttftMs = Ms(_clock.GetUtcNow() - started);
                     text.Append(chunk.Text);
+
+                    // THE DEADLINE IS A WORD'S, NOT THE ANSWER'S (ServiceLimits.GenerationDeadline): each word gives the
+                    // answer as long again. The 27B streamed on the P30 writes one every 30 s or so.
+                    cts.CancelAfter(_limits.GenerationDeadline);
                 }
                 if (chunk.Final) workerTiming = chunk.Timing;
 

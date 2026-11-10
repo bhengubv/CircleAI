@@ -1,6 +1,6 @@
 // DeltaRuleTests.cs
 //
-// The plan's unit test of the delta rule against a scalar reference. Qwen35Model.DeltaRule - one
+// The plan's unit test of the delta rule against a scalar reference. LanguageModel.DeltaRule - one
 // value head of a Gated DeltaNet layer, its gates worked out, as the fork's fused op runs it - is
 // held to the rule written out plainly from its definition, in double precision:
 //     S <- decay * S;   delta = beta * (v - S^T k);   S <- S + k delta^T;   o = S^T q / sqrt(d)
@@ -57,7 +57,7 @@ public sealed class DeltaRuleTests
             fixed (float* pv = v)
             fixed (float* pd = delta)
             fixed (float* po = output)
-                Qwen35Model.DeltaRule(m, pq, pk, pv, beta, decay, scale, width, pd, po);
+                LanguageModel.DeltaRule(m, pq, pk, pv, beta, decay, scale, width, pd, po);
 
             // The rule, written out, from the same single-precision inputs the layer reads.
             for (var i = 0; i < width; i++)

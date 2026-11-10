@@ -1,4 +1,4 @@
-// Qwen35ModelTests.cs
+// LanguageModelTests.cs
 //
 // The C# qwen35 model against the pinned fork: fixtures/bonsai2/2B/logits.json holds, for 12
 // rendered prompts, the fork's greedy token and top-20 logits at each of 32 steps. The model is
@@ -60,7 +60,7 @@ using Xunit.Abstractions;
 
 namespace CircleAI.Tests;
 
-public sealed class Qwen35ModelTests(ITestOutputHelper output)
+public sealed class LanguageModelTests(ITestOutputHelper output)
 {
     private const float Tolerance = 0.3f;
 
@@ -100,7 +100,7 @@ public sealed class Qwen35ModelTests(ITestOutputHelper output)
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
         var load = Stopwatch.StartNew();
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         load.Stop();
 
         // The fixtures were made from this very file.

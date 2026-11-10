@@ -78,6 +78,40 @@ public sealed class ModelDrafterTests
         });
     }
 
+    // A turn cancelled while it draws a checked batch's tokens - its deadline, on the P30 - leaves the state where the
+    // history is, so a turn going on from the history computes on the state it describes.
+    [Fact]
+    public void A_check_cancelled_while_its_tokens_are_drawn_leaves_the_state_where_the_history_is()
+    {
+        WithModel(SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 9), trunk =>
+        {
+            var truth = Prompt.Concat(Plain(trunk, Greedy, 8)).ToList();
+            var speculator = new Speculator(trunk, new Scripted(truth, trunk.Config.Vocabulary, wrongAt: 9), drafts: 3);
+            var state = trunk.NewState(64);
+            var logits = new float[trunk.Config.Vocabulary];
+            for (var i = 0; i < Prompt.Length; i++) speculator.Run(Prompt[i], state, i == Prompt.Length - 1 ? logits : default);
+            var history = new List<int>(Prompt);
+            var first = ArgMax(logits);
+
+            var drawn = 0;
+            Assert.Throws<OperationCanceledException>(() => speculator.Step(first, state, history, l =>
+                ++drawn == 2 ? throw new OperationCanceledException() : (ArgMax(l), false)));
+
+            Assert.Equal(Prompt.Length, history.Count);
+            Assert.Equal(history.Count, state.Position);
+            Assert.Equal(history.Count, state.RopePosition);
+
+            // And the state is the history's: the next token computes as it does after the plain prompt.
+            var plain = trunk.NewState(64);
+            foreach (var token in Prompt) trunk.Forward(token, plain);
+            var a = new float[trunk.Config.Vocabulary];
+            var b = new float[trunk.Config.Vocabulary];
+            trunk.Forward(first, plain, a);
+            trunk.Forward(first, state, b);
+            Assert.Equal(a.Select(BitConverter.SingleToInt32Bits), b.Select(BitConverter.SingleToInt32Bits));
+        });
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
@@ -145,29 +179,27 @@ public sealed class ModelDrafterTests
     }
 
     // The catalogue keeps each model in a folder of its own: the drafter is the smaller qwen35 file with the same vocabulary
-    // in a folder beside the trunk's; nothing is smaller than the smallest; an empty path turns it off.
+    // ONE MODEL PER DEVICE (2026-11-10): two models loaded at once heat the phone past its skin limit, with no avoiding
+    // it, so no second model is ever chosen to draft - not one named, not one lying beside the trunk in the catalogue. The
+    // model drafts for itself with its own MTP head; that path is covered by SpeculativeDecodingTests.
     [Fact]
-    public void The_drafter_is_the_smaller_model_with_the_same_vocabulary_beside_this_one()
+    public void No_second_model_is_chosen_to_draft_one_model_per_device()
     {
         var root = Directory.CreateTempSubdirectory("models-").FullName;
         try
         {
             var big = Path.Combine(root, "Big", "big.gguf");
             var small = Path.Combine(root, "Small", "small.gguf");
-            var tower = Path.Combine(root, "Small", "small-mmproj.gguf");
             Directory.CreateDirectory(Path.GetDirectoryName(big)!);
             Directory.CreateDirectory(Path.GetDirectoryName(small)!);
             File.WriteAllBytes(big, SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 9, layers: 4));
             File.WriteAllBytes(small, SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 11, layers: 2));
-            File.WriteAllBytes(tower, SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 12, layers: 2)); // a tower's name: never a drafter
 
-            using (var file = GgufFile.Open(big))
-            {
-                Assert.Equal(Path.GetFullPath(small), CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(big, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions()));
-                Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(big, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions { DrafterPath = "" }));
-            }
-            using (var file = GgufFile.Open(small))
-                Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(small, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions()));
+            using var file = GgufFile.Open(big);
+            // Beside it in the catalogue, named outright, or asked to stream drafts - every road gives no second model.
+            Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(big, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions()));
+            Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(big, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions { DrafterPath = small }));
+            Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.FindDrafter(big, file, new CircleAI.Inference.Managed.ManagedGeneratorOptions { StreamedDrafts = 4 }));
         }
         finally
         {
@@ -176,7 +208,7 @@ public sealed class ModelDrafterTests
     }
 
     // Plain decoding: the prompt, then `count` tokens drawn by a fresh `draw`, each fed back but the last.
-    private static List<int> Plain(Qwen35Model m, Func<Func<float[], List<int>, int>> draw, int count)
+    private static List<int> Plain(LanguageModel m, Func<Func<float[], List<int>, int>> draw, int count)
     {
         var state = m.NewState(64);
         var logits = new float[m.Config.Vocabulary];
@@ -195,7 +227,7 @@ public sealed class ModelDrafterTests
 
     // The same through the speculator.
     private static (List<int> Tokens, Speculator Speculator) Speculative(
-        Qwen35Model m, IDraftSource source, int drafts, Func<Func<float[], List<int>, int>> draw, int count)
+        LanguageModel m, IDraftSource source, int drafts, Func<Func<float[], List<int>, int>> draw, int count)
     {
         var state = m.NewState(64);
         var speculator = new Speculator(m, source, drafts);
@@ -253,22 +285,22 @@ public sealed class ModelDrafterTests
         return best;
     }
 
-    private static void WithModel(byte[] bytes, Action<Qwen35Model> use) =>
+    private static void WithModel(byte[] bytes, Action<LanguageModel> use) =>
         GgufBuilder.WithFile(bytes, path =>
         {
             using var file = GgufFile.Open(path);
             using var pool = new WorkerPool(2);
-            use(Qwen35Model.Load(file, pool));
+            use(LanguageModel.Load(file, pool));
             return 0;
         });
 
-    private static void WithModels(byte[] trunkBytes, byte[] smallBytes, Action<Qwen35Model, Qwen35Model> use) =>
+    private static void WithModels(byte[] trunkBytes, byte[] smallBytes, Action<LanguageModel, LanguageModel> use) =>
         GgufBuilder.WithFile(trunkBytes, trunkPath => GgufBuilder.WithFile(smallBytes, smallPath =>
         {
             using var trunkFile = GgufFile.Open(trunkPath);
             using var smallFile = GgufFile.Open(smallPath);
             using var pool = new WorkerPool(2);
-            use(Qwen35Model.Load(trunkFile, pool), Qwen35Model.Load(smallFile, pool));
+            use(LanguageModel.Load(trunkFile, pool), LanguageModel.Load(smallFile, pool));
             return 0;
         }));
 }

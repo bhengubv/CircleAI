@@ -126,6 +126,78 @@ public static class Ptq1
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static sbyte Trit(byte b, int n) => (sbyte)((((byte)(b * Pow3[n]) * 3) >> 8) - 1);
 
+    // THE INVERSE OF THE DECODE, for writing a block from weights. DecodeScalar reads each byte's trits in a fixed order;
+    // for a wanted run of trits (as 0, 1 or 2) these map back to a byte that decodes to them, so Pack and DecodeScalar
+    // round-trip. qs bytes carry five trits, qh bytes four.
+    private static readonly byte[] InvQs = BuildInverse(5);
+    private static readonly byte[] InvQh = BuildInverse(4);
+
+    private static byte[] BuildInverse(int digits)
+    {
+        var size = 1;
+        for (var n = 0; n < digits; n++) size *= 3;
+        var table = new byte[size];
+        var seen = new bool[size];
+        for (var b = 0; b < 256; b++)
+        {
+            var idx = 0;
+            var mul = 1;
+            for (var n = 0; n < digits; n++)
+            {
+                idx += (Trit((byte)b, n) + 1) * mul;
+                mul *= 3;
+            }
+            if (!seen[idx])
+            {
+                table[idx] = (byte)b;
+                seen[idx] = true;
+            }
+        }
+        return table;
+    }
+
+    /// <summary>
+    /// Writes 128 weights to one PTQ1_0 block: the scale is their absolute maximum, each weight the nearest of -d, 0 and
+    /// +d, decoding back through <see cref="DecodeScalar"/> to the same trits. The index re-quantises ffn_down's columns
+    /// into its pieces with this, because the model stores ffn_down by row and the index needs it by neuron.
+    /// </summary>
+    public static void Pack(ReadOnlySpan<float> weights, Span<byte> block)
+    {
+        if (weights.Length != BlockWeights) throw new ArgumentException($"A block is {BlockWeights} weights, not {weights.Length}.", nameof(weights));
+        if (block.Length < BlockBytes) throw new ArgumentException($"A block is {BlockBytes} bytes, not {block.Length}.", nameof(block));
+        block[..BlockBytes].Clear();
+        var max = 0f;
+        for (var i = 0; i < BlockWeights; i++)
+        {
+            var a = MathF.Abs(weights[i]);
+            if (a > max) max = a;
+        }
+        Span<byte> tv = stackalloc byte[BlockWeights]; // the trit as 0, 1 or 2; 1 is a zero weight
+        tv.Fill(1);
+        if (max > 0)
+            for (var i = 0; i < BlockWeights; i++)
+                tv[i] = (byte)(Math.Clamp((int)MathF.Round(weights[i] / max), -1, 1) + 1);
+        for (var m = 0; m < 16; m++)
+        {
+            int idx = 0, mul = 1;
+            for (var n = 0; n < 5; n++) { idx += tv[n * 16 + m] * mul; mul *= 3; }
+            block[m] = InvQs[idx];
+        }
+        for (var m = 0; m < 8; m++)
+        {
+            int idx = 0, mul = 1;
+            for (var n = 0; n < 5; n++) { idx += tv[80 + n * 8 + m] * mul; mul *= 3; }
+            block[16 + m] = InvQs[idx];
+        }
+        for (var h = 0; h < 2; h++)
+        {
+            int idx = 0, mul = 1;
+            for (var n = 0; n < 4; n++) { idx += tv[120 + n * 2 + h] * mul; mul *= 3; }
+            block[24 + h] = InvQh[idx];
+        }
+        BinaryPrimitives.WriteHalfLittleEndian(block.Slice(26, 2), (Half)max);
+    }
+
     /// <summary>
     /// Decodes one block with 128-bit vectors: each multiply by 3^n yields 16 (or 8)
     /// consecutive weights. Equal to <see cref="DecodeScalar"/> byte for byte.

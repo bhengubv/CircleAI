@@ -21,7 +21,7 @@ public sealed class AttentionThreadsTests
     {
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(threads);
-        var m = Qwen35Model.Load(file, pool);
+        var m = LanguageModel.Load(file, pool);
         var state = m.NewState(32, mode, form);
         var logits = new float[m.Config.Vocabulary];
         for (var i = 0; i < Prompt.Length; i++) m.Forward(Prompt[i], state, i == Prompt.Length - 1 ? logits : default);

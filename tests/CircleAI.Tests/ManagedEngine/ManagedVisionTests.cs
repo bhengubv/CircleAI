@@ -159,7 +159,7 @@ public sealed class ManagedVisionTests(VisionGeneratorFixture fixture, ITestOutp
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         var logits = new float[model.Config.Vocabulary];
         var steps = reference.Document.RootElement.GetProperty("steps").EnumerateArray().ToList();
         var state = model.NewState(reference.Before.Length + reference.Tokens.Length / reference.Width + reference.After.Length + steps.Count + 1);
@@ -209,7 +209,7 @@ public sealed class ManagedVisionTests(VisionGeneratorFixture fixture, ITestOutp
         using var reference = Load();
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         var live = model.NewState(128);
         foreach (var id in reference.Before) model.Forward(id, live);
         for (var j = 0; j < reference.Columns * reference.Rows; j++)
@@ -221,7 +221,7 @@ public sealed class ManagedVisionTests(VisionGeneratorFixture fixture, ITestOutp
         using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true)) live.Write(writer, model.Config);
         stream.Position = 0;
         using var reader = new BinaryReader(stream);
-        var read = Qwen35State.Read(reader, model.Config);
+        var read = ModelState.Read(reader, model.Config);
         Assert.Equal((live.Position, live.RopePosition), (read.Position, read.RopePosition));
 
         var fromLive = new float[model.Config.Vocabulary];

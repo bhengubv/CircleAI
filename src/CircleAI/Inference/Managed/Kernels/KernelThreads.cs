@@ -11,7 +11,7 @@
 // one thread and up, picks the fewest threads within 5% of the best, and keeps the answer - so no
 // later load pays for the measurement again. The rule of thumb stays as the fallback.
 //
-// THE LOOKUP-TABLE KERNEL IS THE ONLY PATH THE MODEL'S PRODUCTS TAKE (Qwen35Model.Product), so the
+// THE LOOKUP-TABLE KERNEL IS THE ONLY PATH THE MODEL'S PRODUCTS TAKE (LanguageModel.Product), so the
 // thread count is the one thing about that path a device can choose; which vector instructions the
 // other kernels use is a property of the CPU (Ptq1.Best), not a measurement.
 //

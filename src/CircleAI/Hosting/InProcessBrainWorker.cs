@@ -294,6 +294,10 @@ public sealed class InProcessBrainWorker : IBrainWorker
                     if (string.IsNullOrEmpty(piece)) continue;
                     if (ttft < 0) ttft = clock.ElapsedMilliseconds;
                     pieces++;
+
+                    // A WORD'S DEADLINE, NOT THE ANSWER'S (ServiceLimits.GenerationDeadline): each piece gives the answer
+                    // as long again as it had when it began.
+                    if (left > TimeSpan.Zero) deadline.CancelAfter(left);
                     yield return new BrainChunk(piece);
                 }
             }

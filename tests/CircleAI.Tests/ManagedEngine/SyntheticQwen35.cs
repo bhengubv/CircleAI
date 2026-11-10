@@ -38,8 +38,10 @@ internal static class SyntheticQwen35
     /// rounded to BF16.</param>
     /// <param name="layers">Layers in the trunk, DeltaNet and full attention by turns: more than two give a stream of layers
     /// a ring to go round.</param>
+    /// <param name="quietLayer">A layer that adds nothing to any word: its ffn_down and its mixing's output (ssm_out or
+    /// attn_output) scaled to zero, every other weight as it would be. -1 for none.</param>
     public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false,
-        Head head = Head.Tied, bool bf16Gates = false, int layers = Layers)
+        Head head = Head.Tied, bool bf16Gates = false, int layers = Layers, int quietLayer = -1)
     {
         var rng = new Random(seed);
         var b = new GgufBuilder()
@@ -106,16 +108,17 @@ internal static class SyntheticQwen35
         for (var il = 0; il < layers; il++)
         {
             var p = $"blk.{il}.";
+            var output = il == quietLayer ? 0f : 0.05f;
             Floats(p + "attn_norm.weight", [Embedding], _ => Near(1f, 0.1f));
             Floats(p + "post_attention_norm.weight", [Embedding], _ => Near(1f, 0.1f));
             Ternary(p + "ffn_gate.weight", Embedding, FeedForward, 0.05f);
             Ternary(p + "ffn_up.weight", Embedding, FeedForward, 0.05f);
-            Ternary(p + "ffn_down.weight", FeedForward, Embedding, 0.05f);
+            Ternary(p + "ffn_down.weight", FeedForward, Embedding, output);
             if (il % 2 == 0)
             {
                 Ternary(p + "attn_qkv.weight", Embedding, ConvChannels, 0.05f);
                 Ternary(p + "attn_gate.weight", Embedding, SsmInner, 0.05f);
-                Ternary(p + "ssm_out.weight", SsmInner, Embedding, 0.05f);
+                Ternary(p + "ssm_out.weight", SsmInner, Embedding, output);
                 Gate(p + "ssm_beta.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
                 Gate(p + "ssm_alpha.weight", [Embedding, SsmHeads], _ => Near(0f, 0.05f));
                 Floats(p + "ssm_conv1d.weight", [ConvKernel, ConvChannels], _ => Near(0f, 0.5f));
@@ -128,7 +131,7 @@ internal static class SyntheticQwen35
                 Ternary(p + "attn_q.weight", Embedding, 2 * Heads * HeadDim, 0.05f);
                 Ternary(p + "attn_k.weight", Embedding, KvHeads * HeadDim, 0.05f);
                 Ternary(p + "attn_v.weight", Embedding, KvHeads * HeadDim, 0.05f);
-                Ternary(p + "attn_output.weight", Heads * HeadDim, Embedding, 0.05f);
+                Ternary(p + "attn_output.weight", Heads * HeadDim, Embedding, output);
                 Floats(p + "attn_q_norm.weight", [HeadDim], _ => Near(1f, 0.1f));
                 Floats(p + "attn_k_norm.weight", [HeadDim], _ => Near(1f, 0.1f));
             }

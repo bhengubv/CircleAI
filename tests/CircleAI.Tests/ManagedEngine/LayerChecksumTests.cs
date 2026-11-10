@@ -4,7 +4,7 @@
 // output at the prompt's last token - the residual after its feed-forward, the fork's l_out - is
 // held to the pinned fork's (fixtures/bonsai2/2B/layers.json, from bonsai-ref layers): its norm
 // within 2%, with the first 16 values and the fork's own spread between its thread counts written
-// out beside it. The logits test (Qwen35ModelTests) says whether the engine ends where the fork
+// out beside it. The logits test (LanguageModelTests) says whether the engine ends where the fork
 // does; this one says, when it does not, which layer it parted at.
 //
 // Needs the 2B on this machine (says SKIPPED otherwise). Run it in Release.
@@ -33,7 +33,7 @@ public sealed class LayerChecksumTests(ITestOutputHelper output)
         int[] prompt = [.. fixture.RootElement.GetProperty("prompt_ids").EnumerateArray().Select(e => e.GetInt32())];
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         var state = model.NewState(prompt.Length + 1);
 
         // Every layer's output at the last prompt token.

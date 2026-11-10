@@ -22,7 +22,10 @@ namespace CircleAI.Assistant.Requests;
 /// <param name="BackgroundQueueDeadline">How long a Background ask may wait for its turn.</param>
 /// <param name="AssistantStaleAfter">A spoken question nobody heard answered within this is not worth speaking.</param>
 /// <param name="LoadWaitBudget">How long one ask waits for the model to come up after its turn came.</param>
-/// <param name="GenerationDeadline">The longest one answer may take to write.</param>
+/// <param name="GenerationDeadline">
+/// The longest one answer may go without a new word: from its start to its first word, and from each word to the next. An
+/// answer that keeps writing is never cut; MaxTokensSpoken and MaxTokensTyped bound how long it can be.
+/// </param>
 /// <param name="MaxTokensSpoken">The longest answer to a spoken question.</param>
 /// <param name="MaxTokensTyped">The longest answer to a typed question.</param>
 /// <param name="MaxMessageChars">The longest question accepted.</param>
@@ -56,6 +59,9 @@ public sealed record ServiceLimits(
     /// almost a minute of speech nobody asked for; a spoken answer is a sentence or two.</para>
     /// <para>THE LOAD WAIT COVERS A COLD START: 13-23 s to load on the P30, plus up to
     /// 30 s waiting for the catalogue on the very first start after an install.</para>
+    /// <para>TWO MINUTES A WORD, NOT AN ANSWER. Measured on the P30 on 2026-11-09, the 27B streamed from
+    /// flash writes a word every 30 s or so, and two minutes for the whole answer cut every one it began
+    /// after its second or third word.</para>
     /// <para>SEVEN DAYS, the retention announced for this service: long enough for an app
     /// to come back for an answer, short enough that the store is not a diary.</para>
     /// </remarks>

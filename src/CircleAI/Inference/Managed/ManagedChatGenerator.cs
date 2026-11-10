@@ -1,7 +1,7 @@
 // ManagedChatGenerator.cs
 //
 // The C# engine behind IChatGenerator. A conversation becomes a prompt through the model's own
-// chat template (JinjaLite) and ids through its tokenizer (ByteLevelBpe); Qwen35Model runs them
+// chat template (JinjaLite) and ids through its tokenizer (ByteLevelBpe); LanguageModel runs them
 // and TokenSampler picks each next token. The reply streams back as fragments - content and
 // reasoning split on the model's own <think> and </think> tokens, so thinking never leaks into
 // an answer. Every member of the interface is implemented here rather than inherited:
@@ -43,7 +43,7 @@
 // IT SEES WHEN ITS VISION TOWER IS BESIDE IT. A ChatMessage's ImageBytes become a picture in the
 // turn as the model's own template writes one (<|vision_start|><|image_pad|><|vision_end|>), and
 // the one <|image_pad|> becomes the picture's tokens from the tower (VisionTower), placed in the
-// model by their row and column (Qwen35Model.ForwardImageToken) - the sequence the fork's mtmd
+// model by their row and column (LanguageModel.ForwardImageToken) - the sequence the fork's mtmd
 // builds. Each picture token's id in the prompt is negative and made from the picture's hash, so
 // the reuse above compares pictures as it compares words, and a picture already in the state is
 // not read again. A picture is decoded by the platform (ImageDecoder) and brought within the
@@ -112,8 +112,10 @@ public sealed record ManagedGeneratorOptions
     /// THE ECONOMICS FLIP WHEN THE TRUNK STREAMS. In RAM a check of three tokens costs the P30 more than three plain
     /// tokens (<see cref="Drafts"/>); streamed, every pass reads every layer - 6.5 GB, about 33 s for the 27B - whether
     /// it carries one token or five, and the drafter's tokens cost a fraction of a second each.
+    /// <para>OFF: ONE MODEL PER DEVICE (the indexed mind's plan, 2026-11-09). No second model drafts for the trunk, and
+    /// none is looked for; every check names the one model that ran.</para>
     /// </remarks>
-    public int StreamedDrafts { get; init; } = 4;
+    public int StreamedDrafts { get; init; }
 
     /// <summary>
     /// The model that drafts for a streamed trunk: null finds one beside the model - a folder next to its own, a smaller
@@ -197,7 +199,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     private readonly GgufFile _file;
     private readonly WorkerPool _pool;
-    private readonly Qwen35Model _model;
+    private readonly LanguageModel _model;
     private readonly ByteLevelBpe _tokenizer;
     private readonly JinjaTemplate _template;
     private readonly ManagedGeneratorOptions _options;
@@ -214,7 +216,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private readonly ToolCallGrammar.PieceOf _callPiece;
     private readonly string? _primedDirectory;
     private readonly string _modelIdentity;
-    private Qwen35State _state;
+    private ModelState _state;
     private int _disposed;
     private long _readCost; // what one prompt token last took, in ticks; 0 until one was measured
     private int _wanted;    // calls waiting for the engine, which a read in the gaps stands aside for
@@ -250,10 +252,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // first streaming turn that has room for it, and let go with the layers when the engine is idle.
     private string? _drafterPath;
     private GgufFile? _drafterFile;
-    private Qwen35Model? _drafterModel;
+    private LanguageModel? _drafterModel;
     private ModelDrafter? _drafter;
     private LayerStream? _drafterStream;
+    private HeadStore? _drafterHeadStore;
+    private HeadSurface? _drafterHead;   // the turn's surface of the drafter's head
     private Speculator? _drafting;
+    private ThoughtIndex? _indexCore;            // the core index on flash, when one was built for this model
+    private CachedIndex? _indexCached;           // its cached portion on flash
+    private IndexedFeedForward? _indexServing;   // the warm index in RAM, serving while the layers' stream is open
+    private TileStore? _ffnDownStore;            // ffn_down alone, read in place, for a stream the index serves
     private FfnWarm? _ffnWarm;
     private long _ffnUsed;
     private long _ffnKeepTicks = (long)(180 * (double)Stopwatch.Frequency);
@@ -266,6 +274,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private long _ffnControlStamp = -1;
     private const string FfnSurfaceFile = "ffn-surface.txt";
     private const string FfnFidelityFile = "ffn-fidelity.txt";
+    private const string IndexFile = "index.txt";
 
     // Seeing: the tower beside the model (its shape read at load, its weights on the first picture),
     // the template's picture token, and the last few pictures' tokens by their hash.
@@ -283,7 +292,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private const int EngineNumerics = 1;
     private const int PrimedStartsKept = 4;
 
-    private ManagedChatGenerator(string ggufPath, GgufFile file, WorkerPool pool, Qwen35Model model, ByteLevelBpe tokenizer,
+    private ManagedChatGenerator(string ggufPath, GgufFile file, WorkerPool pool, LanguageModel model, ByteLevelBpe tokenizer,
         JinjaTemplate template, ManagedGeneratorOptions options, string? towerPath, VisionConfig? towerConfig)
     {
         _towerPath = towerPath;
@@ -331,7 +340,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     /// <summary>The model's shape.</summary>
-    public Qwen35Config Config => _model.Config;
+    public ModelConfig Config => _model.Config;
 
     /// <summary>Threads the products share.</summary>
     public int Threads => _pool.Threads;
@@ -397,6 +406,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         var file = PrimedPath(prompt, length);
         if (File.Exists(file)) return true;
 
+        // A TRUNK THAT STREAMS ITS LAYERS DOES NOT READ IN THE GAPS. A token at a time is a pass over every layer - on the P30
+        // on 2026-11-09 the 27B read one token of a 609-token tools block in 26 s, five hours for the block - and it read them
+        // into a state of its own, a second 151 MB beside the turn's, which left the drafter 177 MB. The turn that needs the
+        // block reads it in whole passes and keeps its primed start on flash for every turn after.
+        if (Streams())
+        {
+            CircleLog.Info(Area, Invariant($"the {length}-token system turn is left to the turn that needs it: this trunk streams its layers, and a token at a time is a pass over all of them"));
+            return false;
+        }
+
         var started = Stopwatch.GetTimestamp();
         var progress = Path.ChangeExtension(file, ".priming");
         var state = SoFar(progress, prompt, length) ?? _model.NewState(_state.Capacity, _state.KvMode, _state.KeyForm);
@@ -439,7 +458,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     // Reads on until the system turn is in, somebody wants the engine, or the generator is going.
-    private void ReadInTheGap(List<int> prompt, int length, Qwen35State state, string progress, CancellationToken ct)
+    private void ReadInTheGap(List<int> prompt, int length, ModelState state, string progress, CancellationToken ct)
     {
         // The workers stay busy for the reading as they do for a turn (OPEN-GAPS E34).
         using var spinning = _pool.KeepSpinning();
@@ -460,7 +479,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     // How far an earlier read of this system turn got, when one was written down for this engine.
-    private Qwen35State? SoFar(string progress, List<int> prompt, int length)
+    private ModelState? SoFar(string progress, List<int> prompt, int length)
     {
         if (!File.Exists(progress)) return null;
         try
@@ -504,12 +523,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// file, a drafter, a vision tower - is never selected, fetched or built.
     /// </remarks>
     public static bool Reads(string? architecture, string? quantization) =>
-        string.Equals(architecture, "qwen35", StringComparison.OrdinalIgnoreCase)
+        architecture is not null && ModelConfig.Architectures.Contains(architecture)
         && ReadPackings.Any(p => string.Equals(quantization, p, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// The packings <see cref="Reads"/> accepts for qwen35, as catalogue rows name them: PQ2_0-MTP is
-    /// the PQ2_0 brain with its multi-token-prediction head, which this engine drafts with.
+    /// The packings <see cref="Reads"/> accepts, as catalogue rows name them: PQ2_0-MTP is the PQ2_0
+    /// brain with its multi-token-prediction head, which this engine drafts with.
     /// </summary>
     public static IReadOnlyList<string> ReadPackings { get; } = ["PTQ1_0", "PQ2_0", "PQ2_0-MTP"];
 
@@ -523,7 +542,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         ChatCapability.Default | ChatCapability.Tools | ChatCapability.Reasoning | ChatCapability.LongContext;
 
     /// <summary>What this engine reads, said the way a refusal says it.</summary>
-    public static string WhatItReads => "qwen35 in " + string.Join(" or ", ReadPackings);
+    public static string WhatItReads => string.Join(" or ", ModelConfig.Architectures) + " in " + string.Join(" or ", ReadPackings);
 
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
@@ -550,7 +569,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var store = ExistingHeadStore(ggufPath, file, options);
                 var ffn = ExistingFfnStore(ggufPath, file, options);
                 var mix = ffn is null ? null : ExistingMixStore(ggufPath, file, options);
-                var model = Qwen35Model.Load(file, pool, headFromStore: store is not null && Qwen35Model.WouldPair(file), ffnFromStore: ffn is not null,
+                var model = LanguageModel.Load(file, pool, headFromStore: store is not null && LanguageModel.WouldPair(file), ffnFromStore: ffn is not null,
                     mixFromStore: mix is not null);
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
@@ -563,11 +582,6 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var sight = towerPath is null ? "no vision tower" : $"sees with {Path.GetFileName(towerPath)} within {options.VisionMaxEdge}x{options.VisionMaxEdge}";
                 CircleLog.Info(Area, Invariant($"managed engine ready: {Path.GetFileName(ggufPath)}, {model.Packing}, {model.Config.Layers} layers, {threads} threads, context {generator._state.Capacity}, working memory {memory}, thinking {thinking}{drafting}, {sight}, in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
                 generator.StartStore(ggufPath, store, ffn, mix);
-                if (model.MixFromStore && options.StreamedDrafts > 0 && FindDrafter(ggufPath, file, options) is { } drafter)
-                {
-                    generator._drafterPath = drafter;
-                    CircleLog.Info(Area, $"a drafter beside it: {Path.GetFileName(drafter)}, for the turns its layers stream");
-                }
                 return generator;
             }
             catch
@@ -584,78 +598,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     /// <summary>
-    /// The model that drafts for this one when its layers stream (ModelDrafter): <see cref="ManagedGeneratorOptions.DrafterPath"/>
-    /// when given (empty for none), else the smallest qwen35 file in a folder beside this model's - where the catalogue
-    /// keeps each model - that is smaller than this one and has its vocabulary, token for token. Null when there is none.
+    /// ONE MODEL PER DEVICE (the indexed mind's plan, 2026-11-09): a device runs one model, and it drafts for itself with
+    /// its own MTP head where its file has one - never a second model. Two models loaded at once heat the phone past its
+    /// skin limit, and there is no avoiding that, so no second model is ever chosen to draft. Always null; the parameters
+    /// stay so a host can still ask and be told there is none.
     /// </summary>
-    internal static string? FindDrafter(string modelPath, GgufFile model, ManagedGeneratorOptions options)
-    {
-        if (options.DrafterPath is "") return null;
-        var own = Path.GetFullPath(modelPath);
-        IEnumerable<string> candidates;
-        if (options.DrafterPath is { } asked)
-        {
-            candidates = [asked];
-        }
-        else
-        {
-            // ONLY IN THE CATALOGUE'S LAYOUT - each model in a folder of its own, the folders side by side. A model lying
-            // among other files (a test's in the temp folder, a download folder) has no siblings to ask: scanning the
-            // folders beside that one would read whatever lies there.
-            var ownFolder = new DirectoryInfo(Path.GetDirectoryName(own)!);
-            var models = ownFolder.Parent;
-            if (models is null || !models.Exists) return null;
-            try
-            {
-                if (ownFolder.EnumerateFiles("*.gguf").Count() > 3) return null;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
-            candidates = models.EnumerateDirectories()
-                .Where(d => !string.Equals(d.FullName.TrimEnd(Path.DirectorySeparatorChar), ownFolder.FullName.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-                .SelectMany(d =>
-                {
-                    try { return d.EnumerateFiles("*.gguf").Select(f => f.FullName); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return []; }
-                });
-        }
-
-        var size = new FileInfo(own).Length;
-        string? best = null;
-        var bestSize = long.MaxValue;
-        foreach (var path in candidates)
-        {
-            var full = Path.GetFullPath(path);
-            if (string.Equals(full, own, StringComparison.Ordinal) || Path.GetFileName(full).Contains("mmproj", StringComparison.OrdinalIgnoreCase)) continue;
-            var length = File.Exists(full) ? new FileInfo(full).Length : 0;
-            if (length == 0 || length >= size || length >= bestSize) continue;
-            try
-            {
-                using var other = GgufFile.Open(full);
-                if (other["general.architecture"].AsString() != "qwen35" || !SameVocabulary(model, other)) continue;
-                best = full;
-                bestSize = length;
-            }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or KeyNotFoundException or UnauthorizedAccessException)
-            {
-                // Not a model this engine reads: not a drafter.
-            }
-        }
-        return best;
-    }
-
-    // The same tokens at the same ids, and the same end: a draft is the trunk's token only when the two speak alike.
-    private static bool SameVocabulary(GgufFile a, GgufFile b)
-    {
-        static string[] Tokens(GgufFile f) => f["tokenizer.ggml.tokens"].AsArray().ToStringArray();
-        static long Eos(GgufFile f) => f.TryGetValue("tokenizer.ggml.eos_token_id", out var v) ? v.AsInt64() : -1;
-        if (Eos(a) != Eos(b)) return false;
-        var x = Tokens(a);
-        var y = Tokens(b);
-        return x.Length == y.Length && x.AsSpan().SequenceEqual(y);
-    }
+    internal static string? FindDrafter(string modelPath, GgufFile model, ManagedGeneratorOptions options) => null;
 
     /// <summary>
     /// The vision tower to see with, and its shape: <paramref name="asked"/> when given (empty for
@@ -666,7 +614,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// model's own folder first. A candidate that is not this model's is passed over. Null when
     /// there is none.
     /// </summary>
-    internal static (string Path, VisionConfig Config)? FindTower(string modelPath, string? asked, GgufFile model, Qwen35Config config)
+    internal static (string Path, VisionConfig Config)? FindTower(string modelPath, string? asked, GgufFile model, ModelConfig config)
     {
         var name = model.TryGetValue("general.name", out var value) && value.Type == GgufType.String ? value.AsString() : null;
         if (asked is not null)
@@ -729,7 +677,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // A tower's shape, read and checked against the model now - one for another model fails here,
     // not on the first picture; its weights are bound on the first picture.
-    private static VisionConfig ReadTower(string towerPath, Qwen35Config model, string? modelName)
+    private static VisionConfig ReadTower(string towerPath, ModelConfig model, string? modelName)
     {
         using var tower = GgufFile.Open(towerPath);
         var config = VisionConfig.FromGguf(tower);
@@ -848,7 +796,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 if (count < 0) throw new InvalidDataException($"{path} is damaged.");
                 var tokens = new List<int>(count);
                 for (var i = 0; i < count; i++) tokens.Add(reader.ReadInt32());
-                var read = Qwen35State.Read(reader, _model.Config);
+                var read = ModelState.Read(reader, _model.Config);
                 if (read.Position != count) throw new InvalidDataException($"{path} holds {count} tokens but a state of {read.Position}.");
                 return (tokens, read);
             }, ct).ConfigureAwait(false);
@@ -978,7 +926,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         // THE HEAD STREAMS IN WHILE THE PROMPT IS READ: the groups of the head's store in the scripts the
         // conversation writes in, on the device's channels. Armed before the first logits; let go at the end.
         var headLoading = StartHead(prompt, options, built);
-        HeadSurface? surface = null;
+        IHeadRows? surface = null;
         void ArmHead()
         {
             if (headLoading is null || surface is not null) return;
@@ -996,24 +944,32 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 }
                 // NO COPY TO FALL BACK ON: the whole head from the store, once more, or the turn cannot answer.
                 CircleLog.Warn(Area, $"the head's surface did not stream in ({ex.GetType().Name}: {ex.Message}); streaming in all of it");
-                surface = store.Load(store.Groups, Volatile.Read(ref _channels));
+                surface = _stream is { Slots: > 0 }
+                    ? store.Stream(store.Groups, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes))
+                    : store.Load(store.Groups, Volatile.Read(ref _channels));
             }
             _model.Head = surface;
-            CircleLog.Info(Area, Invariant($"head: {string.Join(", ", surface.Groups.Select(g => g.Script))} - {surface.Rows:N0} of {_model.Config.Vocabulary:N0} rows, {surface.Bytes / 1048576.0:F1} MB ({surface.Layout}), streamed in from flash in {surface.Elapsed.TotalMilliseconds:F0} ms on {surface.Channels} channel(s){(surface.Direct ? ", past the cache" : ", dropped from the cache")}"));
+            if (surface is HeadSurface held)
+                CircleLog.Info(Area, Invariant($"head: {string.Join(", ", held.Groups.Select(g => g.Script))} - {held.Rows:N0} of {_model.Config.Vocabulary:N0} rows, {held.Bytes / 1048576.0:F1} MB ({held.Layout}), streamed in from flash in {held.Elapsed.TotalMilliseconds:F0} ms on {held.Channels} channel(s){(held.Direct ? ", past the cache" : ", dropped from the cache")}"));
+            else if (surface is HeadStream read)
+                CircleLog.Info(Area, Invariant($"head: {string.Join(", ", read.Groups.Select(g => g.Script))} - {read.Rows:N0} of {_model.Config.Vocabulary:N0} rows ({read.Layout}), read from flash as each pass scores it: {read.SurfaceBytes / 1048576.0:F0} MB a pass through {read.Bytes / 1048576.0:F0} MB of RAM{(read.Direct ? ", past the cache" : ", dropped from the cache")}"));
         }
 
+        Speculator? speculating = null; // the turn's drafting, for what it did when the turn is stopped
         try
         {
+            // A STREAMED TRUNK KEEPS NO MARK, NO CONVERSATION COPY AND NO PRIMED START IN RAM. Each is a copy of every recurrent
+            // layer - 157 MB for the 27B - and saves re-reading tokens, which a streamed model reads in passes that cost the same
+            // 6.5 GB for one token or a hundred and twenty-eight: re-reading a short conversation rides in the pass the question
+            // needs anyway. The mark cost a pass too - the prompt was cut there so it could be taken. The primed start stays on
+            // flash, read back into the state itself in about a second.
+            var leanState = Lean;
+            if (leanState) _state.ForgetCopies();
+
             var path = Resume(prompt, primed);
             if (timing is not null) timing.KvPath = path;
             var reused = _history.Count;
             _model.TakeTimes(); // whatever an abandoned call left counted
-
-            // A STREAMED TRUNK KEEPS NO MARK AND NO CONVERSATION COPY. Each is a copy of every recurrent layer - 157 MB for the
-            // 27B - and saves re-reading tokens, which a streamed model reads in passes that cost the same 6.5 GB for one token
-            // or a hundred and twenty-eight: re-reading a short conversation rides in the pass the question needs anyway. The
-            // mark cost a pass too - the prompt was cut there so it could be taken.
-            var leanState = _stream is { Slots: > 0 };
 
             // A WORD CAN STILL CHANGE: the ears heard "Why is this?" on their way to "Why is the sky blue?",
             // and a recurrent state only steps back to a mark. So only this read is lost, not all of them.
@@ -1030,7 +986,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                     Thread.Sleep(2);
                 }
 
-                if (i == primed && _state.PrimedPosition != i) Prime(prompt, i);
+                if (i == primed && _state.PrimedPosition != i) Prime(prompt, i, inRam: !leanState);
                 if (i == lastTurn && !leanState) _state.Mark();
 
                 // AN ANSWER'S TOKENS GO IN TOGETHER, up to the next place the state is kept: the same
@@ -1039,7 +995,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 // A MODEL WHOSE LAYERS STREAM FROM FLASH reads its whole prompt in passes as big as it can: every pass reads every
                 // layer, so token by token or eight by eight would read the 27B's 6.8 GB that many times.
                 var together = (options.JustRead && !leanState) || built.Slots is not null || _speculator is not null ? 1
-                    : Together(i, readTo, primed, leanState ? -1 : lastTurn, leanState ? StreamedReadTogether : Qwen35Model.ReadTogether);
+                    : Together(i, readTo, primed, leanState ? -1 : lastTurn, leanState ? StreamedReadTogether : LanguageModel.ReadTogether);
                 if (together > 1)
                 {
                     var read = new float[]?[together];
@@ -1088,7 +1044,8 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
             // A STREAMED TRUNK'S WORDS ARE DRAFTED BY THE SMALLER MODEL, which first catches up on what the trunk read - from
             // its primed start when the system turn is the same, so a new question costs it the question.
-            var speculator = _speculator ?? (_drafting is not null && _stream is { Slots: > 0 } ? _drafting : null);
+            var speculator = _speculator ?? (maxTokens > 1 && ArmDrafter(prompt) ? _drafting : null);
+            speculating = speculator;
             if (speculator is not null && speculator == _drafting)
             {
                 var caught = Stopwatch.GetTimestamp();
@@ -1259,7 +1216,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             if (drafted > 0 && speculator == _speculator)
                 CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens the MTP head drafted ({100.0 * accepted / drafted:F0}%); the head took {_model.TakeMtpTime().TotalMilliseconds:F0} ms"));
             else if (drafted > 0)
-                CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens {Path.GetFileName(_drafterPath)} drafted ({100.0 * accepted / drafted:F0}%); {generated.Count} words from {Math.Max(0, generated.Count - 1 - accepted)} passes of the trunk after the prompt's; the drafter took {_drafterModel?.TakeTimes().Total.TotalMilliseconds ?? 0:F0} ms"));
+            {
+                var (_, drafterRead, drafterReading) = _drafterStream?.TakeCounts() ?? default;
+                CircleLog.Info(Area, Invariant($"speculative: the trunk kept {accepted} of {drafted} tokens {Path.GetFileName(_drafterPath)} drafted ({100.0 * accepted / drafted:F0}%); {generated.Count} words from {Math.Max(0, generated.Count - 1 - accepted)} passes of the trunk after the prompt's; the drafter took {_drafterModel?.TakeTimes().Total.TotalMilliseconds ?? 0:F0} ms, {drafterRead / 1048576.0:F0} MB of its layers read from flash in {drafterReading.TotalMilliseconds:F0} ms"));
+            }
             if (overruled > 0) CircleLog.Info(Area, Invariant($"the tool call's form overruled the model's first choice {overruled} times"));
             if (thinking) CircleLog.Info(Area, Invariant($"thought for {thoughtTokens} tokens{(closedByBudget ? $", closed by its {thinkingBudget}-token budget" : string.Empty)} ({options.Effort?.TemplateName() ?? "the generator's default"})"));
             Keep(options, messages, built);
@@ -1269,9 +1229,18 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
         catch (OperationCanceledException)
         {
-            // Cancellation lands between steps, so the state and the history still agree.
+            // Cancellation lands between steps - a checked batch's included (Speculator.Step) - so the state and the
+            // history still agree.
             if (timing is not null) timing.Finish ??= "cancel";
             CircleLog.Info(Area, Invariant($"stopped after {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms with {_history.Count} tokens in the state, the prompt being {prompt.Count}"));
+            if (speculating is not null && speculating == _drafting)
+            {
+                // A STREAMED TRUNK'S TURN IS MOSTLY STOPPED BY ITS DEADLINE: what the drafts did is said here too.
+                var (drafted, accepted) = speculating.TakeCounts();
+                var (_, drafterRead, drafterReading) = _drafterStream?.TakeCounts() ?? default;
+                if (drafted > 0)
+                    CircleLog.Info(Area, Invariant($"speculative, until it stopped: the trunk kept {accepted} of {drafted} tokens {Path.GetFileName(_drafterPath)} drafted ({100.0 * accepted / drafted:F0}%); the drafter took {_drafterModel?.TakeTimes().Total.TotalMilliseconds ?? 0:F0} ms, {drafterRead / 1048576.0:F0} MB of its layers read from flash in {drafterReading.TotalMilliseconds:F0} ms"));
+            }
             throw;
         }
         catch
@@ -1285,6 +1254,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         finally
         {
             LetHeadGo(surface, headLoading, options.JustRead);
+            LetDrafterHeadGo();
             UsedFfn();
             KeepFired();
         }
@@ -1444,6 +1414,197 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
     }
 
+    // ---- the indexed mind: Watch, the core index, the cached index, the warm index ----
+
+    // Where this model's watch, core index and cached index live, beside its other stores.
+    private string IndexPath(string kind) => Path.Combine(StoreDirectoryOf(_options)!, Path.GetFileName(_file.FilePath) + "." + kind);
+
+    // The index an earlier job left for this model, opened to serve: the core, and its cached portion when it fits the core.
+    private void OpenIndex()
+    {
+        if (!_model.MixFromStore || !_model.Paired || StoreDirectoryOf(_options) is null) return;
+        if (ThoughtIndex.Open(IndexPath("index")) is not { } core || core.FeedForward != _model.Config.FeedForward || core.Layers != _model.Config.Layers) return;
+        _indexCore = core;
+        _indexCached = CachedIndex.Open(IndexPath("cached"), _file, core);
+        CircleLog.Info(Area, Invariant($"index found: {core.Groups} thought groups a layer from {core.Records:N0} watched records, lists of {core.ListNeurons} neurons; {(_indexCached is { } c ? $"{c.Count} pieces cached on flash" : "no cached index")}"));
+    }
+
+    // A hot phone stops heavy work where it is: the phone stays a phone.
+    private static bool Hot()
+    {
+        try { return CircleAI.Core.DeviceContext.PowerProbe?.Invoke().Hot == true; }
+        catch { return false; }
+    }
+
+    // THE INDEX, BUILT ON THE DEVICE (the indexed mind): Watch over a text in whole passes, every word's thought and strong
+    // neurons at every layer; the core index from what it saw, on flash; the cached index from the model's own file, on flash;
+    // a check - the same held-out words through every neuron and through the index, how often the top word agrees - and then
+    // served, the warm index in RAM. Every step logged with its time and size; a hot phone stops it where it is. Under the gate.
+    private void RunIndexJob(int groups, int percent)
+    {
+        if (!_model.MixFromStore || !_model.Paired)
+        {
+            CircleLog.Info(Area, "index: only for a model whose layers are read from flash in the vector kernel's tiles");
+            return;
+        }
+        var c = _model.Config;
+        var kept = Math.Max(Kernels.Ptq1PairMatrix.TileRows, c.FeedForward * percent / 100);
+        using var spinning = _pool.KeepSpinning();
+        IHeadRows? head = null;
+        try
+        {
+            // EVERY NEURON WHILE IT WATCHES: no index serving, the stream bringing the whole feed-forward.
+            StopServingIndex();
+            _indexCore = null;
+            _indexCached = null;
+            LetFfnGo("the index is being built");
+            EnsureFfnWarm();
+            _state.Reset();
+            _history.Clear();
+
+            // 1. WATCH.
+            var started = Stopwatch.GetTimestamp();
+            var tokens = _tokenizer.Encode(WatchText, parseSpecial: false);
+            var together = StreamedReadTogether;
+            var watchPath = IndexPath("watch");
+            using (var watch = new ThoughtWatch(watchPath, c.Layers, c.Embedding, c.FeedForward, kept))
+            {
+                _model.Watch = watch;
+                try
+                {
+                    for (var at = 0; at < tokens.Count; at += together)
+                    {
+                        if (Hot())
+                        {
+                            CircleLog.Warn(Area, Invariant($"index: the phone is hot; Watch stopped after {at} of {tokens.Count} words"));
+                            return;
+                        }
+                        var n = Math.Min(together, tokens.Count - at);
+                        _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tokens).Slice(at, n), _state, new float[n][]);
+                    }
+                }
+                finally
+                {
+                    _model.Watch = null;
+                }
+                CircleLog.Info(Area, Invariant($"index: Watch saw {tokens.Count} words at {c.Layers} layers - {watch.Records:N0} records, the strongest {kept} of {c.FeedForward} neurons each - in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s"));
+            }
+            _state.Reset();
+            _history.Clear();
+            if (Hot())
+            {
+                CircleLog.Warn(Area, "index: the phone is hot; stopped after Watch");
+                return;
+            }
+
+            // 2. THE CORE INDEX, on flash.
+            started = Stopwatch.GetTimestamp();
+            var core = ThoughtIndex.Build(ThoughtWatch.Read(watchPath), IndexPath("index"), groups, kept);
+            CircleLog.Info(Area, Invariant($"index: the core built in {Stopwatch.GetElapsedTime(started).TotalSeconds:F1} s - {core.Groups} thought groups a layer, lists of {core.ListNeurons} neurons, {new FileInfo(core.FilePath).Length / 1024.0:F0} KB on flash"));
+
+            // 3. THE CACHED INDEX, on flash: the groups the most words fell in, their pieces from the model's own file.
+            started = Stopwatch.GetTimestamp();
+            var cached = CachedIndex.Build(core, _file, IndexPath("cached"), IndexFlashBudget, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
+            CircleLog.Info(Area, Invariant($"index: the cached index built in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s - {cached.Count} of {core.Layers * core.Groups} pieces, {new FileInfo(cached.FilePath).Length / 1048576.0:F0} MB on flash"));
+
+            // 4. THE CHECK: the held-out words through every neuron, then through the index, every position's logits in one pass each.
+            if (_model.HeadFromStore && Volatile.Read(ref _headStore) is { } store)
+            {
+                head = _stream is { Slots: > 0 }
+                    ? store.Stream(store.Surface([Script.Latin]), Volatile.Read(ref _channels), Volatile.Read(ref _readBytes))
+                    : store.Load(store.Surface([Script.Latin]), Volatile.Read(ref _channels));
+                _model.Head = head;
+            }
+            using (var checking = new IndexedFeedForward(core, cached, _file, warmBudget: 0, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes)))
+            {
+                var (same, positions, full, indexed) = CheckIndex(checking);
+                var (_, cachedReads, cachedBytes, coreReads, _) = checking.TakeCounts();
+                CircleLog.Info(Area, Invariant($"index: the check over {positions} held-out words - the same top word as every neuron {100.0 * same / Math.Max(1, positions):F1}% of the time; every neuron's pass {full.TotalSeconds:F0} s, the index's {indexed.TotalSeconds:F0} s ({cachedReads} pieces from the cached index, {cachedBytes / 1048576.0:F0} MB, {coreReads} from the model's own file)"));
+            }
+
+            // 5. SERVED from the next turn: the stream reopened for ffn_down and the mixing, the warm index in RAM.
+            _indexCore = core;
+            _indexCached = cached;
+            LetFfnGo("the index serves from now on");
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or OutOfMemoryException or ArgumentException or InvalidOperationException)
+        {
+            CircleLog.Warn(Area, $"index: the job failed ({ex.GetType().Name}: {ex.Message}); every neuron is computed as before");
+            StopServingIndex();
+            _indexCore = null;
+            _indexCached = null;
+        }
+        finally
+        {
+            _model.Watch = null;
+            _model.Head = null;
+            (head as IDisposable)?.Dispose();
+            _state.Reset();
+            _history.Clear();
+            UsedFfn();
+        }
+    }
+
+    // The first CheckWords of the held-out text through every neuron, then through the index - every position's logits in one
+    // pass each, from a fresh state - and how many positions' top words agree.
+    private (int Same, int Positions, TimeSpan Full, TimeSpan Indexed) CheckIndex(IndexedFeedForward checking)
+    {
+        var tokens = _tokenizer.Encode(FidelityText, parseSpecial: false);
+        var n = Math.Min(CheckWords, tokens.Count);
+        var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tokens)[..n];
+        var logits = new float[n][];
+        for (var i = 0; i < n; i++) logits[i] = new float[_model.Config.Vocabulary];
+
+        _model.Index = null;
+        _state.Reset();
+        var started = Stopwatch.GetTimestamp();
+        _model.ForwardBatch(span, _state, logits);
+        var full = Stopwatch.GetElapsedTime(started);
+        var tops = logits.Select(l => ArgMax(l)).ToArray();
+
+        _model.Index = checking;
+        _state.Reset();
+        started = Stopwatch.GetTimestamp();
+        try
+        {
+            _model.ForwardBatch(span, _state, logits);
+        }
+        finally
+        {
+            _model.Index = null;
+        }
+        var indexed = Stopwatch.GetElapsedTime(started);
+        var same = 0;
+        for (var i = 0; i < n; i++)
+            if (ArgMax(logits[i]) == tops[i]) same++;
+        return (same, n, full, indexed);
+    }
+
+    // Held-out words the check reads: every position's logits in RAM at once, the vocabulary wide each.
+    private const int CheckWords = 32;
+
+    // WHAT WATCH READS: plain, varied English - questions, tasks, facts, a story - the kind of words a phone's assistant hears
+    // and says. Not the check's text (FidelityText), which is held out.
+    private const string WatchText =
+        "What time is it in Johannesburg right now? Set a timer for ten minutes and remind me to call my sister at six. " +
+        "The weather today is sunny with a light wind from the south, and tomorrow it may rain in the afternoon. " +
+        "Water boils at one hundred degrees Celsius at sea level, and freezes at zero. The sun is a star, and the Earth " +
+        "goes around it once a year, while the Moon goes around the Earth about once a month. " +
+        "How do I make a cup of tea? Boil the water, put a tea bag in a cup, pour the water over it, wait three minutes, " +
+        "then add milk or sugar if you like. Can you read me my messages? You have two new messages: one from Thandi " +
+        "asking about lunch on Friday, and one from the bank about your card. " +
+        "Africa is the second largest continent, and the Nile is one of the longest rivers in the world. Mount Kilimanjaro " +
+        "in Tanzania is the highest mountain in Africa. Cape Town sits below Table Mountain, near the meeting of two oceans. " +
+        "Please add eggs, bread, rice and tomatoes to my shopping list. What is twelve times eight? Twelve times eight is " +
+        "ninety-six. How far is it from Durban to Pretoria? It is about six hundred kilometres by road. " +
+        "Once upon a time a small girl lived in a village by a river. Every morning she walked to school with her brother, " +
+        "and every evening they helped their grandmother cook supper over the fire. One day they found a lost goat near " +
+        "the water, and they carried it home to the farmer, who thanked them with a basket of oranges. " +
+        "Turn on the torch. Turn up the volume. Play some music. Call my mother. Send a message to John saying I am " +
+        "running ten minutes late. What is the capital of Kenya? The capital of Kenya is Nairobi. Who wrote Things Fall " +
+        "Apart? Chinua Achebe wrote it. Why is the sky blue? Sunlight is scattered by the air, and blue light is scattered " +
+        "more than red, so the sky looks blue. Thank you, that was helpful. Good night.";
+
     private static int ArgMax(ReadOnlySpan<float> values)
     {
         var best = 0;
@@ -1494,19 +1655,24 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // THE TURN IS OVER: RAM lets the head go. Its surface is freed; one still streaming in is freed when it
     // lands; and a turn that read the whole head as it lies lets the OS take those pages back too.
-    private void LetHeadGo(HeadSurface? surface, Task<HeadSurface>? loading, bool justRead)
+    private void LetHeadGo(IHeadRows? surface, Task<IHeadRows>? loading, bool justRead)
     {
         _model.Head = null;
         if (surface is not null)
         {
-            surface.Dispose();
+            if (surface is HeadStream read)
+            {
+                var (bytes, reading) = read.TakeCounts();
+                CircleLog.Info(Area, Invariant($"head: {bytes / 1048576.0:F0} MB read from flash in {reading.TotalMilliseconds:F0} ms this turn ({(reading.TotalSeconds > 0 ? bytes / 1048576.0 / reading.TotalSeconds : 0):F0} MB/s)"));
+            }
+            (surface as IDisposable)?.Dispose();
             return;
         }
         if (loading is not null)
         {
             _ = loading.ContinueWith(t =>
             {
-                if (t.Status == TaskStatus.RanToCompletion) t.Result.Dispose();
+                if (t.Status == TaskStatus.RanToCompletion) (t.Result as IDisposable)?.Dispose();
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             return;
         }
@@ -1517,31 +1683,51 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // one for every turn that wants logits, all of the head's groups when the conversation writes in that many
     // scripts. Otherwise null - the turn reads the whole head as it lies - for no store yet, a read ahead (no
     // logits), pictures, MTP drafting, or so many scripts that nearly all of the head would come in anyway.
-    private Task<HeadSurface>? StartHead(List<int> prompt, GenerationOptions options, PromptIds built)
+    // A TRUNK THAT STREAMS ITS LAYERS STREAMS ITS HEAD TOO: read from flash as each pass scores it, two windows in RAM
+    // where the surface would hold 198 MB of the 27B's - the room the drafter needs beside it on the P30.
+    private Task<IHeadRows>? StartHead(List<int> prompt, GenerationOptions options, PromptIds built)
     {
         var store = Volatile.Read(ref _headStore);
         if (store is null || options.JustRead) return null;
         var served = _model.HeadFromStore;
         if (!served && (_speculator is not null || built.Slots is not null)) return null;
-        var scripts = new HashSet<Script>();
-        foreach (var token in prompt)
-        {
-            if ((uint)token < (uint)_tokenizer.Count) scripts.Add(ScriptOf(token));
-        }
+        var scripts = ScriptsOf(prompt);
         var groups = store.Surface(scripts);
         if (!served && groups.Sum(g => (long)g.Rows) >= store.Rows * 9L / 10)
         {
             CircleLog.Info(Area, $"head: the whole head as it lies this turn - the conversation writes in {string.Join(", ", scripts)}");
             return null;
         }
+        if (_stream is { Slots: > 0 })
+        {
+            try
+            {
+                return Task.FromResult<IHeadRows>(store.Stream(groups, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OutOfMemoryException)
+            {
+                return Task.FromException<IHeadRows>(ex);
+            }
+        }
         return LoadHead(store, groups);
     }
 
     // A surface streamed in on the device's channels, off the turn's thread.
-    private Task<HeadSurface> LoadHead(HeadStore store, IReadOnlyList<HeadStore.Group> groups)
+    private Task<IHeadRows> LoadHead(HeadStore store, IReadOnlyList<HeadStore.Group> groups)
     {
         var channels = Volatile.Read(ref _channels);
-        return Task.Factory.StartNew(() => store.Load(groups, channels), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        return Task.Factory.StartNew<IHeadRows>(() => store.Load(groups, channels), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    // The writing systems a conversation's tokens are in: the scripts of the head's surface, the trunk's and the drafter's.
+    private HashSet<Script> ScriptsOf(List<int> prompt)
+    {
+        var scripts = new HashSet<Script>();
+        foreach (var token in prompt)
+        {
+            if ((uint)token < (uint)_tokenizer.Count) scripts.Add(ScriptOf(token));
+        }
+        return scripts;
     }
 
     // A token's writing system, as the head's store groups it.
@@ -1555,8 +1741,8 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // Once per model; a failure leaves the load as it was, with its copies.
     private static void SplitBeforeLoad(string ggufPath, GgufFile file, ManagedGeneratorOptions options)
     {
-        if (!Qwen35Model.WouldPair(file) || StoreDirectoryOf(options) is not { } directory) return;
-        if (file.TryGetValue("qwen35.nextn_predict_layers", out _) && options.Drafts > 0) return; // the MTP head drafts from the whole table
+        if (!LanguageModel.WouldPair(file) || StoreDirectoryOf(options) is not { } directory) return;
+        if (ModelConfig.HasMtpHead(file) && options.Drafts > 0) return; // the MTP head drafts from the whole table
         try
         {
             var headPath = StorePath(directory, ggufPath);
@@ -1570,21 +1756,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 CircleLog.Info(Area, Invariant($"split before the load: the head's store written (Paired), {head.Bytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {head.Rows:N0} rows differ from the model"));
                 if (wrong != 0) File.Delete(headPath);
             }
-            // ON THE DEVICE'S RECIPE when it has measured its flash before (1 MB reads on four channels on the P30): the
-            // feed-forward's store, then the mixing's - with both, no layer is copied into RAM.
-            var recipe = FlashProfile.Remembered(directory);
-            var channels = recipe?.Channels ?? 4;
-            var readBytes = recipe?.ChunkBytes ?? 1 << 20;
-            foreach (var (set, path) in new[] { (TileSet.FeedForward, FfnPath(directory, ggufPath)), (TileSet.Mixing, MixPath(directory, ggufPath)) })
-            {
-                if (TileStore.Unreadable(file, set) is not null || TileStore.Open(file, path, set) is not null) continue;
-                var started = Stopwatch.GetTimestamp();
-                var store = TileStore.Write(file, path, set, CancellationToken.None, channels, readBytes);
-                var written = Stopwatch.GetElapsedTime(started);
-                var wrong = store.Verify(file, channels, readBytes);
-                CircleLog.Info(Area, Invariant($"split before the load: the {set.Name}'s store written, {store.Entries.Count} tensors, {store.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {store.Entries.Count} differ from the model"));
-                if (wrong != 0) File.Delete(path);
-            }
+            // NO STORE OF THE LAYERS: ONE COPY OF THE WEIGHTS. They are read from the model's own file and repacked as they
+            // land (TileStore.InPlace). A written store of the 27B was 6.5 GB beside its 5.9 GB file on a P30 with 5.2 GB
+            // left, and writing it took ten minutes at the eMMC's 12 MB/s.
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException or ArgumentException)
         {
@@ -1608,24 +1782,26 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private static HeadStore? ExistingHeadStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options)
     {
         if (StoreDirectoryOf(options) is not { } directory || HeadStore.Unreadable(file) is not null) return null;
-        if (file.TryGetValue("qwen35.nextn_predict_layers", out _) && options.Drafts > 0) return null; // the MTP head drafts from the whole table
-        var layout = Qwen35Model.WouldPair(file) ? HeadLayout.Paired : HeadLayout.Rows;
+        if (ModelConfig.HasMtpHead(file) && options.Drafts > 0) return null; // the MTP head drafts from the whole table
+        var layout = LanguageModel.WouldPair(file) ? HeadLayout.Paired : HeadLayout.Rows;
         return HeadStore.Open(file, StorePath(directory, ggufPath), layout);
     }
 
     private static string FfnPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".ffn");
 
-    // The feed-forward store an earlier load left that fits this model, so this load keeps no copy of its feed-forward;
-    // null when there is none, it is off, or the model does not compute in the vector kernel's tiles here.
+    // The feed-forward read in place from the model's own file, so this load keeps no copy of it in RAM and flash keeps no
+    // second one; null when stores are off or the model does not compute in the vector kernel's tiles here.
     private static TileStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
-        StoreDirectoryOf(options) is { } directory && Qwen35Model.WouldPair(file) ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null;
+        InPlace(file, options, TileSet.FeedForward);
 
-    private static string MixPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".mix");
-
-    // The mixing's store an earlier load (or the split) left that fits this model: with the feed-forward's, every layer is
-    // read from flash and none is copied into RAM. Null where there is none or the model does not pair here.
+    // The mixing, read in place the same way: with the feed-forward's, every layer is read from flash, none copied into RAM.
     private static TileStore? ExistingMixStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
-        StoreDirectoryOf(options) is { } directory && Qwen35Model.WouldPair(file) ? MixStore.Open(file, MixPath(directory, ggufPath)) : null;
+        InPlace(file, options, TileSet.Mixing);
+
+    private static TileStore? InPlace(GgufFile file, ManagedGeneratorOptions options, TileSet set) =>
+        StoreDirectoryOf(options) is not null && LanguageModel.WouldPair(file) && TileStore.Unreadable(file, set) is null
+            ? TileStore.OverModel(file, set)
+            : null;
 
     // Makes the stores ready in the background, once per model: the head's and the feed-forward's written and checked
     // against the model if no earlier load left them, the device's flash measured if it never was, then turns may use
@@ -1636,6 +1812,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         // when it has been idle long enough. The idle clock also does a fidelity run when one is asked for.
         if (existingFfn is not null) _ffnStore = existingFfn;
         if (existingMix is not null && _model.MixFromStore) _mixStore = existingMix;
+        OpenIndex();
         if (StoreDirectoryOf(_options) is not null)
         {
             ReadFired();
@@ -1749,7 +1926,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var bringBack = rate > 0 ? TimeSpan.FromSeconds(existing.DataBytes / (rate * 1024 * 1024)) : TimeSpan.FromSeconds(10);
                 var keep = bringBack < FfnStreamEveryTurnBelow ? TimeSpan.Zero : FfnKeptWarm;
                 Volatile.Write(ref _ffnKeepTicks, (long)(keep.TotalSeconds * Stopwatch.Frequency));
-                CircleLog.Info(Area, Invariant($"the feed-forward is read from its store on flash: {existing.DataBytes / 1048576.0:F0} MB, no copy of it in RAM; bringing it in takes about {bringBack.TotalMilliseconds:F0} ms here, so {(keep == TimeSpan.Zero ? "it streams in every turn" : $"a warm one stays {keep.TotalSeconds:F0} s after a turn")}"));
+                CircleLog.Info(Area, Invariant($"the feed-forward is read from {(existing.InPlace ? "the model's own file" : "its store on flash")}: {existing.DataBytes / 1048576.0:F0} MB as tiles, no copy of it in RAM; bringing it in takes about {bringBack.TotalMilliseconds:F0} ms here, so {(keep == TimeSpan.Zero ? "it streams in every turn" : $"a warm one stays {keep.TotalSeconds:F0} s after a turn")}"));
                 return;
             }
             if (FfnStore.Unreadable(_file) is { } why)
@@ -1812,83 +1989,184 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private void EnsureLayers()
     {
         if (_stream is null) OpenLayers();
-        EnsureDrafter();
     }
 
     private void OpenLayers()
     {
         var mix = _mixStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no mixing store.");
         var ffn = _ffnStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no feed-forward store.");
+
+        // AN INDEX SERVES THE FEED-FORWARD'S GATE AND UP: the stream brings ffn_down and the mixing alone.
+        if (_indexCore is not null) ffn = _ffnDownStore ??= TileStore.OverModel(_file, TileSet.FeedForward, [2]);
         var (warm, slots, available) = LayerRecipe(mix, ffn);
         var channels = Volatile.Read(ref _channels);
         var stream = new LayerStream(mix, ffn, channels, Volatile.Read(ref _readBytes), warm, slots);
         _model.Stream = stream;
         _stream = stream;
         CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
+        if (_indexCore is { } core) ServeIndex(core, available, stream.Bytes);
     }
 
-    // THE DRAFTER, BUILT AT THE FIRST STREAMING TURN WITH ROOM FOR IT: its layers from its own stores, every one warm beside
-    // the trunk's ring, its head a copy of its own. Without room this turn decodes plainly and the next asks again. Under
-    // the gate.
-    private void EnsureDrafter()
+    // THE INDEX SERVING THE TURNS (the indexed mind): the warm index read into RAM - the hottest cached pieces, as many as the
+    // RAM left beside the layers' stream allows over what the phone keeps for itself - and the model's feed-forward taking
+    // its gate and up from the tiers. Under the gate.
+    private void ServeIndex(ThoughtIndex core, long? available, long streamBytes)
     {
-        if (_drafting is not null || _drafterPath is not { } path || _stream is not { Slots: > 0 } || _options.StreamedDrafts <= 0) return;
+        var budget = available is { } a ? Math.Max(0, a - IndexReserve - streamBytes) : 128L << 20;
+        var serving = new IndexedFeedForward(core, _indexCached, _file, budget, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
+        _indexServing = serving;
+        _model.Index = serving;
+        CircleLog.Info(Area, Invariant($"index: {core.Groups} thought groups a layer, lists of {core.ListNeurons} of {core.FeedForward} neurons; warm {serving.WarmPieces} pieces ({serving.WarmBytes / 1048576.0:F0} MB) in RAM, read in {serving.WarmElapsed.TotalMilliseconds:F0} ms; cached {_indexCached?.Count ?? 0} pieces on flash; the rest from the model's own file"));
+    }
+
+    // The index stops serving: the model computes every neuron again, and RAM holds none of the warm index.
+    private void StopServingIndex()
+    {
+        _model.Index = null;
+        _indexServing?.Dispose();
+        _indexServing = null;
+    }
+
+    // Kept for the phone when the warm index fills the RAM the layers' stream leaves.
+    private const long IndexReserve = 384L << 20;
+
+    // What the cached index may take on flash: the groups the most words fell in, until this is spent.
+    private const long IndexFlashBudget = 2L << 30;
+
+    // THE DRAFTER, ARMED WHEN A STREAMED TRUNK IS ABOUT TO DECODE. By then the trunk's ring, state, head windows and buffers
+    // are in RAM, so what the phone has left is what it has: asked when the layers opened, the P30 said 597 MB before the
+    // ring and the state had filled, and the turn ran down to 3 MB of free swap. Built once and kept while the layers are;
+    // its head - the surface of the scripts the trunk's head scores, from its own store - for the turn only. False when
+    // this turn decodes plainly. Under the gate.
+    private bool ArmDrafter(List<int> prompt)
+    {
+        if (_drafterPath is not { } path || _stream is not { Slots: > 0 } || _options.StreamedDrafts <= 0) return false;
         try
         {
-            _drafterFile ??= GgufFile.Open(path);
-            SplitBeforeLoad(path, _drafterFile, _options);
-            var ffn = ExistingFfnStore(path, _drafterFile, _options);
-            var mix = ffn is null ? null : ExistingMixStore(path, _drafterFile, _options);
-            if (ffn is null || mix is null)
+            var scripts = ScriptsOf(prompt);
+            var built = _drafting is null;
+            if (built && !BuildDrafter(path, scripts)) return false;
+            var store = _drafterHeadStore!;
+            var groups = store.Surface(scripts);
+            var head = SurfaceBytes(store, groups);
+            if (!built && MemoryNow.AvailableBytes() is { } available && available < head + DrafterReserve)
             {
-                CircleLog.Info(Area, $"no drafting: {Path.GetFileName(path)} has no layer stores here");
+                CircleLog.Info(Area, Invariant($"no drafting this turn: {available / 1048576.0:F0} MB available, the drafter's head wants {head / 1048576.0:F0} MB beside the {DrafterReserve / 1048576.0:F0} MB kept for the phone; the drafter lets go"));
                 LetDrafterGo();
-                _drafterPath = null;
-                return;
+                return false;
             }
-            var c = Qwen35Config.FromGguf(_drafterFile);
-            var head = (long)c.Vocabulary * c.Embedding * 9 / 32; // a paired copy: 2.25 bits a weight
-            var need = mix.DataBytes + ffn.DataBytes + head + DrafterReserve;
-            if (MemoryNow.AvailableBytes() is { } available && available < need)
-            {
-                CircleLog.Info(Area, Invariant($"no drafting this turn: {available / 1048576.0:F0} MB available, the drafter wants {need / 1048576.0:F0} MB"));
-                return;
-            }
-            var started = Stopwatch.GetTimestamp();
-            var model = Qwen35Model.Load(_drafterFile, _pool, headFromStore: false, ffnFromStore: true, mixFromStore: true);
-            var stream = new LayerStream(mix, ffn, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes), long.MaxValue, 0);
-            model.Stream = stream;
-            _drafterModel = model;
-            _drafterStream = stream;
-            _drafter = new ModelDrafter(model, Math.Min(_state.Capacity, DrafterCapacity), _options.KvMode, _options.KeyForm);
-            _drafting = new Speculator(_model, _drafter, _options.StreamedDrafts);
-            CircleLog.Info(Area, Invariant($"drafting: {Path.GetFileName(path)} drafts {_options.StreamedDrafts} ahead for the streamed trunk, {stream.Describe()}, built in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+            _drafterHead = store.Load(groups, Volatile.Read(ref _channels));
+            _drafterModel!.Head = _drafterHead;
+            return true;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException
-                                   or InvalidOperationException or OutOfMemoryException or KeyNotFoundException)
+                                   or InvalidOperationException or OutOfMemoryException or KeyNotFoundException or UnauthorizedAccessException)
         {
             CircleLog.Warn(Area, $"no drafting: the drafter would not build ({ex.GetType().Name}: {ex.Message})");
             LetDrafterGo();
             _drafterPath = null;
+            return false;
         }
     }
 
-    // The drafter goes: its stream, its model and its head's copy, its file. Under the gate.
+    // THE DRAFTER BY THE DEVICE'S RECIPE: its layers from its own stores, as many warm as the RAM left beside the trunk's
+    // turn allows once its head's surface, its state and a ring of two slots are counted, and what the phone keeps for itself;
+    // the rest read from flash for every token it runs - the 2B's 345 MB of layers, about a second a drafted token on the
+    // P30 with none warm. Without room for that much this turn decodes plainly, and the next asks again.
+    private bool BuildDrafter(string path, IReadOnlySet<Script> scripts)
+    {
+        _drafterFile ??= GgufFile.Open(path);
+        SplitBeforeLoad(path, _drafterFile, _options);
+        var ffn = ExistingFfnStore(path, _drafterFile, _options);
+        var mix = ffn is null ? null : ExistingMixStore(path, _drafterFile, _options);
+        var headStore = StoreDirectoryOf(_options) is { } directory ? HeadStore.Open(_drafterFile, StorePath(directory, path), HeadLayout.Paired) : null;
+        if (ffn is null || mix is null || headStore is null)
+        {
+            CircleLog.Info(Area, $"no drafting: {Path.GetFileName(path)} has no {(headStore is null ? "head" : "layer")} store here");
+            LetDrafterGo();
+            _drafterPath = null;
+            return false;
+        }
+
+        var c = ModelConfig.FromGguf(_drafterFile);
+        var head = SurfaceBytes(headStore, headStore.Surface(scripts));
+        var state = DrafterStateBytes(c);
+        var layers = mix.DataBytes + ffn.DataBytes;
+        var slot = Enumerable.Range(0, mix.Layers).Max(il => mix.LayerRange(il).Length + ffn.LayerRange(il).Length);
+        var available = MemoryNow.AvailableBytes();
+        var spare = available is { } a ? a - DrafterReserve - head - state : long.MaxValue;
+        long warm;
+        int slots;
+        if (spare >= layers)
+        {
+            (warm, slots) = (long.MaxValue, 0);
+        }
+        else if (spare >= 2 * slot)
+        {
+            (warm, slots) = (spare - 2 * slot, 2);
+        }
+        else
+        {
+            CircleLog.Info(Area, Invariant($"no drafting this turn: {available / 1048576.0:F0} MB available, the drafter wants {(DrafterReserve + head + state + 2 * slot) / 1048576.0:F0} MB at the least - its head {head / 1048576.0:F0}, its state {state / 1048576.0:F0}, two slots of {slot / 1048576.0:F0}, and {DrafterReserve / 1048576.0:F0} kept for the phone"));
+            return false;
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var model = LanguageModel.Load(_drafterFile, _pool, headFromStore: true, ffnFromStore: true, mixFromStore: true);
+        var stream = new LayerStream(mix, ffn, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes), warm, slots);
+        model.Stream = stream;
+        _drafterModel = model;
+        _drafterStream = stream;
+        _drafterHeadStore = headStore;
+        _drafter = new ModelDrafter(model, Math.Min(_state.Capacity, DrafterCapacity), _options.KvMode, _options.KeyForm);
+        _drafting = new Speculator(_model, _drafter, _options.StreamedDrafts);
+        CircleLog.Info(Area, Invariant($"drafting: {Path.GetFileName(path)} drafts {_options.StreamedDrafts} ahead for the streamed trunk, {stream.Describe()}, its head a surface of {head / 1048576.0:F0} MB, its state {state / 1048576.0:F0} MB; {(available is { } room ? $"{room / 1048576.0:F0} MB was available" : "the RAM available is not known")}; built in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms"));
+        return true;
+    }
+
+    // What a surface of a head's store holds in RAM once it is read in.
+    private static long SurfaceBytes(HeadStore store, IReadOnlyList<HeadStore.Group> groups) =>
+        groups.SelectMany(g => Enumerable.Range(g.FirstChunk, g.Chunks)).Sum(c => (long)store.Chunks[c].Bytes);
+
+    // The drafter's recurrent layers three times over - its state, the checkpoint its drafts start from, its primed start.
+    // Its keys and values are a few KB a position, and a conversation's are counted in the phone's share.
+    private static long DrafterStateBytes(ModelConfig c)
+    {
+        long recurrent = 0;
+        for (var il = 0; il < c.Layers; il++)
+        {
+            if (c.IsRecurrent(il)) recurrent += ((long)c.SsmHeads * c.SsmState * c.SsmState + (long)(c.ConvKernel - 1) * c.ConvChannels) * sizeof(float);
+        }
+        return 3 * recurrent;
+    }
+
+    // The drafter's head goes at the end of the turn: RAM holds none of its surface.
+    private void LetDrafterHeadGo()
+    {
+        if (_drafterModel is { } model) model.Head = null;
+        _drafterHead?.Dispose();
+        _drafterHead = null;
+    }
+
+    // The drafter goes: its head, its stream, its model, its file. Under the gate.
     private void LetDrafterGo()
     {
         var held = _drafterModel is not null;
+        LetDrafterHeadGo();
         _drafting = null;
         _drafter = null;
         if (_drafterModel is { } model) model.Stream = null;
         _drafterModel = null;
+        _drafterHeadStore = null;
         _drafterStream?.Dispose();
         _drafterStream = null;
         _drafterFile?.Dispose();
         _drafterFile = null;
-        if (held) GC.Collect(); // its head's copy is pinned arrays: RAM holds none of it once they are collected
+        if (held) GC.Collect(); // its state and buffers are managed arrays: RAM holds none of them once they are collected
     }
 
-    // The most positions the drafter's state holds, and what is kept beside it for the phone.
+    // The most positions the drafter's state holds, and what is kept beside it for the phone - counted against what is
+    // available once the trunk's turn holds all it holds.
     private const int DrafterCapacity = 8192;
     private const long DrafterReserve = 384L << 20;
 
@@ -1919,6 +2197,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             var (waited, read, reading) = streaming.TakeCounts();
             CircleLog.Info(Area, Invariant($"layers: {read / 1048576.0:F0} MB read from flash in {reading.TotalMilliseconds:F0} ms ({(reading.TotalSeconds > 0 ? read / 1048576.0 / reading.TotalSeconds : 0):F0} MB/s); the pass waited {waited.TotalMilliseconds:F0} ms for them"));
         }
+        if (_indexServing is { } serving)
+        {
+            var (warm, cached, cachedBytes, core, coreBytes) = serving.TakeCounts();
+            CircleLog.Info(Area, Invariant($"index: {warm} pieces from RAM, {cached} from the cached index ({cachedBytes / 1048576.0:F0} MB), {core} from the model's own file ({coreBytes / 1048576.0:F0} MB)"));
+        }
         if (Volatile.Read(ref _ffnKeepTicks) == 0) LetFfnGo("it streams in every turn here");
     }
 
@@ -1929,6 +2212,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         {
             var drafter = _drafterStream?.Bytes ?? 0;
             LetDrafterGo();
+            StopServingIndex();
             _model.Stream = null;
             _stream = null;
             var bytes = stream.Bytes;
@@ -1948,12 +2232,23 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         var request = StoreDirectoryOf(_options) is { } directory ? Path.Combine(directory, FfnFidelityFile) : null;
         var fidelity = request is not null && File.Exists(request);
+        var indexRequest = StoreDirectoryOf(_options) is { } folder ? Path.Combine(folder, IndexFile) : null;
+        var index = indexRequest is not null && File.Exists(indexRequest);
         var idle = (_ffnWarm is not null || _stream is not null) && Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed) >= Volatile.Read(ref _ffnKeepTicks);
-        if (!fidelity && !idle) return;
+        if (!fidelity && !idle && !index) return;
         if (!_gate.Wait(0)) return;
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
+            if (index)
+            {
+                var parts = File.ReadAllText(indexRequest!).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                File.Delete(indexRequest!);
+                var groups = parts.Length > 0 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var g) ? Math.Clamp(g, 1, 64) : 8;
+                var percent = parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) ? Math.Clamp(p, 1, 100) : 15;
+                RunIndexJob(groups, percent);
+                return;
+            }
             if (fidelity)
             {
                 var percents = File.ReadAllText(request!).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -2133,15 +2428,24 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         return prompt.Count > opening && prompt.Skip(next + 1).Take(_userTurn.Length).SequenceEqual(_userTurn) ? opening : next;
     }
 
-    // The system turn is in: this point is remembered, and kept on disk for the next process.
-    private void Prime(List<int> prompt, int length)
+    // The system turn is in: this point is kept on disk for the next process, and remembered in RAM - unless the trunk
+    // streams its layers, whose copy would be 157 MB of the 27B: it reads the start back from flash instead.
+    private void Prime(List<int> prompt, int length, bool inRam)
     {
-        _state.MarkPrimed();
+        if (inRam) _state.MarkPrimed();
         KeepPrimed(prompt, length, _state);
     }
 
+    // Whether this turn's trunk streams its layers through a ring: its state keeps no copy of itself (see Run).
+    private bool Lean => _stream is { Slots: > 0 };
+
+    // Whether the trunk reads its layers from flash through a ring: the open stream's, or the one a turn would open now.
+    private bool Streams() => _stream is { } open
+        ? open.Slots > 0
+        : _model.MixFromStore && _mixStore is { } mix && _ffnStore is { } ffn && LayerRecipe(mix, ffn).Slots > 0;
+
     // A system turn's state, kept on disk under its own name unless one is there already.
-    private void KeepPrimed(List<int> prompt, int length, Qwen35State state)
+    private void KeepPrimed(List<int> prompt, int length, ModelState state)
     {
         if (_primedDirectory is null) return;
         try
@@ -2160,7 +2464,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // The first tokens of a prompt and the state after them, written aside and moved into place, so
     // a reader never finds half of one.
-    private void WritePrimed(string file, List<int> prompt, int length, Qwen35State state)
+    private void WritePrimed(string file, List<int> prompt, int length, ModelState state)
     {
         Directory.CreateDirectory(_primedDirectory!);
         var writing = file + ".writing";
@@ -2173,13 +2477,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             writer.Write(length);
             for (var i = 0; i < length; i++) writer.Write(prompt[i]);
             state.Write(writer, _model.Config);
+            writer.Flush();
+            FlashFile.Settle(stream, 0, stream.Length); // on flash, and only there: the 27B's start is 151 MB of pages
         }
         File.Move(writing, file, overwrite: true);
     }
 
     // The state WritePrimed kept, when it was kept for this model, engine and working memory and its
-    // tokens, at most `most` of them, are how this prompt starts; null when it is anything else.
-    private Qwen35State? ReadPrimed(string file, List<int> prompt, int most)
+    // tokens, at most `most` of them, are how this prompt starts; null when it is anything else. Read
+    // into `into` when it is given and holds the same capacity and working memory.
+    private ModelState? ReadPrimed(string file, List<int> prompt, int most, ModelState? into = null)
     {
         using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         using var reader = new BinaryReader(stream, Encoding.UTF8);
@@ -2191,7 +2498,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         {
             if (reader.ReadInt32() != prompt[i]) return null;
         }
-        var state = Qwen35State.Read(reader, _model.Config);
+        var state = ModelState.Read(reader, _model.Config, into);
         return state.Position == count && state.Capacity == _state.Capacity && state.KvMode == _state.KvMode && state.KeyForm == _state.KeyForm ? state : null;
     }
 
@@ -2204,14 +2511,18 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         if (!File.Exists(file)) return false;
         try
         {
-            if (ReadPrimed(file, prompt, length) is not { } state || state.Position != length) return false;
+            // A STREAMED TRUNK READS ITS START INTO THE STATE IT HAS: a second state while the first is let go would be 151 MB
+            // more of the 27B for a moment, and the start is not kept in RAM after - the next is read from flash again.
+            var lean = Lean;
+            if (ReadPrimed(file, prompt, length, lean ? _state : null) is not { } state || state.Position != length) return false;
 
             _state = state;
             _history.Clear();
             for (var i = 0; i < length; i++) _history.Add(prompt[i]);
             _speculator?.Forget();
-            _state.MarkPrimed();
+            if (!lean) _state.MarkPrimed();
             File.SetLastWriteTimeUtc(file, DateTime.UtcNow); // in use: the last to be pruned
+            if (lean) DropCached(file);
             return true;
         }
         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -2219,6 +2530,20 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             CircleLog.Warn(Area, "a primed start could not be read and is primed again: " + e.Message);
             try { File.Delete(file); } catch (IOException) { }
             return false;
+        }
+    }
+
+    // A file read once into the state leaves the OS's cache: RAM is not where it is kept.
+    private static void DropCached(string file)
+    {
+        try
+        {
+            using var read = FlashFile.Open(file, direct: false);
+            read.Drop(0, read.Length);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            // The cache lets it go in its own time.
         }
     }
 
@@ -2491,8 +2816,17 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     }
 
     // Whether this call thinks: as its effort says, or the generator's own default when it says none.
-    private bool ThinkingFor(GenerationOptions options) =>
-        options.Effort is { } effort ? effort != ReasoningEffort.Off && _thinkStart >= 0 : _options.Thinking;
+    // A TRUNK THAT STREAMS ITS LAYERS NEVER THINKS BEFORE IT ANSWERS: every thought token is a pass over all of them -
+    // about 30 s for the 27B on the P30 - so a thought of a thousand tokens is hours of silence before the first word.
+    // On the P30 on 2026-11-09 the effort router judged a pirate question hard ("medium, up to 1024 thinking tokens"),
+    // the 27B spent its four tokens and 153 s thinking, and no word came within the deadline.
+    private bool ThinkingFor(GenerationOptions options)
+    {
+        var asked = options.Effort is { } effort ? effort != ReasoningEffort.Off && _thinkStart >= 0 : _options.Thinking;
+        if (!asked || !Streams()) return asked;
+        CircleLog.Info(Area, $"no thinking this turn ({options.Effort?.TemplateName() ?? "the generator's default"} was asked): this trunk streams its layers, and every thought token is a pass over all of them");
+        return false;
+    }
 
     // The tighter of two token budgets where both are set, else whichever is; 0 is none.
     private static int Tighter(int a, int b) =>

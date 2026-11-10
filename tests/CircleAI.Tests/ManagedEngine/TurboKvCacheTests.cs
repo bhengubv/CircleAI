@@ -124,7 +124,7 @@ public sealed class TurboKvCacheTests(ITestOutputHelper output)
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         var live = model.NewState(64, KvCompressionMode.TurboQuant3Bit, TurboQuantForm.Prod);
         int[] prompt = [9419, 0, 10334, 525, 498, 30];
         foreach (var token in prompt) model.Forward(token, live);
@@ -133,7 +133,7 @@ public sealed class TurboKvCacheTests(ITestOutputHelper output)
         using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true)) live.Write(writer, model.Config);
         stream.Position = 0;
         using var reader = new BinaryReader(stream);
-        var read = Qwen35State.Read(reader, model.Config);
+        var read = ModelState.Read(reader, model.Config);
         Assert.Equal(KvCompressionMode.TurboQuant3Bit, read.KvMode);
         Assert.Equal(TurboQuantForm.Prod, read.KeyForm);
         Assert.Equal(prompt.Length, read.Position);
@@ -157,7 +157,7 @@ public sealed class TurboKvCacheTests(ITestOutputHelper output)
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         using var fixture = Bonsai2Model.Fixture("logits.json");
         var cases = fixture.RootElement.GetProperty("cases").EnumerateArray().Take(Setting("BONSAI2_KV_CASES", 2)).ToList();
         var stepCount = Setting("BONSAI2_KV_STEPS", 8);

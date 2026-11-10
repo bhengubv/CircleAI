@@ -480,6 +480,19 @@ public sealed class HeadStore
         }
     }
 
+    /// <summary>
+    /// <paramref name="groups"/>' chunks read from flash as the scoring reaches them, a window at a time in reads of
+    /// <paramref name="readBytes"/> on <paramref name="channels"/> readers - for a trunk that streams its layers, whose
+    /// RAM cannot spare the surface. The first window is on its way when this returns.
+    /// </summary>
+    public HeadStream Stream(IReadOnlyList<Group> groups, int channels, int readBytes, long windowBytes = HeadStream.DefaultWindowBytes)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        ArgumentOutOfRangeException.ThrowIfLessThan(windowBytes, FlashFile.Page);
+        var wanted = groups.SelectMany(g => Enumerable.Range(g.FirstChunk, g.Chunks)).Select(c => Chunks[c]).ToArray();
+        return new HeadStream(this, wanted, groups, channels, readBytes, windowBytes);
+    }
+
     // ---- the parts ----
 
     // The rows a chunk of `count` holds in a layout: whole tiles for the paired shape.
@@ -662,5 +675,194 @@ public sealed unsafe class HeadSurface : IHeadRows, IDisposable
         var buffer = _buffer;
         _buffer = null;
         FlashFile.Free(buffer);
+    }
+}
+
+/// <summary>
+/// A surface's rows read from the store as a head's scoring reaches them, for a trunk that streams every layer from flash:
+/// windows of consecutive chunks read past the cache on the device's channels, the next window read while the one before
+/// is scored, and after the last the first again, for the next word. RAM holds two windows, not the surface - for the 27B
+/// 16 MB, not 198 - and a word reads the surface once more, about a second beside the 30 of its layers.
+/// </summary>
+public sealed unsafe class HeadStream : IHeadRows, IDisposable
+{
+    /// <summary>The most a window reads at once: consecutive chunks up to this many bytes.</summary>
+    public const long DefaultWindowBytes = 8L << 20;
+
+    private readonly HeadStore.Chunk[] _chunks;
+    private readonly int _rowBytes;
+    private readonly int _blocks;
+    private readonly (long Offset, long Bytes)[] _windows; // consecutive chunks lying end to end in the file
+    private readonly int[] _windowOf;
+    private readonly long[] _placeInWindow;
+    private readonly FlashFile _file;
+    private readonly int _channels;
+    private readonly int _readBytes;
+    private readonly byte*[] _buffers;
+    private readonly int[] _holds = [-1, -1];   // the window each buffer holds whole
+    private Task? _reading;                      // at most one read in flight, into _readingSlot
+    private int _readingWindow = -1;
+    private int _readingSlot = -1;
+    private long _read;
+    private long _readTicks;
+    private int _disposed;
+
+    internal HeadStream(HeadStore store, HeadStore.Chunk[] chunks, IReadOnlyList<HeadStore.Group> groups, int channels, int readBytes, long windowBytes)
+    {
+        _chunks = chunks;
+        _rowBytes = store.RowBytes;
+        _blocks = store.BlocksPerRow;
+        Layout = store.Layout;
+        Groups = groups;
+        Rows = groups.Sum(g => g.Rows);
+        MostRows = chunks.Length == 0 ? 0 : chunks.Max(c => c.Rows);
+        _channels = Math.Max(1, channels);
+        _readBytes = Math.Max(FlashFile.Page, readBytes);
+
+        var windows = new List<(long, long)>();
+        _windowOf = new int[chunks.Length];
+        _placeInWindow = new long[chunks.Length];
+        var first = 0;
+        while (first < chunks.Length)
+        {
+            var end = first + 1;
+            var bytes = (long)chunks[first].Bytes;
+            while (end < chunks.Length && chunks[end].Offset == chunks[end - 1].Offset + chunks[end - 1].Bytes && bytes + chunks[end].Bytes <= windowBytes)
+            {
+                bytes += chunks[end].Bytes;
+                end++;
+            }
+            long place = 0;
+            for (var c = first; c < end; c++)
+            {
+                _windowOf[c] = windows.Count;
+                _placeInWindow[c] = place;
+                place += chunks[c].Bytes;
+            }
+            windows.Add((chunks[first].Offset, bytes));
+            first = end;
+        }
+        _windows = windows.ToArray();
+        var most = _windows.Length == 0 ? FlashFile.Page : _windows.Max(w => w.Bytes);
+        _file = FlashFile.Open(store.FilePath);
+        Direct = _file.Direct;
+        _buffers = new byte*[2];
+        try
+        {
+            _buffers[0] = FlashFile.Allocate(most);
+            _buffers[1] = FlashFile.Allocate(most);
+        }
+        catch
+        {
+            FlashFile.Free(_buffers[0]);
+            _file.Dispose();
+            throw;
+        }
+        Bytes = 2 * most;
+        SurfaceBytes = chunks.Sum(c => (long)c.Bytes);
+        if (_windows.Length > 0) Ahead(0, 0); // the first window, on its way before the first chunk is asked for
+    }
+
+    /// <inheritdoc/>
+    public HeadLayout Layout { get; }
+
+    /// <summary>The scripts it reads.</summary>
+    public IReadOnlyList<HeadStore.Group> Groups { get; }
+
+    /// <summary>Tokens it reads (padding rows not counted).</summary>
+    public int Rows { get; }
+
+    /// <summary>Bytes it holds in RAM: two windows.</summary>
+    public long Bytes { get; }
+
+    /// <summary>Bytes a scoring reads: the whole surface.</summary>
+    public long SurfaceBytes { get; }
+
+    /// <summary>Whether its reads go past the OS's cache.</summary>
+    public bool Direct { get; }
+
+    /// <inheritdoc/>
+    public int ChunkCount => _chunks.Length;
+
+    /// <inheritdoc/>
+    public int MostRows { get; }
+
+    /// <summary>Windows a scoring reads in: two or fewer are read once and held.</summary>
+    public int Windows => _windows.Length;
+
+    /// <summary>The bytes read and the time reading them took since the last call; the counts start again.</summary>
+    public (long Read, TimeSpan Reading) TakeCounts() =>
+        (Interlocked.Exchange(ref _read, 0), Stopwatch.GetElapsedTime(0, Interlocked.Exchange(ref _readTicks, 0)));
+
+    /// <inheritdoc/>
+    public void Chunk(int index, out ReadOnlySpan<byte> rows, out ReadOnlySpan<float> scales, out ReadOnlySpan<int> tokens)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        var window = _windowOf[index];
+        var slot = Slot(window);
+        var next = (window + 1) % _windows.Length;
+        if (next != window && _reading is null && Array.IndexOf(_holds, next) < 0) Ahead(next, 1 - slot);
+
+        var chunk = _chunks[index];
+        var start = _buffers[slot] + _placeInWindow[index];
+        var cols = _blocks * Ptq1.BlockWeights;
+        var weightBytes = Layout == HeadLayout.Paired ? Ptq1PairMatrix.WeightBytes(chunk.Rows, cols) : (long)chunk.Rows * _rowBytes;
+        rows = new ReadOnlySpan<byte>(start, checked((int)weightBytes));
+        scales = new ReadOnlySpan<float>(start + weightBytes, chunk.Rows * _blocks);
+        tokens = new ReadOnlySpan<int>(start + weightBytes + (long)chunk.Rows * _blocks * sizeof(float), chunk.Rows);
+    }
+
+    // The buffer holding `window` whole: the one that does, the read in flight for it, or a read now.
+    private int Slot(int window)
+    {
+        if (_reading is not null && _readingWindow == window) return Finish();
+        var held = Array.IndexOf(_holds, window);
+        if (held >= 0) return held;
+        if (_reading is not null) Finish();            // another window in flight: let it land first
+        var slot = _holds[0] == -1 || _holds[1] != -1 ? 0 : 1;
+        Ahead(window, slot);
+        return Finish();
+    }
+
+    private void Ahead(int window, int slot)
+    {
+        _holds[slot] = -1;
+        _readingWindow = window;
+        _readingSlot = slot;
+        var (offset, bytes) = _windows[window];
+        var into = (nint)_buffers[slot];
+        _reading = Task.Run(() =>
+        {
+            var started = Stopwatch.GetTimestamp();
+            if (_file.ReadChannels((byte*)into, bytes, offset, _channels, _readBytes) < bytes)
+                throw new InvalidDataException($"{_file.FilePath} ends inside the head's rows.");
+            Interlocked.Add(ref _read, bytes);
+            Interlocked.Add(ref _readTicks, Stopwatch.GetTimestamp() - started);
+        });
+    }
+
+    // The read in flight lands; its buffer holds its window.
+    private int Finish()
+    {
+        var reading = _reading!;
+        var slot = _readingSlot;
+        var window = _readingWindow;
+        _reading = null;
+        _readingWindow = -1;
+        _readingSlot = -1;
+        reading.GetAwaiter().GetResult();
+        _holds[slot] = window;
+        return slot;
+    }
+
+    /// <summary>Lets the windows go: RAM holds none of the rows after this.</summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        try { _reading?.Wait(); }
+        catch (AggregateException) { /* the stream is going */ }
+        FlashFile.Free(_buffers[0]);
+        FlashFile.Free(_buffers[1]);
+        _file.Dispose();
     }
 }

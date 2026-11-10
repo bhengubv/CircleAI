@@ -17,6 +17,11 @@
 //
 // Written to a ".partial" file and renamed when whole. The feed-forward's set is the layout FfnStore wrote before the
 // mixing had one: its stores read as they were.
+//
+// OR IN PLACE (InPlace): ONE COPY OF THE WEIGHTS. The same layout with no file of its own - each tensor read from the
+// model's file past the cache when a layer is wanted, and repacked into the tiles where it lands (ReadLayer), the same
+// bytes a written store would hold. On the P30 a written store of the 27B was a second copy of its weights on flash -
+// 6.5 GB beside the 5.9 GB file, with 5.2 GB left - read at 2.25 bits a weight where the file holds 1.75.
 
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -58,7 +63,7 @@ public sealed class TileStore
 
     private readonly int[] _firstOfLayer; // index of each layer's first entry; one past the end last
 
-    private TileStore(string path, TileSet set, int layers, long dataOffset, long dataBytes, IReadOnlyList<Entry> entries)
+    private TileStore(string path, TileSet set, int layers, long dataOffset, long dataBytes, IReadOnlyList<Entry> entries, bool inPlace = false)
     {
         FilePath = path;
         Set = set;
@@ -66,6 +71,7 @@ public sealed class TileStore
         DataOffset = dataOffset;
         DataBytes = dataBytes;
         Entries = entries;
+        InPlace = inPlace;
         _firstOfLayer = new int[layers + 1];
         var at = 0;
         for (var il = 0; il < layers; il++)
@@ -76,8 +82,11 @@ public sealed class TileStore
         _firstOfLayer[layers] = at;
     }
 
-    /// <summary>The file.</summary>
+    /// <summary>The file: the store's own, or the model's when it is read in place.</summary>
     public string FilePath { get; }
+
+    /// <summary>Whether the tiles are read from the model's own file and repacked as they land: no store file at all.</summary>
+    public bool InPlace { get; }
 
     /// <summary>Which of the layers' weights it holds.</summary>
     public TileSet Set { get; }
@@ -114,10 +123,10 @@ public sealed class TileStore
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(set);
-        Qwen35Config c;
+        ModelConfig c;
         try
         {
-            c = Qwen35Config.FromGguf(model);
+            c = ModelConfig.FromGguf(model);
         }
         catch (Exception ex) when (ex is NotSupportedException or InvalidDataException or KeyNotFoundException)
         {
@@ -152,26 +161,10 @@ public sealed class TileStore
     {
         ArgumentNullException.ThrowIfNull(model);
         if (Unreadable(model, set) is { } why) throw new NotSupportedException(why);
-        var c = Qwen35Config.FromGguf(model);
+        var c = ModelConfig.FromGguf(model);
 
         // The index first: every tensor's place.
-        var entries = new List<Entry>(c.Layers * set.Kinds.Count);
-        long at = 0;
-        for (var il = 0; il < c.Layers; il++)
-        {
-            for (var k = 0; k < set.Kinds.Count; k++)
-            {
-                var tensor = model.Tensor($"blk.{il}.{set.Kinds[k]}.weight");
-                if (tensor is null) continue;
-                var rows = checked((int)tensor.Rows);
-                var cols = checked((int)tensor.RowLength);
-                var weights = Ptq1PairMatrix.WeightBytes(rows, cols);
-                var scales = Ptq1PairMatrix.ScaleCount(rows, cols);
-                var entry = new Entry(il, k, rows, cols, tensor.Offset, tensor.ByteCount, at, weights, at + FlashFile.Pages(weights), scales);
-                entries.Add(entry);
-                at = entry.End;
-            }
-        }
+        var entries = Layout(model, c, set, out var at);
         var indexBytes = FlashFile.Pages((long)entries.Count * EntryBytes);
         var dataOffset = FlashFile.Page + indexBytes;
 
@@ -237,6 +230,73 @@ public sealed class TileStore
     }
 
     /// <summary>
+    /// <paramref name="model"/>'s <paramref name="set"/> in a store's layout, read from the model's own file: no second copy on
+    /// flash. A layer read from it (<see cref="ReadLayer"/>) is the bytes a written store holds, to the bit.
+    /// </summary>
+    public static TileStore OverModel(GgufFile model, TileSet set) => OverModel(model, set, kinds: null);
+
+    /// <summary>
+    /// As <see cref="OverModel(GgufFile, TileSet)"/>, holding only the set's <paramref name="kinds"/> (all when null): the
+    /// feed-forward's ffn_down alone where the index serves its gate and up (IndexedFeedForward).
+    /// </summary>
+    public static TileStore OverModel(GgufFile model, TileSet set, IReadOnlyCollection<int>? kinds)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        if (Unreadable(model, set) is { } why) throw new NotSupportedException(why);
+        var c = ModelConfig.FromGguf(model);
+        var entries = Layout(model, c, set, out var bytes, kinds);
+        return new TileStore(model.FilePath, set, c.Layers, 0, bytes, entries, inPlace: true);
+    }
+
+    // Every tensor's place in a store's data: layer by layer in the set's order, each its tiles then its scales, whole pages.
+    private static List<Entry> Layout(GgufFile model, ModelConfig c, TileSet set, out long bytes, IReadOnlyCollection<int>? kinds = null)
+    {
+        var entries = new List<Entry>(c.Layers * set.Kinds.Count);
+        long at = 0;
+        for (var il = 0; il < c.Layers; il++)
+        {
+            for (var k = 0; k < set.Kinds.Count; k++)
+            {
+                if (kinds is not null && !kinds.Contains(k)) continue;
+                var tensor = model.Tensor($"blk.{il}.{set.Kinds[k]}.weight");
+                if (tensor is null) continue;
+                var rows = checked((int)tensor.Rows);
+                var cols = checked((int)tensor.RowLength);
+                var weights = Ptq1PairMatrix.WeightBytes(rows, cols);
+                var scales = Ptq1PairMatrix.ScaleCount(rows, cols);
+                var entry = new Entry(il, k, rows, cols, tensor.Offset, tensor.ByteCount, at, weights, at + FlashFile.Pages(weights), scales);
+                entries.Add(entry);
+                at = entry.End;
+            }
+        }
+        bytes = at;
+        return entries;
+    }
+
+    /// <summary>The most bytes of the model's file one tensor spans, whole pages: the window a read in place needs.</summary>
+    public long MostSourceBytes => Entries.Count == 0 ? FlashFile.Page : Entries.Max(SourceSpan);
+
+    /// <summary>
+    /// Layer <paramref name="layer"/> read from the model's own file (<paramref name="source"/>) into <paramref name="into"/>,
+    /// which holds the store's data from <paramref name="start"/>: tensor by tensor, past the cache into
+    /// <paramref name="window"/> (<see cref="MostSourceBytes"/> long) in reads of <paramref name="readBytes"/> on
+    /// <paramref name="channels"/> readers, each repacked into the tiles where a written store would hold it.
+    /// </summary>
+    public unsafe void ReadLayer(FlashFile source, int layer, byte* into, long start, byte* window, int channels, int readBytes)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        foreach (var e in LayerEntries(layer))
+        {
+            var rows = ReadTensor(source, Set, e, window, channels, readBytes);
+            var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
+            var output = new Span<byte>(into + (e.WeightsOffset - start), (int)(e.End - e.WeightsOffset));
+            output.Clear();
+            Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, output[..weightsLength],
+                System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(output[weightsLength..]), RepackDegree);
+        }
+    }
+
+    /// <summary>
     /// The store of <paramref name="set"/> at <paramref name="path"/> when it was cut from <paramref name="model"/>; null when
     /// there is none, or it is another model's or another set's.
     /// </summary>
@@ -245,7 +305,7 @@ public sealed class TileStore
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(set);
         if (!File.Exists(path) || Unreadable(model, set) is not null) return null;
-        var c = Qwen35Config.FromGguf(model);
+        var c = ModelConfig.FromGguf(model);
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 12);
@@ -291,6 +351,7 @@ public sealed class TileStore
     public unsafe int Verify(GgufFile model, int channels = 4, int readBytes = 1 << 20)
     {
         ArgumentNullException.ThrowIfNull(model);
+        if (InPlace) return 0; // the model's own file: there is no copy to differ from it
         var wrong = 0;
         using var file = FlashFile.Open(FilePath);
         using var source = FlashFile.Open(model.FilePath);
@@ -333,8 +394,23 @@ public sealed class TileStore
         try
         {
             using var file = FlashFile.Open(FilePath);
-            if (file.ReadChannels(buffer, DataBytes, DataOffset, channels, readBytes) < DataBytes)
+            if (InPlace)
+            {
+                // From the model's own file, tensor by tensor, each repacked where the store would hold it.
+                var window = FlashFile.Allocate(MostSourceBytes);
+                try
+                {
+                    for (var il = 0; il < Layers; il++) ReadLayer(file, il, buffer, 0, window, channels, readBytes);
+                }
+                finally
+                {
+                    FlashFile.Free(window);
+                }
+            }
+            else if (file.ReadChannels(buffer, DataBytes, DataOffset, channels, readBytes) < DataBytes)
+            {
                 throw new InvalidDataException($"{FilePath} ends inside its data.");
+            }
             var views = new Ptq1PairMatrix?[Layers, Set.Kinds.Count];
             foreach (var e in Entries)
                 views[e.Layer, e.Kind] = Ptq1PairMatrix.Over(buffer + e.WeightsOffset, (float*)(buffer + e.ScalesOffset), e.Rows, e.Columns);
@@ -349,7 +425,7 @@ public sealed class TileStore
     }
 
     // Tensors of `set` the model has, every layer counted.
-    private static int Held(GgufFile model, Qwen35Config c, TileSet set)
+    private static int Held(GgufFile model, ModelConfig c, TileSet set)
     {
         var held = 0;
         for (var il = 0; il < c.Layers; il++)

@@ -81,7 +81,7 @@ public sealed class WhereCompressionBreaksTests(ITestOutputHelper output)
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         using var fixture = Bonsai2Model.Fixture("logits.json");
         var stepCount = Setting("BONSAI2_KV_STEPS", 8);
         var logits = new float[model.Config.Vocabulary];
@@ -103,7 +103,7 @@ public sealed class WhereCompressionBreaksTests(ITestOutputHelper output)
                     var expected = step.GetProperty("token").GetInt32();
                     foreach (var pair in step.GetProperty("top").EnumerateArray())
                         worst = MathF.Max(worst, MathF.Abs(logits[pair[0].GetInt32()] - pair[1].GetSingle()));
-                    // A step is judged only where the fork's own top two are 0.3 apart (Qwen35ModelTests).
+                    // A step is judged only where the fork's own top two are 0.3 apart (LanguageModelTests).
                     if (step.GetProperty("gap").GetSingle() >= 0.3f)
                     {
                         judged++;
@@ -134,7 +134,7 @@ public sealed class WhereCompressionBreaksTests(ITestOutputHelper output)
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var model = Qwen35Model.Load(file, pool);
+        var model = LanguageModel.Load(file, pool);
         var tokenizer = ByteLevelBpe.FromGguf(file);
         using var fixture = Bonsai2Model.Fixture("logits.json");
         // The fork's own rendering of the question with get_weather offered.
@@ -174,7 +174,7 @@ public sealed class WhereCompressionBreaksTests(ITestOutputHelper output)
     // Greedy from the prompt in one mode, until the turn ends or 48 tokens; from the token after
     // "<tool_call>" the call is held to its form when a grammar is given - the steps
     // ManagedChatGenerator takes, without its sampler.
-    private static string Write(Qwen35Model model, int[] prompt, KvCompressionMode mode, ToolCallGrammar? grammar,
+    private static string Write(LanguageModel model, int[] prompt, KvCompressionMode mode, ToolCallGrammar? grammar,
         ToolCallGrammar.PieceOf piece, HashSet<int> endOfTurn)
     {
         const int most = 48;

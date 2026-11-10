@@ -5,13 +5,13 @@
 //
 //   draft     the source proposes d1..dk after the token just drawn (the MTP head: each from the
 //             one before and its own hidden state)
-//   verify    the trunk runs [token, d1..dk] in one batched pass (Qwen35Model.ForwardBatch): the
+//   verify    the trunk runs [token, d1..dk] in one batched pass (LanguageModel.ForwardBatch): the
 //             logits at every position are bit for bit the ones plain decoding computes there
 //   draw      the reply draws from those logits in order, through the very step plain decoding
 //             uses (sampler, tool-call form, stops, length); a draft stays only while it is the
 //             token drawn, and the first token drawn that differs is the next token
 //   roll back the trunk ran past what it keeps: the pass stepped each Gated DeltaNet layer on a copy
-//             aside, one layer's worth, and recorded the inputs (Qwen35Model.RecordRecurrence), so
+//             aside, one layer's worth, and recorded the inputs (LanguageModel.RecordRecurrence), so
 //             the state's recurrent layers step through just the kept tokens afterwards
 //             (ReplayRecurrence) - no second pass over the weights, which for a model streamed from
 //             flash is the whole cost of a word, and no checkpoint of every layer, which for the
@@ -48,10 +48,10 @@ public interface IDraftSource
     bool NeedsHidden => true;
 }
 
-/// <summary>Draft-and-verify decoding over a <see cref="Qwen35Model"/>, lossless by construction.</summary>
+/// <summary>Draft-and-verify decoding over a <see cref="LanguageModel"/>, lossless by construction.</summary>
 public sealed class Speculator
 {
-    private readonly Qwen35Model _model;
+    private readonly LanguageModel _model;
     private readonly IDraftSource _source;
     private readonly int[] _tokens;
     private readonly float[][] _logits;
@@ -59,7 +59,7 @@ public sealed class Speculator
     private readonly float[] _one;
 
     /// <summary>Checks up to <paramref name="drafts"/> tokens from <paramref name="source"/> per pass of the trunk.</summary>
-    public Speculator(Qwen35Model model, IDraftSource source, int drafts)
+    public Speculator(LanguageModel model, IDraftSource source, int drafts)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(source);
@@ -100,7 +100,7 @@ public sealed class Speculator
     public void Forget() => _source.Forget();
 
     /// <summary>Runs one token on the trunk, as Forward does, and lets the draft source see it.</summary>
-    public void Run(int token, Qwen35State state, Span<float> logits = default)
+    public void Run(int token, ModelState state, Span<float> logits = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         var position = state.Position;
@@ -114,7 +114,7 @@ public sealed class Speculator
     /// <paramref name="step"/> - the reply's own drawing step - is called on each position's logits in
     /// order. Returns the next token drawn and whether the reply ended with it (then not run).
     /// </summary>
-    public (int Token, bool End) Step(int token, Qwen35State state, List<int> history, Func<float[], (int Token, bool End)> step)
+    public (int Token, bool End) Step(int token, ModelState state, List<int> history, Func<float[], (int Token, bool End)> step)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(history);
@@ -144,15 +144,28 @@ public sealed class Speculator
 
         var at = 0;
         (int Token, bool End) drawn;
-        while (true)
+        try
         {
-            drawn = step(_logits[at]);
-            if (!drawn.End && at < drafted && drawn.Token == _tokens[at + 1])
+            while (true)
             {
-                at++;
-                continue;
+                drawn = step(_logits[at]);
+                if (!drawn.End && at < drafted && drawn.Token == _tokens[at + 1])
+                {
+                    at++;
+                    continue;
+                }
+                break;
             }
-            break;
+        }
+        catch
+        {
+            // A STEP THAT THROWS - A TURN CANCELLED AT ITS DEADLINE - LEAVES THE STATE WHERE THE HISTORY IS. The pass stepped
+            // the recurrent layers aside, so only the positions moved: back they go, and the attention layers' cells past them
+            // are written again before they are read. Left moved, the next turn going on from the history would compute at
+            // positions up to five past it.
+            state.Position = position;
+            state.RopePosition = rope;
+            throw;
         }
         var kept = at + 1;
         Drafted += drafted;
@@ -175,7 +188,7 @@ public sealed class Speculator
 /// </summary>
 public sealed class MtpDrafter : IDraftSource
 {
-    private readonly Qwen35Model _model;
+    private readonly LanguageModel _model;
     private readonly MtpState _cache;
     private readonly float[] _last;      // the trunk's h_nextn at _lastAt
     private readonly float[] _logits;
@@ -185,7 +198,7 @@ public sealed class MtpDrafter : IDraftSource
     private int _draftedToken = -1;
 
     /// <summary>A drafter over <paramref name="model"/>'s MTP head, for up to <paramref name="capacity"/> positions.</summary>
-    public MtpDrafter(Qwen35Model model, int capacity)
+    public MtpDrafter(LanguageModel model, int capacity)
     {
         ArgumentNullException.ThrowIfNull(model);
         if (!model.HasMtp) throw new InvalidOperationException("This model has no MTP head.");

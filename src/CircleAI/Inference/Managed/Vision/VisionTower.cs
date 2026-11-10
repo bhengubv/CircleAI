@@ -18,7 +18,7 @@
 //              GELU, mm.2 (+bias): one token per window, as wide as the language model's embedding
 //
 // The tokens come out row by row over the grid of windows, which is how the language model places
-// them (Qwen35Model.ForwardImageToken). Products are WeightMatrix's, rounded as the fork rounds
+// them (LanguageModel.ForwardImageToken). Products are WeightMatrix's, rounded as the fork rounds
 // them; norms sum in double as ggml does; GELU is the fork's fp16 table.
 //
 // Not thread-safe: one Encode at a time. The file must stay open while the tower is used.

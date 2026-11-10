@@ -17,8 +17,8 @@ public sealed class ModelDrafter : IDraftSource
 {
     private const int CatchUpTogether = 64; // tokens per batch while catching up
 
-    private readonly Qwen35Model _model;
-    private readonly Qwen35State _state;
+    private readonly LanguageModel _model;
+    private readonly ModelState _state;
     private readonly List<int> _seen = [];  // the tokens its state holds, in order
     private readonly float[] _logits;
     private int _draftedFrom = -1;          // where the last drafts started: its state is checkpointed there
@@ -27,7 +27,7 @@ public sealed class ModelDrafter : IDraftSource
     /// A drafter over <paramref name="model"/>, for up to <paramref name="capacity"/> positions, its attention layers holding
     /// their keys and values as <paramref name="kvMode"/> says.
     /// </summary>
-    public ModelDrafter(Qwen35Model model, int capacity,
+    public ModelDrafter(LanguageModel model, int capacity,
         CircleAI.Core.KvCompressionMode kvMode = CircleAI.Core.KvCompressionMode.Off,
         CircleAI.Core.Compression.TurboQuantForm keyForm = CircleAI.Core.Compression.TurboQuantForm.Mse)
     {
@@ -38,7 +38,7 @@ public sealed class ModelDrafter : IDraftSource
     }
 
     /// <summary>The model that drafts.</summary>
-    public Qwen35Model Model => _model;
+    public LanguageModel Model => _model;
 
     /// <summary>Tokens its state holds.</summary>
     public int Position => _seen.Count;

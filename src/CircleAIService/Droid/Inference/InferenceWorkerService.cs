@@ -43,8 +43,18 @@ public sealed class InferenceWorkerService : global::Android.App.Service
 
     private sealed class Job
     {
+        private long _deadlineTicks;
+
         public required string Id { get; init; }
-        public DateTimeOffset Deadline { get; init; }   // the ask's own; past it by a minute, the supervisor ends this process (OPEN-GAPS E33)
+
+        // The ask's own, moved on by every word it writes (ServiceLimits.GenerationDeadline is a word's); past it by a
+        // minute, the supervisor ends this process (OPEN-GAPS E33). Read by the heartbeat while the answer writes it.
+        public DateTimeOffset Deadline
+        {
+            get => new(Interlocked.Read(ref _deadlineTicks), TimeSpan.Zero);
+            set => Interlocked.Exchange(ref _deadlineTicks, value.UtcTicks);
+        }
+
         public bool JustRead { get; init; }             // a head start: whatever real comes takes the brain from it
         public readonly System.Text.StringBuilder Text = new();
         public readonly CancellationTokenSource Cts = new();
@@ -282,6 +292,8 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             JustRead: WorkerWire.Flag(req, WorkerWire.JustRead),
             Conversation: req.TryGetValue(WorkerWire.Conversation, out var talk) && talk.Length > 0 ? talk : null);
 
+        // EACH WORD MOVES THE DEADLINE ON by as long as the answer had when it began: the deadline is a word's.
+        var perWord = deadline - DateTimeOffset.UtcNow;
         _ = Task.Run(async () =>
         {
             try
@@ -289,6 +301,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
                 await foreach (var chunk in brain.GenerateAsync(brainJob, job.Cts.Token).ConfigureAwait(false))
                 {
                     lock (job.Text) job.Text.Append(chunk.Text);
+                    if (chunk.Text.Length > 0 && perWord > TimeSpan.Zero) job.Deadline = DateTimeOffset.UtcNow + perWord;
                     if (chunk.Final) job.Timing = chunk.Timing;
                     job.News.Release();
                 }

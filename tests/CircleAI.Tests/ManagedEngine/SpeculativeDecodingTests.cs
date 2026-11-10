@@ -38,11 +38,11 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
                 $"{what}[{i}]: {expected[i]} against {actual[i]}");
     }
 
-    private static T WithModel<T>(byte[] bytes, int threads, Func<Qwen35Model, T> use) => GgufBuilder.WithFile(bytes, path =>
+    private static T WithModel<T>(byte[] bytes, int threads, Func<LanguageModel, T> use) => GgufBuilder.WithFile(bytes, path =>
     {
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(threads);
-        return use(Qwen35Model.Load(file, pool));
+        return use(LanguageModel.Load(file, pool));
     });
 
     [Theory]
@@ -51,14 +51,14 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
     [InlineData(11)]
     public void Tokens_through_the_lanes_give_each_its_own_logits_to_the_bit(int n)
     {
-        // PAIRED BY THIS MODEL'S OWN OVERRIDE, NOT THE GLOBAL SWITCH. Qwen35Model.PairedForTest flipped here paired every
+        // PAIRED BY THIS MODEL'S OWN OVERRIDE, NOT THE GLOBAL SWITCH. LanguageModel.PairedForTest flipped here paired every
         // model the test classes running beside this one loaded in that moment - generator tests among them, whose paired
         // models wrote stores, opened streams and looked for drafters (2026-11-09: ten of them failed in one full run).
         GgufBuilder.WithFile(SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 3), path =>
         {
             using var file = GgufFile.Open(path);
             using var pool = new WorkerPool(3);
-            var m = Qwen35Model.Load(file, pool, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            var m = LanguageModel.Load(file, pool, headFromStore: false, ffnFromStore: false, pairedOverride: true);
             Assert.True(m.Paired);
             var v = m.Config.Vocabulary;
             var batch = Enumerable.Range(0, n).Select(i => (i * 5 + 1) % v).ToArray();
@@ -144,7 +144,7 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
     }
 
     // Plain decoding: the prompt, then `count` tokens drawn by a fresh `draw`, each fed back but the last.
-    private static (List<int> Tokens, Qwen35State State) Plain(Qwen35Model m, Func<Func<float[], List<int>, int>> draw, int count)
+    private static (List<int> Tokens, ModelState State) Plain(LanguageModel m, Func<Func<float[], List<int>, int>> draw, int count)
     {
         var state = m.NewState(64);
         var logits = new float[m.Config.Vocabulary];
@@ -162,8 +162,8 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
     }
 
     // The same through the speculator.
-    private static (List<int> Tokens, Qwen35State State, Speculator Speculator) Speculative(
-        Qwen35Model m, IDraftSource source, int drafts, Func<Func<float[], List<int>, int>> draw, int count)
+    private static (List<int> Tokens, ModelState State, Speculator Speculator) Speculative(
+        LanguageModel m, IDraftSource source, int drafts, Func<Func<float[], List<int>, int>> draw, int count)
     {
         var state = m.NewState(64);
         var speculator = new Speculator(m, source, drafts);
@@ -344,7 +344,7 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
 
         using var file = GgufFile.Open(path);
         using var pool = new WorkerPool(Math.Max(1, Environment.ProcessorCount));
-        var m = Qwen35Model.Load(file, pool);
+        var m = LanguageModel.Load(file, pool);
         Assert.True(m.HasMtp);
         Assert.Equal(GgmlType.PQ2_0, m.Packing);
 

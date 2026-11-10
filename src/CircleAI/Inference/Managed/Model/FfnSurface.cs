@@ -7,7 +7,7 @@
 // computing it on a zero input, not an approximation of it. What is approximated is the choice: the groups a word
 // would have used but the surface left out.
 //
-// Chosen by what fired: the engine adds up each group's activity as it answers (Qwen35Model.RecordFfn), and a
+// Chosen by what fired: the engine adds up each group's activity as it answers (LanguageModel.RecordFfn), and a
 // surface keeps each layer's strongest groups.
 
 namespace CircleAI.Inference.Managed.Model;

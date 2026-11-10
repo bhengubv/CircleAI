@@ -65,8 +65,8 @@ public sealed class HeadStoreTests(ITestOutputHelper output)
         {
             var store = HeadStore.Write(file, Path.Combine(directory, "model.head"), ScriptOf, chunkRows: 3);
             using var pool = pooled ? new WorkerPool(2) : null;
-            var whole = Qwen35Model.Load(file, pool);
-            var part = Qwen35Model.Load(file, pool);
+            var whole = LanguageModel.Load(file, pool);
+            var part = LanguageModel.Load(file, pool);
             if (whole.Paired || part.Paired)
             {
                 output.WriteLine("SKIPPED: the paired kernel is on (another test turned it on), and a paired model scores its whole head.");
@@ -106,8 +106,8 @@ public sealed class HeadStoreTests(ITestOutputHelper output)
         WithModel(GgmlType.PTQ1_0, 13, (file, directory) =>
         {
             var store = HeadStore.Write(file, Path.Combine(directory, "model.head"), ScriptOf, chunkRows: 4);
-            var whole = Qwen35Model.Load(file);
-            var part = Qwen35Model.Load(file);
+            var whole = LanguageModel.Load(file);
+            var part = LanguageModel.Load(file);
             if (whole.Paired || part.Paired)
             {
                 output.WriteLine("SKIPPED: the paired kernel is on.");
@@ -157,8 +157,8 @@ public sealed class HeadStoreTests(ITestOutputHelper output)
         {
             var store = HeadStore.Write(file, Path.Combine(directory, "model.head"), ScriptOf, chunkRows: 16, layout: HeadLayout.Paired);
             using var pool = pooled ? new WorkerPool(2) : null;
-            var whole = Qwen35Model.Load(file, pool, headFromStore: false, pairedOverride: true);
-            var served = Qwen35Model.Load(file, pool, headFromStore: true, pairedOverride: true);
+            var whole = LanguageModel.Load(file, pool, headFromStore: false, pairedOverride: true);
+            var served = LanguageModel.Load(file, pool, headFromStore: true, pairedOverride: true);
             Assert.True(served.HeadFromStore);
 
             using var surface = store.Load(store.Surface([Script.Latin]), channels: 2);
@@ -201,8 +201,8 @@ public sealed class HeadStoreTests(ITestOutputHelper output)
         WithModel(GgmlType.PTQ1_0, 23, (file, directory) =>
         {
             var store = HeadStore.Write(file, Path.Combine(directory, "model.head"), ScriptOf, chunkRows: 16, layout: HeadLayout.Paired);
-            var whole = Qwen35Model.Load(file, null, headFromStore: false, pairedOverride: true);
-            var served = Qwen35Model.Load(file, null, headFromStore: true, pairedOverride: true);
+            var whole = LanguageModel.Load(file, null, headFromStore: false, pairedOverride: true);
+            var served = LanguageModel.Load(file, null, headFromStore: true, pairedOverride: true);
             using var surface = store.Load(store.Groups, channels: 3);
             Assert.Equal(SyntheticQwen35.Vocabulary, surface.Rows);
             served.Head = surface;
