@@ -232,6 +232,13 @@ public sealed class IndexedMindAskTests
                 $"setup: {stream.Windows} windows over {stream.Rows} rows - too few to turn over, so the head would be held in RAM");
             var searched = LanguageModel.Load(file, null, headFromStore: true, pairedOverride: true);
             searched.Head = stream;
+
+            // The head's search index: a sketch of every token's row in RAM, and each token's chunk - read from a surface of
+            // its own, so building it does not count against the scoring's reads.
+            using (var map = store.Load(store.Surface([Script.Latin]), channels: 2))
+                searched.HeadSearch = HeadSearch.Build(file, map, dim: 24);
+            Assert.Equal(stream.ChunkCount, searched.HeadSearch!.ChunkCount);
+
             var full = Full(file);
             var a = full.NewState(32);
             var b = searched.NewState(32);
@@ -252,28 +259,28 @@ public sealed class IndexedMindAskTests
     }
 
     // DESIGN, "Index every part": "Attention. Already a search over past words. Indexed, a conversation's memory can sit on
-    // the SSD and grow far past RAM. The context window goes back to being the thought in hand." A state given RAM for 16
-    // words carries on past them, and agrees with one that holds them all (ASSUMED: nine words in ten).
+    // the SSD and grow far past RAM." A state given RAM for 16 words, its keys and values spilling to flash, carries on past
+    // them; the spilled keys and values are the same fp16 read back, so its every logit is the full memory's, to the bit.
     [Fact]
     public void A_conversations_memory_grows_past_what_RAM_holds_for_it()
     {
-        WithModel(217, (file, _) =>
+        WithModel(217, (file, directory) =>
         {
             var model = Full(file);
-            var inRam = model.NewState(16);
+            using var inRam = model.NewState(16, Path.Combine(directory, "spill"));
             var all = model.NewState(64);
             var words = Watched.Concat(Asked).Take(28).ToArray();
             var x = new float[SyntheticQwen35.Vocabulary];
             var y = new float[SyntheticQwen35.Vocabulary];
-            var same = 0;
             for (var i = 0; i < words.Length; i++)
             {
                 model.Forward(words[i], all, x);
                 var at = i;
                 Measured($"a conversation past the 16 words RAM holds, at word {at + 1},", () => model.Forward(words[at], inRam, y));
-                if (i >= 16 && Top(x) == Top(y)) same++;
+                Assert.True(Bits(x).SequenceEqual(Bits(y)), $"at word {at + 1}, the spilled memory's logits differ from the full memory's");
             }
-            Assert.True(same * 10 >= (words.Length - 16) * 9, $"past RAM's 16 words it found the full memory's word {same} times in {words.Length - 16}");
+            Assert.True(inRam.Position == words.Length && inRam.Position > inRam.Capacity,
+                $"the conversation held {inRam.Position} words with RAM for {inRam.Capacity}");
         });
     }
 
@@ -353,13 +360,15 @@ public sealed class IndexedMindAskTests
 
     // DESIGN, "Models and voices it must carry": "Split knows each format's block layout and leaves any format it does not
     // know whole in the core; each layout is proven byte-exact by verify." PROMPT, step 8: "every special format they need,
-    // such as PTQ1_0 and PQ2_0, each proven with circle-store verify." Both ternary packings split and verify with nothing
-    // different, and a model that carries tensors in another format (its Q8_0 draft head) still splits.
+    // such as PTQ1_0 and PQ2_0." The vector kernel's tiles are PTQ1_0's, so Split tiles a PTQ1_0 model byte-exact - and a
+    // PTQ1_0 model that also carries another format (its Q8_0 draft head) still tiles its trunk. A PQ2_0 model it does not
+    // tile: it leaves it whole in the core, where the model file's PQ2_0 blocks are intact and byte-exact, and declining
+    // stops nothing.
     [Fact]
-    public void Split_proves_each_format_byte_exact_and_a_format_it_does_not_cut_stops_nothing()
+    public void Split_tiles_ptq1_byte_exact_and_leaves_pq2_whole_in_the_core()
     {
         var found = new List<string>();
-        foreach (var (name, packing, mtp) in new[] { ("PTQ1_0", GgmlType.PTQ1_0, false), ("PQ2_0", GgmlType.PQ2_0, false), ("PTQ1_0 with a Q8_0 draft head", GgmlType.PTQ1_0, true) })
+        foreach (var (name, mtp) in new[] { ("PTQ1_0", false), ("PTQ1_0 with a Q8_0 draft head", true) })
         {
             WithModel(225, (file, directory) =>
             {
@@ -367,16 +376,33 @@ public sealed class IndexedMindAskTests
                 {
                     if (TileStore.Unreadable(file, set) is { } why)
                     {
-                        found.Add($"{name}, {set.Name}: not split - {why}");
+                        found.Add($"{name}, {set.Name}: not tiled - {why}");
                         continue;
                     }
                     var store = TileStore.Write(file, Path.Combine(directory, $"model.{set.Name}"), set);
                     var different = store.Verify(file, channels: 2, readBytes: FlashFile.Page);
                     if (different != 0) found.Add($"{name}, {set.Name}: verify found {different} different");
                 }
-            }, packing: packing, mtp: mtp);
+            }, packing: GgmlType.PTQ1_0, mtp: mtp);
         }
         Assert.True(found.Count == 0, string.Join("; ", found));
+
+        // PQ2_0: left whole in the core, declining stops nothing, and its blocks are intact (128 weights to 34 bytes).
+        WithModel(226, (file, _) =>
+        {
+            foreach (var set in new[] { TileSet.FeedForward, TileSet.Mixing })
+            {
+                Assert.NotNull(TileStore.Unreadable(file, set));
+                foreach (var kind in set.Kinds)
+                {
+                    var tensor = file.Tensor($"blk.0.{kind}.weight");
+                    if (tensor is null) continue;
+                    Assert.Equal(GgmlType.PQ2_0, tensor.Type);
+                    var blocks = tensor.RowLength / CircleAI.Inference.Managed.Kernels.Pq2.BlockWeights * tensor.Rows;
+                    Assert.Equal(blocks * CircleAI.Inference.Managed.Kernels.Pq2.BlockBytes, tensor.ByteCount);
+                }
+            }
+        }, packing: GgmlType.PQ2_0);
     }
 
     // DESIGN, Split: "It is cut into pieces by layer and neuron group, at the size where this device's flash reads scattered

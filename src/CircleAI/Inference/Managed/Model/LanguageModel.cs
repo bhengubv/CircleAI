@@ -440,6 +440,15 @@ public sealed class LanguageModel
     public IHeadRows? Head { get; set; }
 
     /// <summary>
+    /// The head's top-matches search (<see cref="Store.HeadSearch"/>): when set, a word's thought finds the head's likeliest
+    /// chunks and only those are read and scored, every other token -inf - the output step as a search, not a full scan
+    /// (the indexed mind). Null scores every row. Used on the single-token path; a checked batch scores the whole head.
+    /// </summary>
+    public HeadSearch? HeadSearch { get; set; }
+
+    private readonly HashSet<int> _searchChunks = [];
+
+    /// <summary>
     /// The ternary packing <paramref name="file"/>'s weights are in, read off its embedding table; null
     /// when it is not one this engine reads (PTQ1_0 or PQ2_0).
     /// </summary>
@@ -499,6 +508,14 @@ public sealed class LanguageModel
     /// </summary>
     public ModelState NewState(int capacity, KvCompressionMode kvMode, TurboQuantForm keyForm) =>
         new(Config, Math.Min(capacity, Config.ContextLength), kvMode, keyForm);
+
+    /// <summary>
+    /// A new, empty conversation whose full-attention keys and values spill to flash in <paramref name="spillDirectory"/>,
+    /// so its memory grows past <paramref name="capacity"/> tokens held in RAM (the indexed mind's attention on the SSD).
+    /// The state is disposed to let the flash go.
+    /// </summary>
+    public ModelState NewState(int capacity, string spillDirectory) =>
+        new(Config, Math.Min(capacity, Config.ContextLength), KvCompressionMode.Off, TurboQuantForm.Mse, spillDirectory);
 
     /// <summary>Whether the file carries a multi-token-prediction head (Bonsai 2's PQ2_0-MTP files).</summary>
     public bool HasMtp => _mtp is not null;
@@ -649,7 +666,7 @@ public sealed class LanguageModel
 
     private void Check(ModelState state, Span<float> logits)
     {
-        if (state.Position >= state.Capacity) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
+        if (state.Position >= state.Capacity && state.Spill is null) throw new InvalidOperationException($"The state holds {state.Capacity} tokens and is full.");
         if (logits.Length != 0 && logits.Length != Config.Vocabulary) throw new ArgumentException($"Logits take {Config.Vocabulary} values.", nameof(logits));
     }
 
@@ -701,7 +718,7 @@ public sealed class LanguageModel
             var head = Stopwatch.GetTimestamp();
             RmsNorm(_x, _outputNorm, _h, c.RmsEps);
             if (nextn.Length != 0) _h.CopyTo(nextn);
-            if (logits.Length != 0) ScoreHead(Prepare(_h, HeadTable.Input), logits);
+            if (logits.Length != 0) ScoreHead(Prepare(_h, HeadTable.Input), logits, _h);
             _tHead += Stopwatch.GetTimestamp() - head;
         }
         _tTotal += Stopwatch.GetTimestamp() - started;
@@ -728,7 +745,9 @@ public sealed class LanguageModel
     // (Head) - each chunk's rows through the same kernel and tables, their scores sent to their tokens, every other
     // token -inf. A row is summed block by block in the same order either way, so a token in the surface
     // gets the whole table's logit to the bit.
-    private void ScoreHead(InputTables tables, Span<float> logits)
+    private void ScoreHead(InputTables tables, Span<float> logits) => ScoreHead(tables, logits, default);
+
+    private void ScoreHead(InputTables tables, Span<float> logits, ReadOnlySpan<float> query)
     {
         var head = Head;
         var fits = head is not null && head.Layout == (_paired ? HeadLayout.Paired : HeadLayout.Rows);
@@ -743,6 +762,18 @@ public sealed class LanguageModel
         }
         logits.Fill(float.NegativeInfinity);
         if (_headScores.Length < head!.MostRows) _headScores = new float[head.MostRows];
+
+        // THE OUTPUT STEP AS A SEARCH: the thought's likeliest chunks only, every other token left -inf.
+        if (HeadSearch is { } search && query.Length >= Config.Embedding)
+        {
+            search.Candidates(query, _searchChunks);
+            foreach (var ci in _searchChunks)
+            {
+                head.Chunk(ci, out var rows, out var scales, out var tokens);
+                ScoreChunk(rows, scales, tokens, tables, logits);
+            }
+            return;
+        }
         for (var chunk = 0; chunk < head.ChunkCount; chunk++)
         {
             head.Chunk(chunk, out var rows, out var scales, out var tokens);
@@ -1487,6 +1518,18 @@ public sealed class LanguageModel
             return;
         }
 
+        if (state.Spill is { } spill)
+        {
+            // ATTENTION ON THE SSD: this token's keys and values go to flash, and the conversation up to here is read back to
+            // attend over - the same keys and values, so the answer is the full memory's. The RAM holds only Capacity of them.
+            var kvWidth = c.KvHeads * hd;
+            spill.Write(il, position, _k.AsSpan(0, kvWidth), _v.AsSpan(0, kvWidth));
+            var (keys, values) = spill.Read(il, position + 1);
+            AttendOver(keys, values, position);
+            _tAttention += Stopwatch.GetTimestamp() - started;
+            return;
+        }
+
         AttendFp16(state.Keys[il], state.Values[il], position);
         _tAttention += Stopwatch.GetTimestamp() - started;
     }
@@ -1522,17 +1565,26 @@ public sealed class LanguageModel
     private void AttendFp16(Half[] keys, Half[] values, int position)
     {
         var c = Config;
+        var kvWidth = c.KvHeads * c.HeadDim;
+        for (var i = 0; i < kvWidth; i++)
+        {
+            keys[position * kvWidth + i] = (Half)_k[i];
+            values[position * kvWidth + i] = (Half)_v[i];
+        }
+        AttendOver(keys, values, position);
+    }
+
+    // Attention over positions 0..position, whose keys and values are already in `keys` and `values` (one head group per
+    // kvWidth): each query head on its group's keys and values, the result times sigmoid of the gate, into _attn.
+    private void AttendOver(Half[] keys, Half[] values, int position)
+    {
+        var c = Config;
         var hd = c.HeadDim;
         var count = position + 1;
         var scores = Scores(count);
         var scale = 1.0f / MathF.Sqrt(hd);
         var groupSize = c.Heads / c.KvHeads;
         var kvWidth = c.KvHeads * hd;
-        for (var i = 0; i < kvWidth; i++)
-        {
-            keys[position * kvWidth + i] = (Half)_k[i];
-            values[position * kvWidth + i] = (Half)_v[i];
-        }
 
         for (var h = 0; h < c.Heads; h++)
         {

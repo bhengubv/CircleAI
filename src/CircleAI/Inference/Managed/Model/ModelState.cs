@@ -12,6 +12,7 @@
 // columns tokens fills that many cells and moves it by only max(rows, columns), as the fork places
 // images (mtmd_image_tokens_get_n_pos). Both are kept, marked, primed and written together.
 
+using System.Runtime.InteropServices;
 using CircleAI.Core;
 using CircleAI.Core.Compression;
 
@@ -41,15 +42,20 @@ public sealed class MtpState
 }
 
 /// <summary>A conversation's state in a <see cref="LanguageModel"/>.</summary>
-public sealed class ModelState
+public sealed class ModelState : IDisposable
 {
     internal ModelState(ModelConfig config, int capacity,
-        KvCompressionMode kvMode = KvCompressionMode.Off, TurboQuantForm keyForm = TurboQuantForm.Mse)
+        KvCompressionMode kvMode = KvCompressionMode.Off, TurboQuantForm keyForm = TurboQuantForm.Mse, string? spillDirectory = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         Capacity = capacity;
         KvMode = kvMode;
         KeyForm = keyForm;
+        if (spillDirectory is not null)
+        {
+            if (kvMode != KvCompressionMode.Off) throw new NotSupportedException("The attention spill holds fp16 keys and values; it is not built for a compressed cache yet.");
+            Spill = new KvSpill(config, spillDirectory);
+        }
         var kvWidth = config.KvHeads * config.HeadDim;
         var convWidth = (config.ConvKernel - 1) * config.ConvChannels;
         var ssmWidth = config.SsmHeads * config.SsmState * config.SsmState;
@@ -102,6 +108,11 @@ public sealed class ModelState
 
     // An attention layer's TurboQuant cache in a compressed mode; null in Off and for DeltaNet layers.
     internal TurboKvCache?[] Turbo { get; }
+
+    // THE ATTENTION SPILL (the indexed mind, "Attention ... a conversation's memory can sit on the SSD and grow far past
+    // RAM"): when set, a full-attention layer's keys and values go to flash, not the capped RAM arrays, so the conversation
+    // grows past Capacity. Null keeps everything in RAM, the default.
+    internal KvSpill? Spill { get; }
 
     internal float[][] Conv { get; }
 
@@ -414,6 +425,100 @@ public sealed class ModelState
             var n = reader.Read(destination);
             if (n == 0) throw new InvalidDataException("The session ends early.");
             destination = destination[n..];
+        }
+    }
+
+    /// <summary>Lets the attention spill's flash files go; a state with no spill holds nothing to let go.</summary>
+    public void Dispose() => Spill?.Dispose();
+}
+
+/// <summary>
+/// A full-attention layer's keys and values on flash, so a conversation's memory grows past what RAM holds (the indexed
+/// mind). Each position's keys then values are one row in the layer's file; a word writes its row and reads the rows up to
+/// it back into shared buffers to attend over. Fp16, Off mode only. One file a full-attention layer, in a directory of the
+/// state's own, deleted when the state is let go.
+/// </summary>
+internal sealed class KvSpill : IDisposable
+{
+    private readonly string _directory;
+    private readonly FileStream?[] _files; // one a full-attention layer; null for a recurrent layer
+    private readonly int _kvWidth;
+    private readonly long _rowBytes;        // keys then values, one position: 2 * kvWidth fp16
+    private byte[] _io = [];
+    private Half[] _keys = [], _values = [];
+
+    public KvSpill(ModelConfig config, string directory)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentException.ThrowIfNullOrEmpty(directory);
+        _directory = directory;
+        Directory.CreateDirectory(directory);
+        _kvWidth = config.KvHeads * config.HeadDim;
+        _rowBytes = 2L * _kvWidth * sizeof(ushort);
+        _files = new FileStream?[config.Layers];
+        for (var il = 0; il < config.Layers; il++)
+            if (!config.IsRecurrent(il))
+                _files[il] = new FileStream(Path.Combine(directory, $"kv-{il}.bin"), FileMode.Create, FileAccess.ReadWrite, FileShare.None, 1 << 16);
+    }
+
+    /// <summary>Writes layer <paramref name="layer"/>'s keys and values for <paramref name="position"/> to flash.</summary>
+    public void Write(int layer, int position, ReadOnlySpan<float> keys, ReadOnlySpan<float> values)
+    {
+        var file = _files[layer] ?? throw new InvalidOperationException($"Layer {layer} holds no keys and values to spill.");
+        if (_io.Length < _rowBytes) _io = new byte[_rowBytes];
+        var half = MemoryMarshal.Cast<byte, Half>(_io.AsSpan(0, (int)_rowBytes));
+        for (var i = 0; i < _kvWidth; i++)
+        {
+            half[i] = (Half)keys[i];
+            half[_kvWidth + i] = (Half)values[i];
+        }
+        file.Seek((long)position * _rowBytes, SeekOrigin.Begin);
+        file.Write(_io, 0, (int)_rowBytes);
+        file.Flush();
+    }
+
+    /// <summary>
+    /// Layer <paramref name="layer"/>'s keys and values for positions 0..<paramref name="count"/>-1, read from flash into
+    /// shared buffers: keys[t*kvWidth..] and values[t*kvWidth..] for position t, the shape <c>AttendFp16</c> reads. The
+    /// buffers are reused, so they are the attention's until the next call.
+    /// </summary>
+    public (Half[] Keys, Half[] Values) Read(int layer, int count)
+    {
+        var file = _files[layer] ?? throw new InvalidOperationException($"Layer {layer} holds no keys and values to spill.");
+        var need = checked((int)((long)count * _rowBytes));
+        if (_io.Length < need) _io = new byte[need];
+        file.Seek(0, SeekOrigin.Begin);
+        var got = 0;
+        while (got < need)
+        {
+            var n = file.Read(_io, got, need - got);
+            if (n == 0) throw new InvalidDataException($"The spill of layer {layer} ends inside position {got / _rowBytes}.");
+            got += n;
+        }
+        if (_keys.Length < count * _kvWidth)
+        {
+            _keys = new Half[count * _kvWidth];
+            _values = new Half[count * _kvWidth];
+        }
+        var all = MemoryMarshal.Cast<byte, Half>(_io.AsSpan(0, need));
+        for (var t = 0; t < count; t++)
+        {
+            all.Slice(t * 2 * _kvWidth, _kvWidth).CopyTo(_keys.AsSpan(t * _kvWidth, _kvWidth));
+            all.Slice(t * 2 * _kvWidth + _kvWidth, _kvWidth).CopyTo(_values.AsSpan(t * _kvWidth, _kvWidth));
+        }
+        return (_keys, _values);
+    }
+
+    public void Dispose()
+    {
+        foreach (var file in _files) file?.Dispose();
+        try
+        {
+            if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The files are closed; a directory left behind is swept with the rest.
         }
     }
 }
