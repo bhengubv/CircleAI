@@ -98,10 +98,12 @@ that size does not belong on this box in the first place.
 tests on the net10.0 leg** — the fourteen smaller suites at **534** and the bUnit
 suite at **390**, every one green, nothing aborted.
 
-The two not covered: `CircleAI.Tests` was not re-run (5,107 per leg, fifteen to
-twenty-nine minutes, and a run that size does not belong on this box unasked), and
-`CircleAI.DeviceTests` cannot be run this way at all — `net10.0-android`, a MAUI
-head with a `MainActivity`, so `dotnet test` has nothing to execute.
+The two not covered that day: `CircleAI.Tests` was not re-run then (5,107 per leg
+at that count, and a run that size does not belong on this box unasked) — it has
+since run in full, 2026-11-16: **6,515 per leg, about forty-eight minutes a leg,
+both legs green**. And `CircleAI.DeviceTests` cannot be run this way at all —
+`net10.0-android`, a MAUI head with a `MainActivity`, so `dotnet test` has nothing
+to execute.
 
 **ONE LEG, NOT TWO.** This line said "all sixteen pass on both legs" with no date
 on it. net9.0 was not run for the fourteen today, so that half is not re-claimed
@@ -138,8 +140,11 @@ twice: there is nothing to read the number off, so each file kept its own. Run i
 and read the line; do not trust a prose figure for it, including this one. It was found by
 accident — no solution would have missed it if any solution contained it.
 
-`tests/CircleAI.Tests` is the big one — **5,107 per leg, 10,214 over both** — and
+`tests/CircleAI.Tests` is the big one — **6,515 per leg, 13,030 over both** — and
 it is the one people mean by "the tests".
+
+It was 5,107 per leg on 2026-10-24 and 6,515 on 2026-11-16; the suite grows, so
+read the count off a run, not off this line.
 
 This line said "~3,270 over both legs" until 2026-10-24, which is the same
 figure as the "3271 passed" two sentences down: **the count of one incomplete
@@ -188,18 +193,30 @@ file somebody keeps editing while it describes a twelfth of the tree reads as
 maintained. Do not reach for a modification date to decide which of two files to
 trust: count what is in them.
 
-The main suite is **5,107 tests per leg** and takes **fifteen to twenty-nine
-minutes per leg** — not the "six to nine" this file claimed, and not the "two to
-three" it claimed before that. Measured here on 2026-10-24, cold build included:
+The main suite is **6,515 tests per leg** and takes **about forty-eight minutes
+per leg** — not the "fifteen to twenty-nine minutes" this file carried at 5,107
+tests, not the "six to nine" before that, and not the "two to three" before that.
+The suite keeps growing and the clock with it; both measurements, cold build
+included.
+
+At **5,107** tests, measured 2026-10-24:
 
 | leg | quiet box | box under load |
 |---|---|---|
 | net9.0 | 14 m 46 s | 28 m 05 s |
 | net10.0 | 20 m 11 s | 28 m 58 s |
 
-So budget **forty minutes for both legs on a quiet box, an hour on a busy one**,
-plus the UI suite. Do not read a quiet terminal at minute five — or minute
-fifteen — as a hang.
+At **6,515** tests, measured 2026-11-16 — full runs to completion under the
+suite's own parallel load, the cap lifted on the CLI so they could finish:
+
+| leg | box under load |
+|---|---|
+| net9.0 | 47 m 14 s |
+| net10.0 | 48 m 19 s |
+
+So budget **an hour and a half for both legs**, plus the UI suite, and more on a
+busy box. Do not read a quiet terminal at minute five — or minute thirty — as a
+hang.
 
 **That stale twenty-minute figure was not merely bad advice.**
 `tests/CircleAI.Tests/bhengu.runsettings` capped `TestSessionTimeout` at fifteen
@@ -221,8 +238,11 @@ Fifteen tests of 5,107, and the summary line says **`Passed!`**. Only the
 `Test Run Aborted` line and the exit code tell the truth. Read the count, not
 the word.
 
-The cap is forty-five minutes now and the comment in that file carries these
-measurements, so the two numbers can no longer drift apart.
+The cap is seventy-five minutes now. It was forty-five until 2026-11-16, when the
+suite outgrew that one too — at 6,515 tests a leg the documented command began
+aborting at the clock again, the same `Failed!` trap as the fifteen-minute cap,
+about a leg's worth of tests never run. The comment in that file carries these
+measurements and the cap, so the numbers can no longer drift apart.
 
 Serialise heavy builds rather than running two at once.
 
