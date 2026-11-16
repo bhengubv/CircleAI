@@ -17,6 +17,7 @@
 using System.Diagnostics;
 using CircleAI.Core;
 using CircleAI.Core.Compression;
+using CircleAI.Inference.Managed;
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Model;
 using CircleAI.Inference.Managed.Runtime;
@@ -291,6 +292,87 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
         Assert.DoesNotContain("Drafts", factory, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_streamed_head_is_held_in_RAM_for_the_turn_only_when_drafting_and_it_fits_beside_the_reserve()
+    {
+        // THE SERVE-FROM-STORE LEVER (the P30 measurement's open optimisation). A streamed trunk re-reads its head
+        // surface from flash on every pass; an MTP head drafting does that on every draft step and verify - 5.4 GB of
+        // flash for 24 tokens at 2 drafts on the P30. So the surface is held in RAM for the turn instead, but only when
+        // a drafter is running AND it fits beside what the phone is owed. The served rows are identical whether held or
+        // streamed (HeadStoreTests / HeadStreamTests), so NO reply-matching test can catch a revert here - this one
+        // pins the decision itself so it cannot quietly fall back to per-step flash reads while every output stays green.
+        const long reserve = 384L << 20;   // DrafterReserve: kept for the phone
+        const long surface = 159L << 20;   // ~the 9B's Latin head surface
+
+        // Drafting and the surface fits beside the reserve -> held in RAM.
+        Assert.True(ManagedChatGenerator.HoldStreamedHeadInRam(drafting: true, availableBytes: reserve + surface, reserveBytes: reserve, surfaceBytes: surface));
+        Assert.True(ManagedChatGenerator.HoldStreamedHeadInRam(drafting: true, availableBytes: reserve + surface + (128L << 20), reserveBytes: reserve, surfaceBytes: surface));
+
+        // Drafting, but holding it would bite into the phone's reserve by a single byte -> streamed.
+        Assert.False(ManagedChatGenerator.HoldStreamedHeadInRam(drafting: true, availableBytes: reserve + surface - 1, reserveBytes: reserve, surfaceBytes: surface));
+
+        // No drafter -> streamed however much room there is (a plain turn reads the head once a token, not many times).
+        Assert.False(ManagedChatGenerator.HoldStreamedHeadInRam(drafting: false, availableBytes: long.MaxValue / 2, reserveBytes: reserve, surfaceBytes: surface));
+
+        // Memory could not be read -> streamed; never gamble the phone's RAM on an unknown.
+        Assert.False(ManagedChatGenerator.HoldStreamedHeadInRam(drafting: true, availableBytes: null, reserveBytes: reserve, surfaceBytes: surface));
+    }
+
+    [Fact]
+    public void FindMtpHead_picks_a_matching_sibling_in_the_model_folders_beside_the_trunk()
+    {
+        // The real layout: each model id in its own folder under one store root (BundleModelLoader), so the head sits in a
+        // SIBLING folder, not beside the trunk file. The scan must reach it there.
+        var root = Path.Combine(Path.GetTempPath(), "mtp-find-" + Guid.NewGuid().ToString("N"));
+        var trunkDir = Path.Combine(root, "Ternary-Bonsai-2-9B");
+        var mtpDir = Path.Combine(root, "Ternary-Bonsai-2-9B-PQ2_0-MTP");
+        Directory.CreateDirectory(trunkDir);
+        Directory.CreateDirectory(mtpDir);
+        try
+        {
+            var trunkPath = Path.Combine(trunkDir, "Ternary-Bonsai-2-9B-PTQ1_0.gguf");
+            var mtpPath = Path.Combine(mtpDir, "Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf");
+            File.WriteAllBytes(trunkPath, SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 4, mtp: false));
+            File.WriteAllBytes(mtpPath, SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true));
+            using var trunkFile = GgufFile.Open(trunkPath);
+
+            // The trunk's own folder holds only the trunk; the head is one folder over, and the scan finds it there.
+            Assert.Equal(mtpPath, ManagedChatGenerator.FindMtpHead(trunkPath, trunkFile, new ManagedGeneratorOptions()));
+            // An empty override turns the scan off; a named one is taken as given.
+            Assert.Null(ManagedChatGenerator.FindMtpHead(trunkPath, trunkFile, new ManagedGeneratorOptions { MtpHeadPath = "" }));
+            Assert.Equal(mtpPath, ManagedChatGenerator.FindMtpHead(trunkPath, trunkFile, new ManagedGeneratorOptions { MtpHeadPath = mtpPath }));
+
+            // A trunk that already carries its own head borrows none.
+            using var withHead = GgufFile.Open(mtpPath);
+            Assert.Null(ManagedChatGenerator.FindMtpHead(mtpPath, withHead, new ManagedGeneratorOptions()));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FindMtpHead_also_finds_a_head_sitting_beside_the_trunk_file()
+    {
+        // The flat layout (both files in one folder) still resolves - the trunk's own folder is scanned first.
+        var dir = Path.Combine(Path.GetTempPath(), "mtp-flat-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var trunkPath = Path.Combine(dir, "Ternary-Bonsai-2-9B-PTQ1_0.gguf");
+            var mtpPath = Path.Combine(dir, "Ternary-Bonsai-2-9B-PQ2_0-MTP-Q8_0.gguf");
+            File.WriteAllBytes(trunkPath, SyntheticQwen35.Build(GgmlType.PTQ1_0, seed: 4, mtp: false));
+            File.WriteAllBytes(mtpPath, SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true));
+            using var trunkFile = GgufFile.Open(trunkPath);
+            Assert.Equal(mtpPath, ManagedChatGenerator.FindMtpHead(trunkPath, trunkFile, new ManagedGeneratorOptions()));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     private static string RepoRoot()
     {
         var dir = AppContext.BaseDirectory;
@@ -321,6 +403,102 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
         {
             Assert.False(m.HasMtp);
             Assert.Throws<InvalidOperationException>(() => new MtpDrafter(m, 8));
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void An_MTP_head_attached_from_a_sibling_file_drafts_and_changes_nothing()
+    {
+        // The same seed, so the two files hold the SAME trunk - the head is appended after it (as the 9B's PQ2_0-MTP file
+        // packs the PTQ1_0 trunk's weights plus a head). So a trunk whose own file carries none can borrow the sibling's.
+        const int count = 20;
+        var trunk = SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: false);
+        var sibling = SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true);
+        GgufBuilder.WithFile(sibling, siblingPath =>
+        {
+            using var siblingFile = GgufFile.Open(siblingPath);
+            return WithModel(trunk, threads: 2, m =>
+            {
+                Assert.False(m.HasMtp);
+                m.AttachMtp(siblingFile);
+                Assert.True(m.HasMtp);
+
+                var (plain, _) = Plain(m, Greedy, count);
+                var (spec, _, speculator) = Speculative(m, new MtpDrafter(m, 64), drafts: 2, Greedy, count);
+                Assert.Equal(plain, spec);
+                Assert.True(speculator.Drafted > 0);
+                output.WriteLine($"attached MTP head: {speculator.Accepted} of {speculator.Drafted} drafts kept (random weights)");
+                return 0;
+            });
+        });
+    }
+
+    [Fact]
+    public void Attaching_an_MTP_head_is_refused_when_one_is_present_or_the_shape_differs()
+    {
+        var withHead = SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true);
+        GgufBuilder.WithFile(withHead, headPath =>
+        {
+            using var headFile = GgufFile.Open(headPath);
+            WithModel(withHead, threads: 1, m =>
+            {
+                Assert.True(m.HasMtp);
+                Assert.Throws<InvalidOperationException>(() => m.AttachMtp(headFile)); // one already present
+                return 0;
+            });
+
+            var shaped = SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true, layers: 4); // a different-sized trunk
+            GgufBuilder.WithFile(shaped, shapedPath =>
+            {
+                using var shapedFile = GgufFile.Open(shapedPath);
+                return WithModel(SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: false), threads: 1, m =>
+                {
+                    Assert.False(m.HasMtp);
+                    Assert.Throws<ArgumentException>(() => m.AttachMtp(shapedFile)); // its head would not fit this trunk
+                    Assert.False(m.HasMtp);
+                    return 0;
+                });
+            });
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void The_MTP_head_sees_a_batched_prompt_as_it_sees_the_tokens_one_at_a_time()
+    {
+        // The prompt read feeds a streamed trunk's whole batch to the head at once (Speculator.Observed); the decode feeds
+        // it a token at a time (Speculator.Run). The head's cache - and so its drafts - must come out the same either way.
+        WithModel(SyntheticQwen35.Build(GgmlType.PQ2_0, seed: 4, mtp: true), threads: 2, m =>
+        {
+            var e = m.Config.Embedding;
+
+            var one = new MtpDrafter(m, 64);
+            var seq = m.NewState(64);
+            var logits = new float[m.Config.Vocabulary];
+            var h = new float[e];
+            for (var i = 0; i < Prompt.Length; i++)
+            {
+                var at = seq.Position;
+                m.Forward(Prompt[i], seq, logits, h);
+                one.Observe([Prompt[i]], at, [(float[])h.Clone()]);
+            }
+
+            var many = new MtpDrafter(m, 64);
+            var batch = m.NewState(64);
+            var hidden = new float[Prompt.Length][];
+            for (var i = 0; i < hidden.Length; i++) hidden[i] = new float[e];
+            m.ForwardBatch(Prompt, batch, new float[]?[Prompt.Length], hidden);
+            many.Observe(Prompt, 0, hidden);
+
+            var next = Prompt[^1];
+            var a = new int[4];
+            var b = new int[4];
+            var na = one.Draft(next, Prompt.Length, a);
+            var nb = many.Draft(next, Prompt.Length, b);
+            Assert.True(na > 0);
+            Assert.Equal(na, nb);
+            Assert.Equal(a, b);
             return 0;
         });
     }

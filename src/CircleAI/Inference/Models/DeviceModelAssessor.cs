@@ -154,9 +154,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     {
         ArgumentNullException.ThrowIfNull(probe);
 
-        var share = probe.StorageTotalBytes > 0
-            ? probe.StorageTotalBytes * StorageShareOfDevice
-            : FallbackMaxBytes;
+        var share = ShareBytesFor(probe);
 
         // 0 free = unknown, same convention as the storage gate: do not invent a
         // reserve out of a reading we did not get.
@@ -164,6 +162,19 @@ public sealed class DeviceModelAssessor : IModelAssessor
 
         var headroom = Math.Max(0.0, probe.StorageFreeBytes - FreeStorageReserveBytes);
         return Math.Min(share, headroom);
+    }
+
+    /// <summary>The share of this device's whole disk a model may claim: 30% of it, or the fallback.</summary>
+    /// <remarks>
+    /// THE HALF OF THE BUDGET THAT DOES NOT MOVE, and the only half asked of a model that is already on the device:
+    /// the reserve is room for a download to land, and what has landed needs none.
+    /// </remarks>
+    public static double ShareBytesFor(DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        return probe.StorageTotalBytes > 0
+            ? probe.StorageTotalBytes * StorageShareOfDevice
+            : FallbackMaxBytes;
     }
 
     /// <summary>
@@ -264,7 +275,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
                 continue;
             }
 
-            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb, budgetBytes);
+            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb, budgetBytes, a.Installed);
             var rank = compatible ? RankFor(e, usableRamGb, a.Installed) : 0.0;
             _catalog.SetAssessment(e.Name, compatible, rank);
             if (compatible) compatibleCount++;
@@ -272,7 +283,12 @@ public sealed class DeviceModelAssessor : IModelAssessor
         return new AssessmentResult(assessed, compatibleCount);
     }
 
-    private bool IsCompatible(ModelEntry e, DeviceProbe probe, double usableRamGb, double storageFreeGb, double budgetBytes)
+    // A MODEL ALREADY ON THE DEVICE IS NOT ASKED FOR ROOM TO LAND (2026-11-13). The budget's reserve and the free-storage
+    // gate both ask whether a download can arrive, and they were asked of everything: on a P30 with 4.8 GB of its 113 GB
+    // free the reserve left a budget of nothing, so all 111 rows - the two brains in its store among them - read "does
+    // not run here" at every start ("assessed 111 model(s), 0 run on this device"), the selector found nothing that fits
+    // and fell to the smallest row there is. What is here is held to the share of the whole disk, which does not move.
+    private bool IsCompatible(ModelEntry e, DeviceProbe probe, double usableRamGb, double storageFreeGb, double budgetBytes, bool installed)
     {
         // 0. EXPERIMENT: force one named model compatible so its runtime path can be
         //    proven on-device against the naive RAM gate. Storage still has to hold
@@ -307,14 +323,18 @@ public sealed class DeviceModelAssessor : IModelAssessor
         //    drift by device. The experiment hook above returns before this on
         //    purpose — proving an oversized model's runtime path on a real phone
         //    is the one case that is allowed to ignore it.
-        if (e.TotalBytes > 0 && e.TotalBytes > budgetBytes) return false;
+        //    A model already here is held to the share alone: the reserve is room to land.
+        var budget = installed ? _maxModelBytesOverride ?? ShareBytesFor(probe) : budgetBytes;
+        if (e.TotalBytes > 0 && e.TotalBytes > budget) return false;
 
         // 3. RAM fits. usableRamGb already folds in RamFitHeadroom, and
         //    EffectiveMinRamGb folds in whether weights will be memory-mapped.
-        if (EffectiveMinRamGb(e, usableRamGb) > usableRamGb + Eps) return false;
+        //    NOT ASKED OF A BRAIN THIS DEVICE'S ENGINE READS FROM FLASH AS IT COMPUTES (ModelFit.ReadFromFlash): "RAM is
+        //    the turbo, not the engine" - it keeps warm what RAM has room for and streams the rest.
+        if (!ModelFit.ReadFromFlash(e, probe) && EffectiveMinRamGb(e, usableRamGb) > usableRamGb + Eps) return false;
 
-        // 4. Storage fits (0 = unknown, skip — same as the selector).
-        if (storageFreeGb > 0 && e.MinStorageGb > storageFreeGb + Eps) return false;
+        // 4. Storage fits (0 = unknown, skip — same as the selector). Room for it to land: a model here has landed.
+        if (!installed && storageFreeGb > 0 && e.MinStorageGb > storageFreeGb + Eps) return false;
 
         // 5. VRAM, only when the entry states a requirement. Unknown / no GPU
         //    memory when a model demands it → not compatible (video models).

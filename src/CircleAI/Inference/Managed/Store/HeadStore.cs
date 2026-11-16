@@ -790,6 +790,13 @@ public sealed unsafe class HeadStream : IHeadRows, IDisposable
     /// <summary>Windows a scoring reads in: two or fewer are read once and held.</summary>
     public int Windows => _windows.Length;
 
+    /// <summary>
+    /// Whether a read of a chunk brings the next window in behind it. On for a full scan, which reads every chunk in turn;
+    /// off for a top-matches search (<see cref="HeadSearch"/>), which reads scattered candidate chunks, so reading ahead
+    /// would bring windows it never scores. Off, a scoring reads only the windows its chunks fall in.
+    /// </summary>
+    public bool Prefetch { get; set; } = true;
+
     /// <summary>The bytes read and the time reading them took since the last call; the counts start again.</summary>
     public (long Read, TimeSpan Reading) TakeCounts() =>
         (Interlocked.Exchange(ref _read, 0), Stopwatch.GetElapsedTime(0, Interlocked.Exchange(ref _readTicks, 0)));
@@ -801,7 +808,7 @@ public sealed unsafe class HeadStream : IHeadRows, IDisposable
         var window = _windowOf[index];
         var slot = Slot(window);
         var next = (window + 1) % _windows.Length;
-        if (next != window && _reading is null && Array.IndexOf(_holds, next) < 0) Ahead(next, 1 - slot);
+        if (Prefetch && next != window && _reading is null && Array.IndexOf(_holds, next) < 0) Ahead(next, 1 - slot);
 
         var chunk = _chunks[index];
         var start = _buffers[slot] + _placeInWindow[index];

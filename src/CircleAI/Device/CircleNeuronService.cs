@@ -172,11 +172,11 @@ public sealed partial class CircleNeuronService : Service
 
         try
         {
-            // FIRST, THE REFUSALS THE OLD ONE-STRIKE RULE GOT WRONG. They are
-            // already written and nothing re-reads them, so changing the rule alone
-            // would leave Qwen3.5-0.8B refused on the P30 for ever. Each comes back
-            // on one strike; idempotent - see CrashVerdict.Reconsider.
-            CircleAI.Inference.CrashVerdict.Reconsider(
+            // FIRST, EVERY REFUSAL AN EARLIER RULE WROTE. They are already written and
+            // nothing re-reads them, so changing the rule alone would leave every model a
+            // phone refused before refused for good. No model is refused any more (the
+            // owner, 2026-11-15); idempotent - see CrashVerdict.LiftRefusals.
+            CircleAI.Inference.CrashVerdict.LiftRefusals(
                 catalogue, line => global::Android.Util.Log.Warn(LogTag, line));
 
             var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(stateDirectory);
@@ -184,8 +184,8 @@ public sealed partial class CircleNeuronService : Service
                 catalogue, crumb, line => global::Android.Util.Log.Warn(LogTag, line),
                 killedByTheSystem: LastDeathWasTheSystems(context));
 
-            // Cleared either way: a breadcrumb read twice would refuse a second model
-            // on the strength of the first one's death.
+            // Cleared either way: a breadcrumb read twice would count the first one's
+            // death a second time.
             CircleAI.Assistant.DeviceDiagnostics.EndRisky(stateDirectory);
         }
         catch (Exception ex)

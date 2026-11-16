@@ -209,6 +209,12 @@ public sealed unsafe class Ptq1PairMatrix
     private static readonly short[] ColumnByte = BuildColumns(col => (short)(col / 8 * 32 + col % 2 * 8));
     private static readonly short[] ColumnShift = BuildColumns(col => (short)(col % 8 / 2 * 2));
 
+    // THE REPACK A SOURCE BYTE AT A TIME (PackTile). Fields[k * 256 + v]: byte value v's five codes at field k - shifted
+    // left 2k - one to a byte of the word, the fifth code in its fifth byte; Last[v]: the four codes of one of a block's
+    // last two bytes as the one tile byte they make. After Codes, which they are built from.
+    private static readonly ulong[] Fields = BuildFields();
+    private static readonly byte[] Last = BuildLast();
+
     private readonly byte[] _bytes;
     private readonly float[] _blockScales;
     private readonly byte* _weights;
@@ -494,6 +500,64 @@ public sealed unsafe class Ptq1PairMatrix
         }
     }
 
+    /// <summary>
+    /// As <see cref="Repack(ReadOnlySpan{byte}, int, int, Span{byte}, Span{float}, int)"/>, the tiles shared out over the
+    /// workers of <paramref name="pool"/>: threads of their own, which the thread pool's other work cannot keep waiting.
+    /// </summary>
+    /// <remarks>
+    /// THE THREAD POOL'S THREADS WERE TAKEN (the P30, 2026-11-15). A layer streamed from the model's own file is read on
+    /// eight of the pool's threads, each blocked on flash, while the tensor before it is repacked; shared out on the pool
+    /// too, the repack ran at 160 to 190 MB/s on "four" threads - where this code runs at 2 GB/s on one PC thread and 6 on
+    /// four. Threads of the repack's own are there when it is.
+    /// </remarks>
+    public static void Repack(ReadOnlySpan<byte> rows, int count, int cols, Span<byte> weights, Span<float> scales, WorkerPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        if (pool.Threads <= 1 || count / TileRows < 2 * pool.Threads)
+        {
+            Repack(rows, count, cols, weights, scales);
+            return;
+        }
+        if (cols <= 0 || cols % Ptq1.BlockWeights != 0) throw new ArgumentOutOfRangeException(nameof(cols), cols, "PTQ1_0 rows are whole 128-weight blocks.");
+        if (count <= 0 || count % TileRows != 0) throw new ArgumentOutOfRangeException(nameof(count), count, $"Rows come in whole {TileRows}-row tiles.");
+        var blocks = cols / Ptq1.BlockWeights;
+        var tiles = count / TileRows;
+        if (rows.Length < (long)count * blocks * Ptq1.BlockBytes) throw new ArgumentException("The rows are too short.", nameof(rows));
+        if (weights.Length < (long)tiles * blocks * TileBlockBytes) throw new ArgumentException("The weights are too short.", nameof(weights));
+        if (scales.Length < (long)tiles * blocks * TileRows) throw new ArgumentException("The scales are too short.", nameof(scales));
+        fixed (byte* source = rows)
+        fixed (byte* w = weights)
+        fixed (float* s = scales)
+        {
+            pool.Run(new RepackWork(source, blocks, tiles, w, s));
+        }
+    }
+
+    // One repack shared over a pool's workers: a run of whole tiles each.
+    private sealed class RepackWork : WorkerPool.IWork
+    {
+        private readonly byte* _source;
+        private readonly int _blocks;
+        private readonly int _tiles;
+        private readonly byte* _weights;
+        private readonly float* _scales;
+
+        public RepackWork(byte* source, int blocks, int tiles, byte* weights, float* scales)
+        {
+            _source = source;
+            _blocks = blocks;
+            _tiles = tiles;
+            _weights = weights;
+            _scales = scales;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            var end = (int)((long)_tiles * (worker + 1) / workers);
+            for (var tile = (int)((long)_tiles * worker / workers); tile < end; tile++) PackTile(_source, _blocks, tile, _weights, _scales);
+        }
+    }
+
     /// <summary>Bytes of weights <paramref name="rows"/> rows of <paramref name="cols"/> take in this layout.</summary>
     public static long WeightBytes(int rows, int cols) => (long)rows / TileRows * (cols / Ptq1.BlockWeights) * TileBlockBytes;
 
@@ -580,48 +644,80 @@ public sealed unsafe class Ptq1PairMatrix
 
     // One tile of rows laid end to end at source, repacked into weights and scales at that tile's place.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    // A TILE PACKED A SOURCE BYTE AT A TIME (the P30, 2026-11-15: every layer read in place is repacked as it streams, and
+    // repacking took 43 of every 52 seconds a pass spent loading layers - flash read the 1457 MB in 9). A block's column
+    // `col` goes to the tile byte at col / 8 * 32 + col % 2 * 8, field (col % 8) / 2 (ColumnByte, ColumnShift), and the
+    // weights a source byte holds fall so that the same field of five tile bytes takes them:
+    //
+    //   bytes 0-15    weight 16n + m      group 2n + m / 8, half m % 2, field (m % 8) / 2
+    //   bytes 16-23   weight 80 + 8n + m  group 10 + n,     half m % 2, field m / 2
+    //   bytes 24-25   weight 120 + 2n + h group 15,         half h,     field n         - one whole tile byte
+    //
+    // so four source bytes two apart, looked up in Fields and ORed, are five tile bytes whole, and every byte of a tile's
+    // block is written once - no clearing, no read-modify-write. The same bytes as the weight-at-a-time packing it replaced
+    // (Ptq1PairRepackTests).
     private static void PackTile(byte* source, int blocks, int tile, byte* weights, float* scales)
     {
-        var codes = stackalloc byte[Ptq1.BlockWeights];
         var rowBytes = (long)blocks * Ptq1.BlockBytes;
-        fixed (byte* table = Codes)
-        fixed (short* column = ColumnByte)
-        fixed (short* shift = ColumnShift)
+        fixed (ulong* fields = Fields)
+        fixed (byte* last = Last)
         {
             for (var b = 0; b < blocks; b++)
             {
                 var dst = weights + ((long)tile * blocks + b) * TileBlockBytes;
-                new Span<byte>(dst, TileBlockBytes).Clear();
                 for (var lane = 0; lane < TileRows; lane++)
                 {
                     var block = source + (tile * TileRows + lane) * rowBytes + b * Ptq1.BlockBytes;
-                    Unpack(block, table, codes);
                     var row = dst + lane / 8 * 16 + lane % 8;
-                    for (var col = 0; col < Ptq1.BlockWeights; col++) row[column[col]] |= (byte)(codes[col] << shift[col]);
+                    Five(fields, block, row, 64);            // bytes 0, 2, 4, 6: groups 0, 2, 4, 6, 8, the even half
+                    Five(fields, block + 1, row + 8, 64);    // bytes 1, 3, 5, 7: the same groups, the odd half
+                    Five(fields, block + 8, row + 32, 64);   // bytes 8, 10, 12, 14: groups 1, 3, 5, 7, 9
+                    Five(fields, block + 9, row + 40, 64);   // bytes 9, 11, 13, 15
+                    Five(fields, block + 16, row + 320, 32); // bytes 16, 18, 20, 22: groups 10 to 14
+                    Five(fields, block + 17, row + 328, 32); // bytes 17, 19, 21, 23
+                    row[480] = last[block[24]];               // group 15
+                    row[488] = last[block[25]];
                     scales[((long)tile * blocks + b) * TileRows + lane] = Ptq1.Scale(new ReadOnlySpan<byte>(block, Ptq1.BlockBytes));
                 }
             }
         }
     }
 
-    // A block's 128 codes in weight order.
-    private static void Unpack(byte* block, byte* table, byte* codes)
+    // Four source bytes two apart, at fields 0 to 3 of five tile bytes `stride` apart.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Five(ulong* fields, byte* source, byte* at, int stride)
     {
-        for (var m = 0; m < 16; m++)
+        var five = fields[source[0]] | fields[256 + source[2]] | fields[512 + source[4]] | fields[768 + source[6]];
+        at[0] = (byte)five;
+        at[stride] = (byte)(five >> 8);
+        at[2 * stride] = (byte)(five >> 16);
+        at[3 * stride] = (byte)(five >> 24);
+        at[4 * stride] = (byte)(five >> 32);
+    }
+
+    private static ulong[] BuildFields()
+    {
+        var fields = new ulong[4 * 256];
+        for (var k = 0; k < 4; k++)
+            for (var v = 0; v < 256; v++)
+            {
+                ulong word = 0;
+                for (var n = 0; n < 5; n++) word |= (ulong)(byte)(Codes[v * 5 + n] << (2 * k)) << (8 * n);
+                fields[k * 256 + v] = word;
+            }
+        return fields;
+    }
+
+    private static byte[] BuildLast()
+    {
+        var last = new byte[256];
+        for (var v = 0; v < 256; v++)
         {
-            var c = table + block[m] * 5;
-            for (var n = 0; n < 5; n++) codes[n * 16 + m] = c[n];
+            var tileByte = 0;
+            for (var n = 0; n < 4; n++) tileByte |= Codes[v * 5 + n] << (2 * n);
+            last[v] = (byte)tileByte;
         }
-        for (var m = 0; m < 8; m++)
-        {
-            var c = table + block[16 + m] * 5;
-            for (var n = 0; n < 5; n++) codes[80 + n * 8 + m] = c[n];
-        }
-        for (var h = 0; h < 2; h++)
-        {
-            var c = table + block[24 + h] * 5;
-            for (var n = 0; n < 4; n++) codes[120 + n * 2 + h] = c[n];
-        }
+        return last;
     }
 
     private static byte[] BuildCodes()

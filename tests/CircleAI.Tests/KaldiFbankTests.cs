@@ -172,6 +172,83 @@ public class KaldiFbankTests
         }
     }
 
+    /// <summary>Tones under a slow swell, with a little seeded noise: every frame differs from its neighbours.</summary>
+    private static float[] Voiced(int samples, int seed = 7, int rate = 16_000)
+    {
+        var rng = new Random(seed);
+        var x = new float[samples];
+        for (var i = 0; i < samples; i++)
+        {
+            var t = (double)i / rate;
+            var swell = 0.5 + 0.5 * Math.Sin(2 * Math.PI * 3 * t);
+            x[i] = (float)(swell * (0.3 * Math.Sin(2 * Math.PI * 220 * t) + 0.2 * Math.Sin(2 * Math.PI * 1234 * t))
+                           + 0.05 * (rng.NextDouble() * 2 - 1));
+        }
+        return x;
+    }
+
+    [Fact]
+    public void Consuming_as_it_goes_gives_the_same_frames_as_keeping_everything()
+    {
+        // CONSUME USED TO MOVE EVERY FRAME AFTER IT. It renumbered the held audio as the start of a new utterance -
+        // frame 0 at -120, mirrored - so each call re-read 120 samples: these three seconds, fed in 100 ms blocks and
+        // consumed after each, came out as 321 frames instead of 299, and 290 of the 299 were different numbers
+        // (2026-11-15). The transcribing wake path consumes like this, and the spotter now does too: what a model is
+        // fed must not depend on how much audio its extractor let go of.
+        var audio = Voiced(3 * 16_000);
+
+        var kept = new KaldiFbank();
+        var everyFrame = new System.Collections.Generic.List<float[]>();
+        var consumed = new KaldiFbank();
+        var taken = new System.Collections.Generic.List<float[]>();
+        for (var at = 0; at < audio.Length; at += 1600)
+        {
+            var block = audio.AsSpan(at, Math.Min(1600, audio.Length - at));
+
+            kept.AcceptWaveform(block);
+            for (var f = everyFrame.Count; f < kept.FramesReady; f++) everyFrame.Add(kept.GetFrame(f));
+
+            consumed.AcceptWaveform(block);
+            var ready = consumed.FramesReady;
+            for (var f = 0; f < ready; f++) taken.Add(consumed.GetFrame(f));
+            consumed.Consume(ready);
+        }
+
+        // And the mirrored tail, once the utterance is over.
+        kept.Flush();
+        for (var f = everyFrame.Count; f < kept.FramesReady; f++) everyFrame.Add(kept.GetFrame(f));
+        consumed.Flush();
+        for (var f = 0; f < consumed.FramesReady; f++) taken.Add(consumed.GetFrame(f));
+
+        Assert.Equal(300, everyFrame.Count);                 // (48000 + 80) / 160, Kaldi's count
+        Assert.Equal(everyFrame.Count, taken.Count);
+        for (var f = 0; f < everyFrame.Count; f++) Assert.Equal(everyFrame[f], taken[f]);
+    }
+
+    [Fact]
+    public void A_long_session_holds_only_the_audio_the_next_window_needs()
+    {
+        // Two minutes of listening, consumed as it goes, holds less than one 400-sample window between blocks - the
+        // same as one second does. Before Consume had a caller on the wake word's path, every sample stayed: 64 KB a
+        // second for as long as the phone listened.
+        var fb = new KaldiFbank();
+        var block = Voiced(1600);
+        long frames = 0;
+        var most = 0;
+        for (var i = 0; i < 1200; i++)
+        {
+            fb.AcceptWaveform(block);
+            var ready = fb.FramesReady;
+            fb.Consume(ready);
+            frames += ready;
+            most = Math.Max(most, fb.SamplesHeld);
+        }
+
+        Assert.Equal(11_999, frames);                        // 1 + (1,920,000 - 280) / 160
+        Assert.True(most < new KaldiFbankOptions().FrameLength,
+            $"held {most} samples between blocks; the next window needs fewer than {new KaldiFbankOptions().FrameLength}");
+    }
+
     [Fact]
     public void FramesAreWithheldUntilTheirWindowIsComplete()
     {

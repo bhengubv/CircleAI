@@ -308,6 +308,35 @@ public sealed class HeadStoreTests(ITestOutputHelper output)
         }
     }
 
+    // A phone gives a process the cores it likes. On the P30 on 2026-11-13 the inference process had three, and "the
+    // flash could not be measured (IndexOutOfRangeException)": the scattered tests ran on one and two readers, the
+    // straight one on three, and the third had no buffer. Whatever the process is given, the flash is measured.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public void The_flash_is_measured_however_many_cores_the_phone_gives_the_process(int cores)
+    {
+        var directory = Directory.CreateTempSubdirectory("flash-profile-").FullName;
+        try
+        {
+            var path = Path.Combine(directory, "probe.bin");
+            var bytes = new byte[5 * 1024 * 1024];
+            new Random(6).NextBytes(bytes);
+            File.WriteAllBytes(path, bytes);
+
+            var profile = FlashProfile.Measure(path, directory, TimeSpan.FromMilliseconds(5), cores);
+
+            Assert.True(profile.Straight1 > 0 && profile.Straight4 > 0, $"with {cores} cores the straight reads read nothing");
+            Assert.InRange(profile.Channels, 1, Math.Min(cores, 8));
+            Assert.All(profile.Scattered, p => Assert.InRange(p.Channels, 1, cores));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public unsafe void A_flash_file_reads_whole_pages_where_they_are()
     {

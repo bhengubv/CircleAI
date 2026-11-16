@@ -538,7 +538,13 @@ public sealed class BundleModelLoader : IModelLoader
                 // this branch required a probe, which
                 // silently turned a probe-less caller into "pick the smallest",
                 // the opposite of what the comment below it promised.
-                if (probe is null || ModelFit.Fits(entry, probe))
+                //
+                // AND A BRAIN READ FROM FLASH THAT IS HERE FITS, WHATEVER FLASH IS LEFT (2026-11-13). For such a brain
+                // Fits asks only for room on flash - room for a download - and its file is on the flash already. On
+                // the P30 holding the 2B and the 27B with 2.8 GB free this named the 2B the best brain there, while
+                // the selector named the 27B: one question, two answers, by how much room was left to fetch a model
+                // the phone already had.
+                if (probe is null || ModelFit.ReadFromFlash(entry, probe) || ModelFit.Fits(entry, probe))
                 {
                     fitsNow.Add((entry, name));
                     continue;

@@ -160,29 +160,24 @@ public sealed class InferenceWorkerService : global::Android.App.Service
     private static void Load(IReadOnlyDictionary<string, string> req)
     {
         CircleAI.Inference.Managed.Runtime.BrainHold.Open(System.IO.Path.Combine(CircleAI.Assistant.Device.AppPaths.Cache, "brain-hold"));
-        req.TryGetValue(WorkerWire.Model, out var model);
-        req.TryGetValue(WorkerWire.Directory, out var dir);
-        if (string.IsNullOrWhiteSpace(model) || string.IsNullOrWhiteSpace(dir))
+        // READ BACK BY THE PAIR OF WHAT WROTE IT (WorkerWire.GetLoad): the model and its store, the balance's shape
+        // (Step 4: fewer working-memory bits and a shorter context under pressure), and whether the brain is loaded for
+        // its index rather than to answer.
+        var ask = WorkerWire.GetLoad(req);
+        if (string.IsNullOrWhiteSpace(ask.Model) || string.IsNullOrWhiteSpace(ask.Directory))
             throw new ArgumentException("a load needs a model and a directory");
 
-        CircleAI.Core.ModelEngine? engine = req.TryGetValue(WorkerWire.Engine, out var named)
-            && Enum.TryParse<CircleAI.Core.ModelEngine>(named, ignoreCase: true, out var parsed) ? parsed : null;
-
-        // THE BALANCE'S SHAPE (Step 4): fewer working-memory bits and a shorter context under
-        // pressure. A different shape is a different brain, built again between turns.
-        CircleAI.Core.KvCompressionMode? kv = req.TryGetValue(WorkerWire.KvMode, out var kvName)
-            && Enum.TryParse<CircleAI.Core.KvCompressionMode>(kvName, ignoreCase: true, out var kvParsed) ? kvParsed : null;
-        var share = req.TryGetValue(WorkerWire.ContextShare, out var shareText)
-            && double.TryParse(shareText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s)
-            && s is > 0 and < 1 ? s : 1.0;
-
-        var request = new WorkerLoadRequest(model!, dir!, WorkerWire.Flag(req, WorkerWire.SkipHash), engine, kv, share);
+        var request = new WorkerLoadRequest(ask.Model!, ask.Directory!, ask.SkipHash, ask.Engine, ask.KvMode, ask.ContextShare, ask.ForItsIndex,
+                                            ask.Drafts, ask.Seed);
         InProcessBrainWorker brain;
         InProcessBrainWorker? previous = null;
         lock (Gate)
         {
-            if (_brain is not null && _loaded?.ModelId == request.ModelId && _loaded.Engine == request.Engine
-                && _loaded.KvMode == request.KvMode && Math.Abs(_loaded.ContextShare - request.ContextShare) < 0.001)
+            // A DIFFERENT SHAPE IS A DIFFERENT BRAIN, built again between turns - and one loaded for its index is not
+            // the one that answers (WorkerWire.SameBrain).
+            if (_brain is not null && _loaded is { } held && WorkerWire.SameBrain(
+                    new WorkerLoadAsk(held.ModelId, held.ModelDirectory, held.SkipLoadHash, held.Engine, held.KvMode, held.ContextShare, held.ForItsIndex,
+                                      held.Drafts, held.Seed), ask))
             {
                 brain = _brain;
             }
@@ -201,7 +196,14 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         // NEVER ON THE BINDER THREAD. A load is 13-23 s on the P30; the caller polls.
         _ = Task.Run(async () =>
         {
-            if (previous is not null) await previous.DisposeAsync().ConfigureAwait(false);
+            if (previous is not null)
+            {
+                await previous.DisposeAsync().ConfigureAwait(false);
+                // THE BRAIN LET GO IS GIVEN BACK BEFORE THE NEXT IS BUILT: its working memory and buffers are dead
+                // objects in this process's heap until a collection, and two brains' worth does not fit this phone.
+                try { CircleAI.Inference.Managed.Runtime.MemoryNow.GiveBack(); }
+                catch (Exception ex) { global::Android.Util.Log.Warn(Tag, "the brain let go was not collected: " + ex.GetType().Name); }
+            }
             try { await brain.EnsureReadyAsync(CancellationToken.None).ConfigureAwait(false); }
             catch (Exception ex) { global::Android.Util.Log.Warn(Tag, "load failed: " + ex.GetType().Name); }
         });
@@ -211,11 +213,18 @@ public sealed class InferenceWorkerService : global::Android.App.Service
                                                          Action<AnsweringBrain> answering, CancellationToken ct)
     {
         var factory = OptionsFactory ?? throw new InvalidOperationException("the inference process has no options");
+        // A DEVELOPER'S CHECK OF DRAFTING (SoakReceiver "engine" --ei drafts, --ei seed) builds this brain with its MTP head
+        // drafting and samples its turns with one seed; every other load sets both back to plain, so neither outlives it.
+        CircleAI.Inference.Managed.ManagedChatGenerator.DraftsForTest = request.Drafts;
+        CircleAI.Inference.Managed.ManagedChatGenerator.SeedForTest = request.Seed;
         var options = factory(request);
         options.ModelId = request.ModelId;
         options.Engine = request.Engine;
         options.KvMode = request.KvMode;              // the balance's working memory (Step 4)
         options.ContextShare = request.ContextShare;  // and its share of the context
+        // A BRAIN LOADED FOR ITS INDEX ANSWERS NOBODY (BrainInWaiting): it is built, and its engine's idle clock does the
+        // rest. No first prefill and no tools read ahead - for a model read from flash that is minutes of reading.
+        options.WarmOnStart = CircleAI.Inference.BrainInWaiting.WarmsOnStart(request.ForItsIndex, options.WarmOnStart);
         options.LoadStepChanged = step; // the status says "Warming" while the first prefill runs (OPEN-GAPS A14)
         options.Answering = answering;  // and which brain answers each ask, a specialist included (OPEN-GAPS E33)
 

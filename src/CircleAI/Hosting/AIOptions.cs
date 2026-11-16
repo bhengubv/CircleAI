@@ -179,7 +179,13 @@ public sealed class AIOptions
     /// a 1-token generation after loading so the first user request doesn't
     /// pay the cold-start cost.
     /// </summary>
-    public bool WarmOnStart { get; init; } = true;
+    /// <remarks>
+    /// Settable, like <see cref="ModelId"/>: a host decides it for one start after building the options. A brain
+    /// loaded only so that its index gets built (BrainInWaiting) answers nobody, and its first prefill - every layer
+    /// of a model bigger than RAM streamed from flash - is minutes of reading for nothing: on the P30 on 2026-11-13
+    /// it outlasted the three minutes a load's step is given, twice, and the load was ended each time.
+    /// </remarks>
+    public bool WarmOnStart { get; set; } = true;
 
     /// <summary>
     /// The brain never downloads: a missing or damaged model throws

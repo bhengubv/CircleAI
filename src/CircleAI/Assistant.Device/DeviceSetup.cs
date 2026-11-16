@@ -174,7 +174,8 @@ public sealed class DeviceSetup : ISetup
                 // FILES ON DISK ARE NOT A BRAIN THAT ANSWERS. This said "Tap and talk"
                 // while the brain was loading, had failed, or refused everything it held.
                 // The brain's own state, from the one tracker that owns it, says which.
-                var now = CircleAI.Device.CircleNeuronService.Readiness?.Current.Brain;
+                var said = CircleAI.Device.CircleNeuronService.Readiness?.Current;
+                var now = said?.Brain;
                 return now?.Phase switch
                 {
                     CircleAI.Assistant.Lifecycle.BrainPhase.Loading =>
@@ -183,7 +184,9 @@ public sealed class DeviceSetup : ISetup
                         new Readiness(ReadyStage.CanListen, lead, CircleAI.Assistant.Lifecycle.ReadinessSentences.For(now), CanTalk: true),
                     CircleAI.Assistant.Lifecycle.BrainPhase.NoModel =>
                         new Readiness(ReadyStage.NeedsSetup, "Finish setting it up", CircleAI.Assistant.Lifecycle.ReadinessSentences.NoModel, CanTalk: false),
-                    _ => new Readiness(ReadyStage.Ready, lead, "", CanTalk: true),
+                    // READY TO TALK TO - and the quieter line says how far the brain's indexing has got, or once it is
+                    // complete that it learns from use (IndexReadiness); nothing where the service reports no index.
+                    _ => new Readiness(ReadyStage.Ready, lead, CircleAI.Assistant.Lifecycle.IndexReadiness.Caption(said), CanTalk: true),
                 };
             }
 

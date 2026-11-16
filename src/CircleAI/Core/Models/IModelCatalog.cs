@@ -95,14 +95,19 @@ public interface IModelCatalog
     ///
     /// So a refusal is a separate, durable fact that the assessor READS and never
     /// writes, and it outranks any later prediction.
+    /// <para>
+    /// NOTHING IN THE PRODUCT WRITES ONE ANY MORE (the owner, 2026-11-15: "no models
+    /// should be blocked - if it fails then check why it failed. clean up and try
+    /// again"). A crash is counted and paces the next tries instead (CrashVerdict), and
+    /// every start lifts the refusals an earlier build wrote (CrashVerdict.LiftRefusals).
+    /// </para>
     /// </remarks>
     void Refuse(string id, string reason);
 
-    /// <summary>Withdraw a refusal, because a person said so.</summary>
+    /// <summary>Withdraw a refusal: its strikes go with it.</summary>
     /// <remarks>
-    /// Nothing retries on its own - a native abort during load is not transient and
-    /// each attempt costs a dozen system apps. This exists so the device's verdict
-    /// is reversible by a human rather than permanent by accident.
+    /// Every start withdraws every refusal this device holds (CrashVerdict.LiftRefusals),
+    /// so one an earlier build wrote does not keep a model off the phone for good.
     /// </remarks>
     void Pardon(string id);
 
@@ -115,8 +120,8 @@ public interface IModelCatalog
     /// good, and on a phone the OS kills under memory pressure that is a verdict
     /// about the phone, not the model: measured on the P30 on 2026-10-10, every chat
     /// model on disk - Qwen3.5-0.8B among them - was refused "after the kills", and
-    /// the assistant fell back to a weaker model it did not need to. See
-    /// CrashVerdict for how many strikes refuse. Returns 0 for an unknown id.
+    /// the assistant fell back to a weaker model it did not need to. The count refuses
+    /// nothing now; see CrashVerdict for what it is used for. Returns 0 for an unknown id.
     /// </remarks>
     int Strike(string id);
 

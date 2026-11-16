@@ -108,18 +108,11 @@ public sealed class WorkerConnection : IAsyncDisposable
         await ConnectAsync(ct).ConfigureAwait(false);
         lock (_gate) { _phase = WorkPhase.Load; _model = request.ModelId; }
 
-        var map = new Dictionary<string, string>
-        {
-            [WorkerWire.Op] = WorkerWire.OpLoad,
-            [WorkerWire.Model] = request.ModelId,
-            [WorkerWire.Directory] = request.ModelDirectory,
-            [WorkerWire.SkipHash] = request.SkipLoadHash ? "1" : "0",
-        };
-        if (request.Engine is { } engine) map[WorkerWire.Engine] = engine.ToString();
-        // THE BALANCE'S SHAPE (Step 4), sent only when it differs from the brain as built.
-        if (request.KvMode is { } kv) map[WorkerWire.KvMode] = kv.ToString();
-        if (request.ContextShare is > 0 and < 1)
-            map[WorkerWire.ContextShare] = request.ContextShare.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        // WRITTEN BY THE ONE PLACE THAT DECIDES THE KEYS (WorkerWire.PutLoad), which the worker's side reads back with
+        // its pair - and a test on any machine round-trips both.
+        var map = new Dictionary<string, string>();
+        WorkerWire.PutLoad(map, new WorkerLoadAsk(request.ModelId, request.ModelDirectory, request.SkipLoadHash, request.Engine,
+            request.KvMode, request.ContextShare, request.ForItsIndex, request.Drafts, request.Seed));
         Check(await CallAsync(map, WorkPhase.Load, ct).ConfigureAwait(false), WorkPhase.Load);
 
         while (true)

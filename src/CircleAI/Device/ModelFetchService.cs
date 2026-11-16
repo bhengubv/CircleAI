@@ -123,7 +123,21 @@ public sealed class ModelFetchService : Service
             var registry = new Core.Models.ModelRegistryService();
             var plan = Owed(registry, loader);
 
-            if (ModelSetup.NotStarted(loader, plan).Count == 0) return;
+            if (ModelSetup.NotStarted(loader, plan).Count == 0)
+            {
+                // NOTHING OWED, AND A STEP UP MAY STILL BE DUE (2026-11-14). The upgrade is decided inside the fetch, so a
+                // phone that owed nothing never asked it: the P30, answering with the 2B, never fetched the 4B the climb
+                // names (ModelChoice.NextStep). It is asked here, and the fetch starts only when the step can be fetched
+                // now - on Wi-Fi, on charge - so a phone with nothing it can do now still shows nothing.
+                var step = NextUpgrade(registry, loader);
+                if (step.Fetch is not { } next) return;
+                if (WaitsFor(context) is { } wanting)
+                {
+                    global::Android.Util.Log.Info(LogTag, $"upgrade: {next.Name} waits for {wanting}");
+                    AskAgainSoon(context);
+                    return;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -261,9 +275,15 @@ public sealed class ModelFetchService : Service
                 // improvement path: one candidate at a time, never on mobile data or
                 // battery, and the brain that works keeps answering until the new one
                 // has passed its validation in the supervisor.
+                //
+                // ONE STEP UP, AFTER A SUCCESS, AND WHAT WAS DECIDED IS SAID EACH TIME (ModelChoice.NextStep):
+                // which brain answers, which is the next step, and - where the climb ends - why, with what the
+                // flash measured beside it. Those lines, phone by phone, are the limit pattern.
                 try
                 {
-                    if (UpgradeCandidate(registry, loader) is { } candidate)
+                    var step = NextUpgrade(registry, loader);
+                    global::Android.Util.Log.Info(LogTag, "upgrade: " + step.Said);
+                    if (step.Fetch is { } candidate)
                     {
                         if (Unmetered() && Charging())
                         {
@@ -271,7 +291,7 @@ public sealed class ModelFetchService : Service
                             await ModelSetup.FetchNotStartedAsync(
                                 loader, new[] { (candidate.Name, candidate.TotalBytes) }, Say, ct).ConfigureAwait(false);
                         }
-                        else global::Android.Util.Log.Info(LogTag, $"upgrade: {candidate.Name} waits for Wi-Fi and a charger");
+                        else global::Android.Util.Log.Info(LogTag, $"upgrade: {candidate.Name} waits for {WaitsFor(this)}");
                     }
                 }
                 catch (System.OperationCanceledException) { throw; }
@@ -338,49 +358,109 @@ public sealed class ModelFetchService : Service
     }
 
     /// <summary>
-    /// A chat model better than the best one on this phone that the phone could hold:
-    /// not retired, not refused, ranked higher, within the resident ceiling and the free
-    /// storage. Null when there is none.
+    /// What the upgrade does next on this phone: the brain one step above the last success here, when the
+    /// flash has room for it and its index - or why nothing is fetched. Decided in the library
+    /// (ModelChoice.NextStep), where it is a test.
     /// </summary>
-    internal static Core.Models.ModelEntry? UpgradeCandidate(Core.Models.ModelRegistryService registry, BundleModelLoader loader)
+    internal static UpgradeStep NextUpgrade(Core.Models.ModelRegistryService registry, BundleModelLoader loader)
     {
         var probe = CircleAI.Core.DeviceProbe.Snapshot();
         var catalogue = CircleNeuronService.Catalogue;
 
         // NOT ONE THE PERSON SWITCHED OFF, AND NOT A DRAFTER (Step 4): the upgrade path is a
         // background fetcher too, and a drafter is fetched for its brain, never as one.
+        //
+        // NO BRAIN IS REFUSED ANY MORE (the owner, 2026-11-15: "no models should be blocked"): a crash
+        // is counted and paces the next try (CrashVerdict), every start lifts a refusal an earlier build
+        // wrote, and a brain whose index failed its check is tried again listing more of its neurons
+        // (BrainInWaiting.StepOf). So nothing the phone decided leaves a brain out of the climb here.
         var declined = Declined();
         var chat = registry.AllModels
-            .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired && !CrashVerdict.IsRefused(catalogue, e.Name)
+            .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired
                         && !BrainCompanions.IsCompanion(e) && !declined(e.Name))
             .ToList();
-        var bestHere = ModelChoice.Best(chat.Where(e => loader.ModelPresent(e.Name)));
-        if (bestHere is null) return null;   // no brain yet: that is the first-run plan's job
 
-        // AN UPGRADE THIS PHONE CAN OPEN, better by the rule every pick uses (ModelChoice): the
-        // Bonsai 2 fleet first, then rank. No speed gate (the owner, 2026-11-04) - a brain this phone
-        // can hold is the engine's to run as well as the hardware lets it.
-        return ModelChoice.Best(chat
-            .Where(e => ModelChoice.Better(e, bestHere) && !loader.ModelPresent(e.Name)
-                        && ModelFit.CouldEverHold(e, probe) && ModelFit.FitsStorage(e, probe.StorageFreeGb)
-                        && EngineChoice.CanRun(e)));
+        // HOW EACH BRAIN'S STEP HAS GONE HERE (BrainInWaiting.StepOf): whether it is on the phone, has
+        // loaded, how far its index has got, whether anything is left to try of it, and whether it has
+        // answered. And what the flash measured, to say beside the result. No speed gate (the owner, 2026-11-04).
+        return ModelChoice.NextStep(chat, name => loader.ModelPresent(name), probe,
+            entry => BrainInWaiting.StepOf(entry, probe, loader.ModelPresent(entry.Name),
+                proven: catalogue?.Assessment(entry.Name)?.Proven == true,
+                index: BrainInWaiting.IndexOf(entry),
+                measuredSpeed: BrainSpeed.MeasuredOf(entry.Name)),
+            flash: BrainInWaiting.FlashOf());
     }
 
-    private bool Unmetered()
+    private bool Unmetered() => UnmeteredNow(this);
+
+    private bool Charging() => ChargingNow(this);
+
+    // What a download waits for, in words; null when it waits for nothing. Said in the log, so a wait is never a guess:
+    // on the P30 on 2026-11-14 "waits for Wi-Fi and a charger" was said of a phone on unmetered Wi-Fi and USB power, and
+    // could not say which of the two it was.
+    private static string? WaitsFor(Context context)
+    {
+        var network = NetworkWait(context);
+        var power = ChargingNow(context) ? null : "a charger";
+        return network is null ? power : power is null ? network : network + ", and " + power;
+    }
+
+    // What the network is short of for a download, in words; null when it is one that costs nothing by the byte.
+    private static string? NetworkWait(Context context)
     {
         try
         {
-            return GetSystemService(ConnectivityService) is global::Android.Net.ConnectivityManager cm
-                   && cm.ActiveNetwork is not null && !cm.IsActiveNetworkMetered;
+            if (context.GetSystemService(ConnectivityService) is not global::Android.Net.ConnectivityManager cm)
+                return "a network: the phone does not say which it has";
+            if (cm.ActiveNetwork is not { } active) return "a network this app may use: Android gives it none yet";
+            var unmetered = cm.GetNetworkCapabilities(active)?.HasCapability(global::Android.Net.NetCapability.NotMetered) == true
+                            || !cm.IsActiveNetworkMetered;
+            return unmetered ? null : "a network that costs nothing by the byte";
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            return "a network: " + ex.GetType().Name;
+        }
     }
 
-    private bool Charging()
+    // On a network that costs nothing by the byte. Asked by the service, and before it is started, of any context.
+    private static bool UnmeteredNow(Context context) => NetworkWait(context) is null;
+
+    // A STEP UP THAT WAITS IS ASKED AGAIN TWO MINUTES LATER, ONCE A PROCESS (2026-11-14). On the P30 the service, just
+    // started, saw no network it could use while the phone sat on unmetered Wi-Fi, and a minute later Android was
+    // letting it on ("fg svc", ALLOW_ALL). The hourly review asks again as well; this does not wait the hour for it.
+    private static int _askedAgain;
+
+    private static void AskAgainSoon(Context context)
+    {
+        if (Interlocked.Exchange(ref _askedAgain, 1) != 0) return;
+        var app = context.ApplicationContext ?? context;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+                if (StorageDirectory is not { Length: > 0 } root) return;
+                using var registry = new Core.Models.ModelRegistryService();
+                using var loader = new BundleModelLoader(root, registry);
+                global::Android.Util.Log.Info(LogTag, "upgrade: asking again");
+                StartIfAnythingIsOwed(app, loader);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn(LogTag, "upgrade: asking again failed: " + ex.Message);
+            }
+        });
+    }
+
+    // On a charger of any kind: the battery says it is charging, or that something is plugged in - USB power that holds
+    // the level counts ("not charging", plugged in by USB, is what the P30 reports on its cable).
+    private static bool ChargingNow(Context context)
     {
         try
         {
-            var battery = RegisterReceiver(null, new IntentFilter(Intent.ActionBatteryChanged));
+            if ((context.GetSystemService(BatteryService) as BatteryManager)?.IsCharging == true) return true;
+            var battery = context.RegisterReceiver(null, new IntentFilter(Intent.ActionBatteryChanged));
             return (battery?.GetIntExtra(BatteryManager.ExtraPlugged, 0) ?? 0) != 0;
         }
         catch { return false; }

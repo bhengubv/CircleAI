@@ -17,6 +17,22 @@ using CircleAI.Inference;
 
 namespace CircleAI.Assistant.Requests;
 
+/// <summary>What a load asks of the worker, as it crosses to it.</summary>
+/// <param name="Model">The model.</param>
+/// <param name="Directory">The model store's root.</param>
+/// <param name="SkipHash">The files were verified already; the weights are not hashed again.</param>
+/// <param name="Engine">Open it with this engine rather than the one its catalogue row names; null keeps the row's.</param>
+/// <param name="KvMode">The working memory's bits the balance asks for; null builds it as the engine does.</param>
+/// <param name="ContextShare">The share of the context asked for; 1 is all of it.</param>
+/// <param name="ForItsIndex">The brain is loaded so that its index gets built, not to answer (BrainInWaiting).</param>
+/// <param name="Drafts">
+/// Tokens a C# brain's own MTP head drafts ahead per pass of its trunk; 0, every load but a developer's check, decodes
+/// plainly (ManagedChatGenerator.DraftsForTest).
+/// </param>
+/// <param name="Seed">The seed every turn of the brain samples with; null draws a new one each turn (ManagedChatGenerator.SeedForTest).</param>
+public readonly record struct WorkerLoadAsk(string? Model, string? Directory, bool SkipHash, CircleAI.Core.ModelEngine? Engine,
+    CircleAI.Core.KvCompressionMode? KvMode, double ContextShare, bool ForItsIndex, int Drafts = 0, int? Seed = null);
+
 /// <summary>Keys and encoders for the service-to-worker protocol.</summary>
 public static class WorkerWire
 {
@@ -44,12 +60,70 @@ public static class WorkerWire
                         // THE BALANCE'S SHAPE FOR A LOAD (Step 4): the working memory's bits and the
                         // share of the context. Absent means the brain as built.
                         KvMode = "kv", ContextShare = "ctxshare",
+                        // A LOAD FOR THE BRAIN'S INDEX, NOT FOR ANSWERS (BrainInWaiting): built and not warmed.
+                        // Absent means a load that answers, as every load was.
+                        ForIndex = "forindex",
+                        // A DEVELOPER'S CHECK OF DRAFTING (SoakReceiver "engine"): how many tokens the MTP head drafts ahead,
+                        // and the seed every turn samples with. Absent means plain decoding and a new seed each turn.
+                        Drafts = "drafts", Seed = "seed",
                         // THE WORKER'S OWN ACCOUNT OF A TURN (OPEN-GAPS E33): the brain answering it, the
                         // process's CPU time, and how far past its deadline the job in flight is.
                         Working = "working", WorkingSlot = "slot", CpuMs = "cpu", OverdueMs = "overdue";
 
     /// <summary>The largest image a message may carry between the two processes.</summary>
     public const int MaxImageBytes = 16 * 1024 * 1024;
+
+    // ── a load ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Write a load into a map: the model, its store and whether its files were verified, and - only where they differ
+    /// from a brain as built - the engine, the balance's shape and that it is loaded for its index.
+    /// </summary>
+    public static void PutLoad(IDictionary<string, string> map, WorkerLoadAsk ask)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        map[Op] = OpLoad;
+        map[Model] = ask.Model ?? string.Empty;
+        map[Directory] = ask.Directory ?? string.Empty;
+        map[SkipHash] = ask.SkipHash ? "1" : "0";
+        if (ask.Engine is { } engine) map[Engine] = engine.ToString();
+        // THE BALANCE'S SHAPE (Step 4), sent only when it differs from the brain as built.
+        if (ask.KvMode is { } kv) map[KvMode] = kv.ToString();
+        if (ask.ContextShare is > 0 and < 1) map[ContextShare] = ask.ContextShare.ToString("R", CultureInfo.InvariantCulture);
+        if (ask.ForItsIndex) map[ForIndex] = "1";
+        if (ask.Drafts > 0) map[Drafts] = ask.Drafts.ToString(CultureInfo.InvariantCulture);
+        if (ask.Seed is { } seed) map[Seed] = seed.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>A load read back. A key that is absent, or not what it should be, reads as a brain as built.</summary>
+    public static WorkerLoadAsk GetLoad(IReadOnlyDictionary<string, string> map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        map.TryGetValue(Model, out var model);
+        map.TryGetValue(Directory, out var directory);
+        CircleAI.Core.ModelEngine? engine = map.TryGetValue(Engine, out var named)
+            && Enum.TryParse<CircleAI.Core.ModelEngine>(named, ignoreCase: true, out var parsed) ? parsed : null;
+        CircleAI.Core.KvCompressionMode? kv = map.TryGetValue(KvMode, out var kvName)
+            && Enum.TryParse<CircleAI.Core.KvCompressionMode>(kvName, ignoreCase: true, out var kvParsed) ? kvParsed : null;
+        var share = map.TryGetValue(ContextShare, out var shareText)
+            && double.TryParse(shareText, NumberStyles.Float, CultureInfo.InvariantCulture, out var s)
+            && s is > 0 and < 1 ? s : 1.0;
+        var drafts = map.TryGetValue(Drafts, out var draftsText)
+            && int.TryParse(draftsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var d) && d is > 0 and <= 8 ? d : 0;
+        int? seed = map.TryGetValue(Seed, out var seedText)
+            && int.TryParse(seedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sd) ? sd : null;
+        return new WorkerLoadAsk(model, directory, Flag(map, SkipHash), engine, kv, share, Flag(map, ForIndex), drafts, seed);
+    }
+
+    /// <summary>
+    /// Whether two loads ask for the same brain as built: the same model, engine and shape, and both to answer or both
+    /// for the index. A different shape is a different brain, built again between turns - and a brain loaded for its
+    /// index, built small and not warmed, is not the brain that answers.
+    /// </summary>
+    public static bool SameBrain(WorkerLoadAsk loaded, WorkerLoadAsk asked) =>
+        string.Equals(loaded.Model, asked.Model, StringComparison.Ordinal) && loaded.Engine == asked.Engine
+        && loaded.KvMode == asked.KvMode && Math.Abs(loaded.ContextShare - asked.ContextShare) < 0.001
+        && loaded.ForItsIndex == asked.ForItsIndex && loaded.Drafts == asked.Drafts && loaded.Seed == asked.Seed;
 
     // ── a job's own settings ─────────────────────────────────────────────────
 

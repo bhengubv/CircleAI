@@ -85,6 +85,19 @@ public sealed class ThoughtWatch : IDisposable
     /// <paramref name="kept"/> of them a record. Replaces what the file held.
     /// </summary>
     public ThoughtWatch(string path, int layers, int embedding, int feedForward, int kept)
+        : this(path, layers, embedding, feedForward, kept, keep: 0)
+    {
+    }
+
+    /// <summary>
+    /// A watch that carries on the file at <paramref name="path"/>: its first <paramref name="keep"/> bytes - what an
+    /// earlier sitting finished, as <see cref="Bytes"/> said then - stay, anything after them is cut off, and new records
+    /// go after them. A file that is missing, another model's or shorter than that is started again from nothing.
+    /// </summary>
+    public static ThoughtWatch Append(string path, int layers, int embedding, int feedForward, int kept, long keep) =>
+        new(path, layers, embedding, feedForward, kept, keep);
+
+    private ThoughtWatch(string path, int layers, int embedding, int feedForward, int kept, long keep)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(layers, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(feedForward, 1);
@@ -98,7 +111,6 @@ public sealed class ThoughtWatch : IDisposable
         _record = new byte[RecordBytes(feedForward)];
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         FilePath = path;
-        _stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
         var header = new byte[HeaderBytes];
         BinaryPrimitives.WriteUInt64LittleEndian(header, Magic);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), Version);
@@ -107,7 +119,35 @@ public sealed class ThoughtWatch : IDisposable
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(20), feedForward);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(24), ThoughtSketch.Width);
         BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(28), kept);
+        if (keep > HeaderBytes && (keep - HeaderBytes) % _record.Length == 0 && Holds(path, header, keep))
+        {
+            // WHAT AN EARLIER SITTING FINISHED STAYS; a passage that was stopped part way is cut off.
+            _stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read, 1 << 16);
+            _stream.SetLength(keep);
+            _stream.Position = keep;
+            Records = (keep - HeaderBytes) / _record.Length;
+            return;
+        }
+        _stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
         _stream.Write(header);
+    }
+
+    // Whether the file at `path` is a watch with this header and at least `keep` bytes.
+    private static bool Holds(string path, byte[] header, long keep)
+    {
+        try
+        {
+            if (!File.Exists(path)) return false;
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 12);
+            if (stream.Length < keep) return false;
+            var held = new byte[HeaderBytes];
+            stream.ReadExactly(held);
+            return held.AsSpan().SequenceEqual(header);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The file.</summary>
@@ -125,8 +165,11 @@ public sealed class ThoughtWatch : IDisposable
     /// <summary>Strong neurons kept a record.</summary>
     public int Kept { get; }
 
-    /// <summary>Records written.</summary>
+    /// <summary>Records in the file: those kept from an earlier sitting and those written since.</summary>
     public long Records { get; private set; }
+
+    /// <summary>The file's length with every record so far: what <see cref="Append"/> keeps to carry on from here.</summary>
+    public long Bytes => HeaderBytes + Records * _record.Length;
 
     // A record's bytes: the layer, the sketch as halves, the neurons as bits.
     internal static int RecordBytes(int feedForward) => 2 + ThoughtSketch.Width * 2 + (feedForward + 7) / 8;

@@ -65,34 +65,36 @@ public sealed class CrashVerdictTests : IDisposable
         => Assert.Null(CrashVerdict.ModelFrom(crumb));
 
     [Fact]
-    public void One_death_while_loading_is_a_strike_not_a_refusal()
+    public void One_death_while_loading_is_counted_not_a_refusal()
     {
         // THE RULE THAT REFUSED QWEN3.5-0.8B ON THE P30. A surviving breadcrumb
         // proves the process died inside a load, not that the model killed it, and
         // that phone's OS kills this service for memory all the time.
         _cat.Upsert(Model("big", 16));
 
-        var refused = CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        var counted = CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
 
-        Assert.Null(refused);
+        Assert.Equal("big", counted);
         Assert.False(_cat.Assessment("big")!.Refused);
-        Assert.Contains(_said, s => s.Contains("1 of 2", StringComparison.Ordinal));
+        Assert.Contains(_said, s => s.Contains("1 time in a row", StringComparison.Ordinal)
+                                    && s.Contains("its files are checked before it is tried again", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Two_deaths_in_a_row_refuse_the_model_it_names()
+    public void Deaths_in_a_row_are_counted_and_never_refuse_the_model_they_name()
     {
-        // A model that genuinely cannot load dies every time, so it is still
-        // refused - one attempt later than the old rule.
+        // THE OWNER, 2026-11-15: "no models should be blocked - if it fails then check why it failed. clean up and try
+        // again, everything depends on the reason why". Two in a row refused the model here for good until a person
+        // pardoned it. Now each is counted - what paces the next tries - and the model is tried again.
         _cat.Upsert(Model("big", 16));
 
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
-        var refused = CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        for (var i = 0; i < 5; i++)
+            Assert.Equal("big", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add));
 
-        Assert.Equal("big", refused);
-        Assert.True(_cat.Assessment("big")!.Refused);
-        Assert.Equal(CrashVerdict.Reason, _cat.Assessment("big")!.RefusedReason);
-        Assert.Contains(_said, s => s.Contains("stopped this phone", StringComparison.Ordinal));
+        Assert.False(_cat.Assessment("big")!.Refused);
+        Assert.False(CrashVerdict.IsRefused(_cat, "big"));
+        Assert.Contains(_said, s => s.Contains("5 times in a row", StringComparison.Ordinal));
+        Assert.DoesNotContain(_said, s => s.Contains("not using it again", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -102,9 +104,9 @@ public sealed class CrashVerdictTests : IDisposable
 
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
         CrashVerdict.Loaded(_cat, "big");
-        var refused = CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
 
-        Assert.Null(refused);
+        Assert.Equal(2, _said.Count(s => s.Contains("1 time in a row", StringComparison.Ordinal)));
         Assert.False(_cat.Assessment("big")!.Refused);
     }
 
@@ -112,15 +114,16 @@ public sealed class CrashVerdictTests : IDisposable
     public void A_death_the_platform_says_was_not_the_models_is_not_counted()
     {
         // The person force-stopped it, or the app was updated mid-load. Neither
-        // says anything about the model, so neither is a strike - not even one.
+        // says anything about the model, so neither is counted - not even once.
         _cat.Upsert(Model("big", 16));
 
         Assert.Null(CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add, killedByTheSystem: true));
         Assert.Null(CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add, killedByTheSystem: true));
-        Assert.Null(CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add));
+        Assert.Equal("big", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add));
 
-        Assert.False(_cat.Assessment("big")!.Refused, "only the last death counted, and one is a strike");
+        Assert.False(_cat.Assessment("big")!.Refused);
         Assert.Contains(_said, s => s.Contains("not held against the model", StringComparison.Ordinal));
+        Assert.Contains(_said, s => s.Contains("1 time in a row", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -134,62 +137,62 @@ public sealed class CrashVerdictTests : IDisposable
     }
 
     [Fact]
-    public void The_old_rules_refusals_come_back_on_one_strike()
+    public void Every_refusal_an_earlier_rule_wrote_is_lifted_whatever_its_reason()
     {
-        // WHAT IS ON THE P30 NOW: refused under the old rule, with its reason and no
-        // strikes, because the column did not exist when the refusal was written.
+        // WHAT A PHONE UPDATING FROM AN EARLIER BUILD HOLDS: refused under the one-strike rule (its reason, no strikes),
+        // under the two-strike rule (its reason and its strikes), or for any other text. No model is refused any more,
+        // so every one of them is tried again.
         _cat.Upsert(Model("qwen35", 8));
+        _cat.Upsert(Model("big", 16));
+        _cat.Upsert(Model("other", 12));
+        _cat.Upsert(Model("fine", 9));
         _cat.Refuse("qwen35", CrashVerdict.Reason);
+        _cat.Strike("big");
+        _cat.Strike("big");
+        _cat.Refuse("big", CrashVerdict.Reason);
+        _cat.Refuse("other", "a person said no");
 
-        Assert.Equal(1, CrashVerdict.Reconsider(_cat, _said.Add));
-        Assert.False(_cat.Assessment("qwen35")!.Refused);
+        Assert.Equal(3, CrashVerdict.LiftRefusals(_cat, _said.Add));
 
-        // ONE strike, not a pardon: the next death refuses it again.
-        Assert.Equal("qwen35", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add));
-        Assert.True(_cat.Assessment("qwen35")!.Refused);
+        Assert.All(new[] { "qwen35", "big", "other", "fine" }, id => Assert.False(_cat.Assessment(id)!.Refused, id));
+        Assert.Contains(_said, s => s.Contains("3 models this phone had refused are tried again", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Reconsidering_never_touches_a_refusal_the_two_strike_rule_made()
+    public void Lifting_refusals_on_every_start_finds_none_after_the_first()
     {
-        // Safe to run on every start: a refusal earned under the new rule carries
-        // its strikes, so it can never be mistaken for one of the old rule's.
+        // Safe on every start: nothing writes a refusal now, so the second run has nothing to lift and says nothing.
         _cat.Upsert(Model("big", 16));
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        _cat.Refuse("big", CrashVerdict.Reason);
 
-        Assert.Equal(0, CrashVerdict.Reconsider(_cat, _said.Add));
-        Assert.True(_cat.Assessment("big")!.Refused);
+        Assert.Equal(1, CrashVerdict.LiftRefusals(_cat, _said.Add));
+        for (var i = 0; i < 3; i++) CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        _said.Clear();
+
+        Assert.Equal(0, CrashVerdict.LiftRefusals(_cat, _said.Add));
+        Assert.Empty(_said);
+        Assert.Equal(0, CrashVerdict.LiftRefusals(null, _said.Add));
     }
 
     [Fact]
-    public void Reconsidering_never_touches_a_refusal_for_another_reason()
-    {
-        _cat.Upsert(Model("big", 16));
-        _cat.Refuse("big", "a person said no");
-
-        Assert.Equal(0, CrashVerdict.Reconsider(_cat, _said.Add));
-        Assert.Equal("a person said no", _cat.Assessment("big")!.RefusedReason);
-    }
-
-    [Fact]
-    public void A_pardon_is_a_fresh_start_and_takes_the_strikes_with_it()
+    public void A_pardon_is_a_fresh_start_and_takes_the_count_with_it()
     {
         _cat.Upsert(Model("big", 16));
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
 
         _cat.Pardon("big");
-        var refused = CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        _said.Clear();
+        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
 
-        Assert.Null(refused);
+        Assert.Contains(_said, s => s.Contains("1 time in a row", StringComparison.Ordinal));
         Assert.False(_cat.Assessment("big")!.Refused);
     }
 
     [Fact]
     public void Strikes_survive_a_resync_from_the_registry()
     {
-        // ReSync runs on every start. A strike it wiped would make "in a row"
+        // ReSync runs on every start. A count it wiped would make "in a row"
         // impossible on any phone that restarts between loads - which is every one.
         _cat.Upsert(Model("big", 16));
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
@@ -197,6 +200,7 @@ public sealed class CrashVerdictTests : IDisposable
         Assert.True(_cat.ReSync(Model("big", 17)));
 
         Assert.Equal("big", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add));
+        Assert.Contains(_said, s => s.Contains("2 times in a row", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -220,8 +224,10 @@ public sealed class CrashVerdictTests : IDisposable
     }
 
     [Fact]
-    public void Two_crashes_with_evidence_still_refuse_the_model()
+    public void Two_crashes_with_evidence_are_counted_and_the_model_is_tried_again()
     {
+        // A NATIVE CRASH IS A REASON, NOT A VERDICT: counted (it paces the next tries, and the supervisor checks the
+        // model's files again before its next load), never a refusal.
         _cat.Upsert(Model("big", 16));
         var facts = new CircleAI.Assistant.Lifecycle.ExitFacts(29, CircleAI.Assistant.Lifecycle.WorkPhase.Load,
             "big", DateTimeOffset.UtcNow, WorkerDiedAlone: true, CrashBufferShowsSignal: true);
@@ -229,61 +235,59 @@ public sealed class CrashVerdictTests : IDisposable
         for (var i = 0; i < 2; i++)
         {
             var failure = CircleAI.Assistant.Lifecycle.FailureClassifier.Classify(facts);
-            CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add,
-                                killedByTheSystem: !failure.CountsAgainstModel);
+            Assert.True(failure.CountsAgainstModel);
+            Assert.True(CircleAI.Assistant.Lifecycle.FailurePolicy.HoldsOff(failure.Kind, failure.Phase), "the next load must wait");
+            Assert.Equal("big", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add,
+                                                    killedByTheSystem: !failure.CountsAgainstModel));
         }
 
-        Assert.True(_cat.Assessment("big")!.Refused);
+        Assert.False(_cat.Assessment("big")!.Refused);
+        Assert.Contains(_said, s => s.Contains("2 times in a row", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void A_refusal_the_unexplained_death_rule_made_comes_back_on_one_strike()
+    public void Lifting_that_could_not_finish_says_so_and_does_not_count_as_done()
     {
-        // WHAT A PHONE UPDATING FROM 3.9.1 MAY HOLD: refused with its two strikes, which
-        // Reconsider - matching only refusals with none - never looks at.
-        _cat.Upsert(Model("qwen35", 8));
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add);
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add);
-        Assert.Equal(0, CrashVerdict.Reconsider(_cat, _said.Add));
-
-        Assert.Equal(1, CrashVerdict.ReconsiderAmbiguousRefusals(_cat, _said.Add));
-        Assert.False(_cat.Assessment("qwen35")!.Refused);
-
-        // ONE strike, not a pardon: a crash that counts refuses it again.
-        Assert.Equal("qwen35", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add));
-    }
-
-    [Fact]
-    public void Reconsidering_unexplained_refusals_never_touches_another_reason()
-    {
-        _cat.Upsert(Model("big", 16));
-        _cat.Refuse("big", "a person said no");
-
-        Assert.Equal(0, CrashVerdict.ReconsiderAmbiguousRefusals(_cat, _said.Add));
-        Assert.Equal("a person said no", _cat.Assessment("big")!.RefusedReason);
-        Assert.Equal(0, CrashVerdict.ReconsiderAmbiguousRefusals(null, _said.Add));
-    }
-
-    [Fact]
-    public void Reconsidering_that_could_not_finish_says_so_and_does_not_count_as_done()
-    {
-        // -1, NOT 0: "nothing to heal" and "could not get to it" must not look the same,
-        // or the run-once marker is written and the only brain stays refused for good.
+        // -1, NOT 0: "nothing to lift" and "could not get to it" must not look the same.
         var gone = new SqliteModelCatalog("Data Source=:memory:");
         gone.Dispose();
 
-        Assert.Equal(-1, CrashVerdict.ReconsiderAmbiguousRefusals(gone, _said.Add));
-        Assert.Contains(_said, s => s.Contains("could not reconsider", StringComparison.Ordinal));
+        Assert.Equal(-1, CrashVerdict.LiftRefusals(gone, _said.Add));
+        Assert.Contains(_said, s => s.Contains("could not lift earlier refusals", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void The_supervisor_holds_a_stopped_load_off_and_heals_old_refusals_once()
+    public void Nothing_in_the_product_writes_a_refusal()
+    {
+        // THE ONE WRITER WAS CrashVerdict.Record. A refusal kept a model off a phone for good until a person pardoned it,
+        // and the owner's rule is that no model is blocked (2026-11-15). Guarded at the source, in the files that handle a
+        // crash: none of them calls the catalogue's Refuse.
+        string[] handlers =
+        [
+            System.IO.Path.Combine("src", "CircleAI", "Inference", "Models", "CrashVerdict.cs"),
+            System.IO.Path.Combine("src", "CircleAI", "Device", "CircleNeuronService.cs"),
+            System.IO.Path.Combine("src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs"),
+            System.IO.Path.Combine("src", "CircleAIService", "ServiceApplication.cs"),
+        ];
+        var calls = handlers
+            .SelectMany(f => System.IO.File.ReadLines(System.IO.Path.Combine(Root(), f)).Select((line, i) => (File: f, Line: i + 1, Text: line.Trim())))
+            .Where(l => l.Text.Contains(".Refuse(", StringComparison.Ordinal) && !l.Text.StartsWith("//", StringComparison.Ordinal))
+            .Select(l => $"{System.IO.Path.GetFileName(l.File)}:{l.Line}: {l.Text}")
+            .ToList();
+
+        Assert.True(calls.Count == 0, "a refusal is written at: " + string.Join("; ", calls));
+    }
+
+    [Fact]
+    public void The_supervisor_holds_a_stopped_load_off_and_lifts_old_refusals_every_start()
     {
         // Android-only, so guarded at the source like the rest of the supervisor's wiring.
         var supervisor = System.IO.File.ReadAllText(System.IO.Path.Combine(
             Root(), "src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs"));
 
-        var load    = supervisor.IndexOf("private async Task LoadAsync(string? forced)", StringComparison.Ordinal);
+        // The load, by its signature up to its first parameter: it has since gained a second (a load for the brain's
+        // index, BrainInWaiting), and an anchor on the whole signature found nothing and threw (2026-11-13).
+        var load    = supervisor.IndexOf("private async Task LoadAsync(string? forced", StringComparison.Ordinal);
         var gate    = supervisor.IndexOf("if (HeldOff(model) is { } held) throw HoldOffNow(", load, StringComparison.Ordinal);
         var crumb   = supervisor.IndexOf("BeginRisky(_stateDir", load, StringComparison.Ordinal);
         var loaded  = supervisor.IndexOf("CrashVerdict.Loaded(_catalogue(), model);", load, StringComparison.Ordinal);
@@ -292,16 +296,24 @@ public sealed class CrashVerdictTests : IDisposable
         Assert.True(crumb > gate, "the hold-off must come before the breadcrumb");
         Assert.True(cleared > loaded, "a clean load must clear the hold-off");
 
-        var recover    = supervisor.IndexOf("public void RecoverFromPreviousRun()", StringComparison.Ordinal);
-        var reconsider = supervisor.IndexOf("CrashVerdict.Reconsider(", recover, StringComparison.Ordinal);
-        var once       = supervisor.IndexOf("ReconsiderAmbiguousRefusalsOnce();", recover, StringComparison.Ordinal);
-        var record     = supervisor.IndexOf("CrashVerdict.Record(", recover, StringComparison.Ordinal);
-        var setback    = supervisor.IndexOf("RecordSetback(model)", recover, StringComparison.Ordinal);
-        Assert.True(recover >= 0 && reconsider > recover && once > reconsider && record > once,
-                    "old refusals must be healed before the last death is recorded");
+        var recover = supervisor.IndexOf("public void RecoverFromPreviousRun()", StringComparison.Ordinal);
+        var lift    = supervisor.IndexOf("CrashVerdict.LiftRefusals(_catalogue(), line => _log(line));", recover, StringComparison.Ordinal);
+        var record  = supervisor.IndexOf("CrashVerdict.Record(", recover, StringComparison.Ordinal);
+        var recheck = supervisor.IndexOf("if (model is not null && failure.CountsAgainstModel) ForgetVerified(model);", recover, StringComparison.Ordinal);
+        var setback = supervisor.IndexOf("RecordSetback(model)", recover, StringComparison.Ordinal);
+        Assert.True(recover >= 0 && lift > recover && record > lift, "old refusals must be lifted before the last death is counted");
+        Assert.True(recheck > record, "a counted death must have the model's files checked before its next load");
         Assert.True(setback > record, "a death the main process did not survive must hold the next load off");
-        Assert.Contains("reconsidered-unexplained-deaths.txt", supervisor);
-        Assert.Contains("ReconsiderAmbiguousRefusals(catalogue, line => _log(line)) < 0) return;", supervisor);
+        Assert.DoesNotContain("reconsidered-unexplained-deaths.txt", supervisor);
+
+        // A LIVE CRASH OF THE WORKER: counted, the model's files checked again before its next load, and that load held off.
+        var failsAt = supervisor.IndexOf("private void Fail(Failure failure, string? model", StringComparison.Ordinal);
+        var counted = supervisor.IndexOf("CrashVerdict.Record(_catalogue(), CrashVerdict.Breadcrumb(subject)", failsAt, StringComparison.Ordinal);
+        var forget  = supervisor.IndexOf("if (subject is not null && failure.CountsAgainstModel) ForgetVerified(subject);", failsAt, StringComparison.Ordinal);
+        var waits   = supervisor.IndexOf("if (model is not null && FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);", failsAt, StringComparison.Ordinal);
+        Assert.True(failsAt >= 0 && counted > failsAt && forget > counted && waits > forget,
+                    "a crash must be counted, then have the files checked, then hold the next load off");
+        Assert.Contains("try { File.Delete(StatePath(\"verified\", model)); }", supervisor);
 
         // A worker's death keeps its breadcrumb until its verdict is written.
         var died    = supervisor.IndexOf("catch (WorkerDiedException died)", load, StringComparison.Ordinal);
@@ -323,19 +335,19 @@ public sealed class CrashVerdictTests : IDisposable
     {
         // THIS REPO'S SIGNATURE DEFECT is a rule that is written, tested and never
         // called. The service is an Android Service that cannot be built off a
-        // device, so the wiring is guarded at the source: Reconsider BEFORE Record
-        // (or the old refusals are never converted), the platform's word passed in,
-        // and a clean load clearing the strikes (or they are not "in a row").
+        // device, so the wiring is guarded at the source: LiftRefusals BEFORE Record
+        // (or an earlier build's refusals stand), the platform's word passed in,
+        // and a clean load clearing the count (or the deaths are not "in a row").
         var source = System.IO.File.ReadAllText(System.IO.Path.Combine(
             Root(), "src", "CircleAI", "Device", "CircleNeuronService.cs"));
 
-        var reconsider = source.IndexOf("CrashVerdict.Reconsider(", StringComparison.Ordinal);
-        var record     = source.IndexOf("CrashVerdict.Record(", StringComparison.Ordinal);
-        var ready      = source.IndexOf("\"brain ready\"", StringComparison.Ordinal);
-        var loaded     = source.IndexOf("CrashVerdict.Loaded(Catalogue, wanted)", StringComparison.Ordinal);
+        var lift   = source.IndexOf("CrashVerdict.LiftRefusals(", StringComparison.Ordinal);
+        var record = source.IndexOf("CrashVerdict.Record(", StringComparison.Ordinal);
+        var ready  = source.IndexOf("\"brain ready\"", StringComparison.Ordinal);
+        var loaded = source.IndexOf("CrashVerdict.Loaded(Catalogue, wanted)", StringComparison.Ordinal);
 
-        Assert.True(reconsider >= 0, "Reconsider is never called");
-        Assert.True(record > reconsider, "Reconsider must run before Record");
+        Assert.True(lift >= 0, "LiftRefusals is never called");
+        Assert.True(record > lift, "LiftRefusals must run before Record");
         Assert.Contains("killedByTheSystem: LastDeathWasTheSystems(context)", source);
         Assert.True(loaded > ready, "a clean load must clear the strikes");
 
@@ -346,10 +358,10 @@ public sealed class CrashVerdictTests : IDisposable
         Assert.Contains("_supervisor?.RecoverFromPreviousRun();", host);
 
         // AND THE SUPERVISOR - which owns the brain in its own process - runs the rule by
-        // KIND: a strike only when the classified failure counts against the model.
+        // KIND: counted only when the classified failure counts against the model.
         var supervisor = System.IO.File.ReadAllText(System.IO.Path.Combine(
             Root(), "src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs"));
-        Assert.Contains("CrashVerdict.Reconsider(", supervisor);
+        Assert.Contains("CrashVerdict.LiftRefusals(", supervisor);
         Assert.Contains("killedByTheSystem: !failure.CountsAgainstModel", supervisor);
         Assert.Contains("CrashVerdict.Loaded(_catalogue(), model)", supervisor);
     }
@@ -381,7 +393,7 @@ public sealed class CrashVerdictTests : IDisposable
     public void A_catalogue_that_throws_costs_a_verdict_not_the_brain()
     {
         Assert.Null(CrashVerdict.Record(new Throwing(), CrashVerdict.Breadcrumb("big"), _said.Add));
-        Assert.Equal(0, CrashVerdict.Reconsider(new Throwing(), _said.Add));
+        Assert.Equal(-1, CrashVerdict.LiftRefusals(new Throwing(), _said.Add));
         CrashVerdict.Loaded(new Throwing(), "big");
     }
 
@@ -411,16 +423,18 @@ public sealed class CrashVerdictTests : IDisposable
     }
 
     [Fact]
-    public void A_refused_model_reads_as_refused_and_everything_else_does_not()
+    public void A_refusal_an_earlier_build_wrote_reads_as_refused_until_it_is_lifted()
     {
         _cat.Upsert(Model("big", 16));
         _cat.Upsert(Model("small", 9));
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
-        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add);
+        _cat.Refuse("big", CrashVerdict.Reason);
 
         Assert.True(CrashVerdict.IsRefused(_cat, "big"));
         Assert.False(CrashVerdict.IsRefused(_cat, "small"));
         Assert.False(CrashVerdict.IsRefused(_cat, "never-heard-of-it"));
+
+        CrashVerdict.LiftRefusals(_cat, _said.Add);
+        Assert.False(CrashVerdict.IsRefused(_cat, "big"));
     }
 
     [Fact]

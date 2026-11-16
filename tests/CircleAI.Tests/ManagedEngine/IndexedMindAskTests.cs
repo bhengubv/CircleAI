@@ -5,10 +5,11 @@
 // engine's code. Each test quotes the ask it checks and measures it with what the engine reports: the bytes each tier read,
 // the pieces each tier served, the layers a word ran, the logits. A test fails where the build does not do what was asked.
 //
-// What exists is the base they measure through: Watch (ThoughtWatch), the core index (ThoughtIndex), the cached index
-// (CachedIndex), the warm index and its tiers (IndexedFeedForward), the layers' stream (LayerStream), the head's stream
-// (HeadStream), the split (TileStore) and the flash profile (FlashProfile). A source of flash reads the build adds must
-// report through them, or these tests cannot see it.
+// What exists is the base they measure through, in the owner's steps (2026-11-15: "1) Download llm, 2) split, organise by
+// thoughts, 3) create CORE index. Select coherent portions from 3 into RAM for 4) warm index"): Watch (ThoughtWatch), the
+// core index - step 3 (ThoughtIndex), step 2's pieces (CachedIndex) and tiled layers (TileStore), step 4 and how it
+// reaches down (IndexedFeedForward), the layers' stream (LayerStream), the head's stream (HeadStream) and the flash
+// profile (FlashProfile). A source of flash reads the build adds must report through them, or these tests cannot see it.
 //
 // A threshold marked ASSUMED is not in the documents, which judge by the exam on the phone. Measured on the phone and not
 // here: the exam's pass rate, joules per passed question, end of speech to first spoken word, skin never over 41C, no app
@@ -34,8 +35,8 @@ public sealed class IndexedMindAskTests
 
     // DESIGN, "Index every part of the model, not one part": "Feed-forward layers act as key-value memories ... Find the
     // matching keys through the index ... and fetch only their values." The knowledge layers are ffn_gate, ffn_up and
-    // ffn_down. An index that lists every neuron serves the whole knowledge layer, the same from every tier - the bytes are
-    // the same in RAM, the cached index and the core, so the logits are the same to the bit. ffn_down's neurons are columns,
+    // ffn_down. An index that lists every neuron serves the whole knowledge layer, the same from every step - the bytes are
+    // the same in step 4, in step 2, and gathered from step 1, so the logits are the same to the bit. ffn_down's neurons are columns,
     // so serving them by neuron re-quantises them transposed (lossy); it matches the full read on the answer (DESIGN: "same
     // words as a full read is the wrong test"; the measure is the exam), not to the bit.
     [Fact]
@@ -45,11 +46,11 @@ public sealed class IndexedMindAskTests
         {
             var full = Logits(Full(file), Asked);
             var core = Core(file, directory, groups: 2, list: Ff);
-            var cached = CachedIndex.Build(core, file, Path.Combine(directory, "model.cached"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            var pieces = CachedIndex.Build(core, file, Path.Combine(directory, "model.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
             List<float[]>? firstTier = null;
-            foreach (var (tier, cache, warm) in new[] { ("RAM", cached, long.MaxValue), ("the cached index", cached, 0L), ("the core", (CachedIndex?)null, 0L) })
+            foreach (var (tier, split, warm) in new[] { ("step 4 in RAM", pieces, long.MaxValue), ("step 2", pieces, 0L), ("step 1 through step 2", (CachedIndex?)null, 0L) })
             {
-                using var serving = new IndexedFeedForward(core, cache, file, warm, channels: 2, readBytes: FlashFile.Page);
+                using var serving = new IndexedFeedForward(core, split, file, warm, channels: 2, readBytes: FlashFile.Page);
                 var got = Measured($"the index alone, served from {tier},", () => Logits(FromTheIndex(file, serving), Asked));
                 if (firstTier is null)
                     firstTier = got;
@@ -63,25 +64,25 @@ public sealed class IndexedMindAskTests
         });
     }
 
-    // DESIGN, the three tiers: "Warm index, in RAM: only what the thought in hand is using. Answers come from here, which is
-    // how response time comes down." With every piece a word uses warm, the word reads nothing from flash.
+    // DESIGN, the warm index: "Warm index, in RAM: only what the thought in hand is using. Answers come from here, which is
+    // how response time comes down." With every piece a word uses in step 4, the word reads nothing from flash.
     [Fact]
     public void A_word_whose_pieces_are_warm_reads_nothing_from_flash()
     {
         WithModel(203, (file, directory) =>
         {
             var core = Core(file, directory, groups: 4, list: Quarter);
-            var cached = CachedIndex.Build(core, file, Path.Combine(directory, "model.cached"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
-            using var serving = new IndexedFeedForward(core, cached, file, warmBudget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
-            Assert.True(serving.WarmPieces == cached.Count, $"{serving.WarmPieces} of the cached index's {cached.Count} pieces warm with room for all");
+            var pieces = CachedIndex.Build(core, file, Path.Combine(directory, "model.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            using var serving = new IndexedFeedForward(core, pieces, file, warmBudget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            Assert.True(serving.WarmPieces == pieces.Count, $"{serving.WarmPieces} of step 2's {pieces.Count} pieces warm with room for all");
             var indexed = FromTheIndex(file, serving);
             var state = indexed.NewState(32);
             foreach (var token in Asked)
             {
                 Measured("a warm word from the index alone", () => indexed.Forward(token, state));
-                var (warm, fromCache, cachedBytes, fromCore, coreBytes) = serving.TakeCounts();
-                Assert.True(cachedBytes + coreBytes == 0 && warm == Layers,
-                    $"word {token}: {warm} pieces from RAM, {fromCache} from the cached index ({cachedBytes} bytes), {fromCore} from the core ({coreBytes} bytes)");
+                var counts = serving.TakeCounts();
+                Assert.True(counts.Bytes == 0 && counts.Warm == Layers,
+                    $"word {token}: {counts.Warm} pieces from step 4, {counts.Ahead + counts.Asked} from step 2 ({counts.Bytes} bytes)");
             }
         });
     }
@@ -95,17 +96,18 @@ public sealed class IndexedMindAskTests
         WithModel(205, (file, directory) =>
         {
             var core = Core(file, directory, groups: 4, list: Quarter);
-            var cached = CachedIndex.Build(core, file, Path.Combine(directory, "model.cached"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
-            using var serving = new IndexedFeedForward(core, cached, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page);
+            var pieces = CachedIndex.Build(core, file, Path.Combine(directory, "model.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            using var serving = new IndexedFeedForward(core, pieces, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page);
             var indexed = FromTheIndex(file, serving);
             var fullRead = KnowledgeBytes(file);
             var state = indexed.NewState(32);
             foreach (var token in Asked)
             {
                 Measured("a word from the index alone with nothing warm", () => indexed.Forward(token, state));
-                var (warm, fromCache, cachedBytes, fromCore, coreBytes) = serving.TakeCounts();
-                Assert.True(warm + fromCache + fromCore == Layers, $"word {token}: {warm + fromCache + fromCore} pieces for {Layers} layers");
-                Assert.True(cachedBytes + coreBytes < fullRead, $"word {token}: {cachedBytes + coreBytes} bytes read; a full read of the knowledge layers is {fullRead}");
+                var counts = serving.TakeCounts();
+                var served = counts.Warm + counts.Ahead + counts.Asked + counts.Again;
+                Assert.True(served == Layers, $"word {token}: {served} pieces for {Layers} layers");
+                Assert.True(counts.Bytes < fullRead, $"word {token}: {counts.Bytes} bytes read; a full read of the knowledge layers is {fullRead}");
             }
         });
     }
@@ -122,7 +124,7 @@ public sealed class IndexedMindAskTests
             var core = Core(file, directory, groups: 4, list: list);
             var coreStore = CachedIndex.Build(core, file, Path.Combine(directory, "core.store"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
             Assert.Equal(Layers * core.Groups, coreStore.Count); // complete: every group's piece is on flash
-            using var serving = new IndexedFeedForward(core, cached: null, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page, coreStore: coreStore);
+            using var serving = new IndexedFeedForward(core, coreStore, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page);
             var piece = FlashFile.Pages(CachedIndex.PieceBytes(list, SyntheticQwen35.Embedding));
             var wholeLayer = file.Tensor("blk.0.ffn_gate.weight")!.ByteCount + file.Tensor("blk.0.ffn_up.weight")!.ByteCount + file.Tensor("blk.0.ffn_down.weight")!.ByteCount;
             var rng = new Random(207);
@@ -132,9 +134,9 @@ public sealed class IndexedMindAskTests
                 for (var layer = 0; layer < Layers; layer++)
                 {
                     serving.Piece(layer, Thought(rng));
-                    var (_, _, _, fromCore, coreBytes) = serving.TakeCounts();
-                    pieces += fromCore;
-                    bytes += coreBytes;
+                    var counts = serving.TakeCounts();
+                    pieces += counts.Asked;
+                    bytes += counts.AskedBytes;
                 }
             }
             Assert.Equal(3L * Layers, pieces);
@@ -165,26 +167,25 @@ public sealed class IndexedMindAskTests
         });
     }
 
-    // THE OWNER: "a core index on SSD / Flash from which a portion is stored as cached index. from the cached index into RAM
-    // is how we get the answers response time down". The cached index is a portion of the core; RAM is filled from the cached
-    // index alone, within its budget.
+    // THE OWNER, 2026-11-15: "Select coherent portions from 3 into RAM for 4) warm index. Only 4 ever reaches into 3, only 3
+    // reaches into 2 and only 2 reaches into 1" - which took the place of the cached index the owner had asked for before
+    // ("a core index on SSD / Flash from which a portion is stored as cached index"), no tier now sitting between step 4 and
+    // step 2. Step 4 is filled from step 2's pieces alone, within its budget; with no step 2 it holds nothing.
     [Fact]
-    public void RAM_takes_its_warm_pieces_from_the_cached_index_and_the_cached_index_is_a_portion_of_the_core()
+    public void Step_4_takes_its_warm_pieces_from_step_2_within_its_budget()
     {
         WithModel(211, (file, directory) =>
         {
             var core = Core(file, directory, groups: 4, list: Quarter);
-            using (var none = new IndexedFeedForward(core, cached: null, file, warmBudget: long.MaxValue, channels: 2, readBytes: FlashFile.Page))
-                Assert.True(none.WarmPieces == 0, $"{none.WarmPieces} pieces warm with no cached index to take them from");
+            using (var none = new IndexedFeedForward(core, null, file, warmBudget: long.MaxValue, channels: 2, readBytes: FlashFile.Page))
+                Assert.True(none.WarmPieces == 0, $"{none.WarmPieces} pieces warm with no step 2 to take them from");
 
-            var everything = CachedIndex.Build(core, file, Path.Combine(directory, "all.cached"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            var everything = CachedIndex.Build(core, file, Path.Combine(directory, "model.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
             var piece = CachedBytes(everything, core) / everything.Count;
-            var portion = CachedIndex.Build(core, file, Path.Combine(directory, "portion.cached"), budget: CachedBytes(everything, core) / 2, channels: 2, readBytes: FlashFile.Page);
-            Assert.True(portion.Count > 0 && portion.Count < Layers * core.Groups, $"half the budget cached {portion.Count} of the core's {Layers * core.Groups} pieces");
-
-            using var three = new IndexedFeedForward(core, portion, file, warmBudget: 3 * piece, channels: 2, readBytes: FlashFile.Page);
+            using var three = new IndexedFeedForward(core, everything, file, warmBudget: 3 * piece, channels: 2, readBytes: FlashFile.Page);
             Assert.True(three.WarmPieces is > 0 and <= 3 && three.WarmBytes <= 3 * piece,
                 $"a budget of {3 * piece} bytes holds {three.WarmPieces} pieces, {three.WarmBytes} bytes");
+            Assert.True(Pieces(everything, core).Count(p => three.HoldsWarm(p.Layer, p.Group)) == three.WarmPieces, "step 4 holds a piece step 2 does not");
         });
     }
 
@@ -210,8 +211,8 @@ public sealed class IndexedMindAskTests
             for (var i = 0; i < 20; i++) serving.Piece(0, cold!);
             serving.TakeCounts();
             serving.Piece(0, cold!);
-            var (warm, fromCache, _, _, _) = serving.TakeCounts();
-            Assert.True(warm == 1, $"asked for 21 times, the piece still came from {(fromCache > 0 ? "the cached index" : "the core")}, not RAM");
+            var counts = serving.TakeCounts();
+            Assert.True(counts.Warm == 1, $"asked for 21 times, the piece still came from step 2 ({counts.Ahead + counts.Asked} reads), not step 4 in RAM");
         });
     }
 
@@ -238,6 +239,7 @@ public sealed class IndexedMindAskTests
             using (var map = store.Load(store.Surface([Script.Latin]), channels: 2))
                 searched.HeadSearch = HeadSearch.Build(file, map, dim: 24);
             Assert.Equal(stream.ChunkCount, searched.HeadSearch!.ChunkCount);
+            stream.Prefetch = false; // a search reads scattered candidates, so it does not read the next window ahead
 
             var full = Full(file);
             var a = full.NewState(32);
@@ -483,21 +485,28 @@ public sealed class IndexedMindAskTests
         });
     }
 
-    // DESIGN, the cached index: "the portion likely to be needed (this person, their topics, recent conversations)"; Revise:
-    // "the index is brought up to date each night". After a day on one topic, the night's cached index holds the groups that
-    // day used, as many as its budget has room for.
+    // DESIGN, what is kept warm: "the portion likely to be needed (this person, their topics, recent conversations)"; Revise:
+    // "the index is brought up to date each night". After a day on one topic the night revises step 2's heat, and the next
+    // morning step 4 holds the groups that day used, as many as its budget has room for.
     [Fact]
-    public void After_a_day_on_one_topic_the_nights_cached_index_holds_its_groups()
+    public void After_a_day_on_one_topic_the_next_mornings_step_4_holds_its_groups()
     {
         WithModel(233, (file, directory) =>
         {
             var core = Core(file, directory, groups: 4, list: Quarter);
-            var everything = CachedIndex.Build(core, file, Path.Combine(directory, "all.cached"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
-            var budget = CachedBytes(everything, core) / 2;
-            var morning = CachedIndex.Build(core, file, Path.Combine(directory, "morning.cached"), budget, channels: 2, readBytes: FlashFile.Page);
+            var pieces = CachedIndex.Build(core, file, Path.Combine(directory, "model.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            var budget = CachedBytes(pieces, core) / 2;
+            var roomInRam = (int)(budget / pieces.PieceStride);
 
-            // The day: one word said again and again, picked so the morning's cached index does not already hold its groups -
-            // a day the morning had covered would measure nothing.
+            // How many of `groups` step 4 holds when it is filled from `from` with half of step 2's bytes.
+            int Held(CachedIndex from, HashSet<(int, int)> groups)
+            {
+                using var warm = new IndexedFeedForward(core, from, file, warmBudget: budget, channels: 2, readBytes: FlashFile.Page);
+                return Pieces(from, core).Count(p => groups.Contains((p.Layer, p.Group)) && warm.HoldsWarm(p.Layer, p.Group));
+            }
+
+            // The day: one word said again and again, picked so the morning's step 4 does not already hold its groups - a day
+            // the morning had covered would measure nothing.
             int[]? topic = null;
             HashSet<(int, int)> dayGroups = [];
             int wanted = 0, heldAtMorning = 0;
@@ -507,20 +516,20 @@ public sealed class IndexedMindAskTests
                 var groups = new HashSet<(int, int)>();
                 foreach (var (layer, sketch, _) in Watch(file, directory, said, kept: Quarter, name: $"day-{word}.watch").Each())
                     groups.Add((layer, core.Nearest(layer, sketch)));
-                var room = Math.Min(groups.Count, morning.Count);
-                var held = Pieces(morning, core).Count(p => groups.Contains((p.Layer, p.Group)));
+                var room = Math.Min(groups.Count, roomInRam);
+                var held = Held(pieces, groups);
                 if (held >= room) continue;
                 (topic, dayGroups, wanted, heldAtMorning) = (said, groups, room, held);
                 break;
             }
-            Assert.True(topic is not null, "setup: the morning's cached index already holds the groups of every day tried");
+            Assert.True(topic is not null, "setup: the morning's step 4 already holds the groups of every day tried");
             int[] topicB = topic!;
 
             // The day: the word asked of the model through the index, three times over; the index keeps what the day used.
             var model = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
             long[] dayUse;
-            using (var serving = new IndexedFeedForward(core, morning, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page))
-            using (var stream = new LayerStream(TileStore.OverModel(file, TileSet.Mixing), TileStore.OverModel(file, TileSet.FeedForward, [2]),
+            using (var serving = new IndexedFeedForward(core, pieces, file, warmBudget: 0, channels: 2, readBytes: FlashFile.Page))
+            using (var stream = new LayerStream(TileStore.OverModel(file, TileSet.Mixing), TileStore.OverModel(file, TileSet.FeedForward, SplitByThoughts.DownKinds),
                 channels: 2, readBytes: FlashFile.Page, warmBudget: 0, slots: 2))
             {
                 model.Index = serving;
@@ -536,11 +545,11 @@ public sealed class IndexedMindAskTests
             }
             Assert.True(dayGroups.All(g => dayUse[g.Item1 * core.Groups + g.Item2] > 0), "the index did not record the day's groups as used");
 
-            // The night: the cached index rebuilt from the day's use. Revise takes this call's place when it is built.
-            var night = CachedIndex.Build(core, file, Path.Combine(directory, "night.cached"), budget, channels: 2, readBytes: FlashFile.Page, usage: dayUse);
-            var heldAtNight = Pieces(night, core).Count(p => dayGroups.Contains((p.Layer, p.Group)));
+            // The night: step 2's heat revised from the day's use.
+            var night = CachedIndex.Revise(pieces, dayUse);
+            var heldAtNight = Held(night, dayGroups);
             Assert.True(heldAtNight >= wanted,
-                $"after a day of word {topicB[0]} the night's cached index holds {heldAtNight} of the {dayGroups.Count} groups the day used, with room for {wanted}; the morning's held {heldAtMorning}");
+                $"after a day of word {topicB[0]} the next morning's step 4 holds {heldAtNight} of the {dayGroups.Count} groups the day used, with room for {wanted}; the morning's held {heldAtMorning}");
         });
     }
 

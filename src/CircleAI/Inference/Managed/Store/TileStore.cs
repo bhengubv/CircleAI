@@ -28,6 +28,7 @@ using System.Diagnostics;
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Kernels;
 using CircleAI.Inference.Managed.Model;
+using CircleAI.Inference.Managed.Runtime;
 
 namespace CircleAI.Inference.Managed.Store;
 
@@ -156,15 +157,19 @@ public sealed class TileStore
     /// Writes the store of <paramref name="model"/>'s <paramref name="set"/> to <paramref name="path"/>; returns it, opened.
     /// Each tensor is read from the model's file past the cache, in reads of <paramref name="readBytes"/> on
     /// <paramref name="channels"/> readers (the device's recipe), repacked on the cores, and written and let go before the next.
+    /// With <paramref name="kinds"/> it holds only those of the set's kinds (all when null) - ffn_down alone, for step 2's
+    /// layers where an index serves the gate and up. <paramref name="stop"/> is asked before each tensor: true stops the
+    /// write with an <see cref="OperationCanceledException"/>, nothing of it left.
     /// </summary>
-    public static unsafe TileStore Write(GgufFile model, string path, TileSet set, CancellationToken ct = default, int channels = 4, int readBytes = 1 << 20)
+    public static unsafe TileStore Write(GgufFile model, string path, TileSet set, CancellationToken ct = default, int channels = 4, int readBytes = 1 << 20,
+        IReadOnlyCollection<int>? kinds = null, Func<bool>? stop = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         if (Unreadable(model, set) is { } why) throw new NotSupportedException(why);
         var c = ModelConfig.FromGguf(model);
 
         // The index first: every tensor's place.
-        var entries = Layout(model, c, set, out var at);
+        var entries = Layout(model, c, set, out var at, kinds);
         var indexBytes = FlashFile.Pages((long)entries.Count * EntryBytes);
         var dataOffset = FlashFile.Page + indexBytes;
 
@@ -198,6 +203,7 @@ public sealed class TileStore
                 foreach (var e in entries)
                 {
                     ct.ThrowIfCancellationRequested();
+                    if (stop?.Invoke() == true) throw new OperationCanceledException($"The {set.Name}'s store stood aside at layer {e.Layer}.");
                     var rows = ReadTensor(source, set, e, window, channels, readBytes);
                     var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
                     var output = new Span<byte>(buffer, (int)(e.End - e.WeightsOffset));
@@ -226,7 +232,7 @@ public sealed class TileStore
 
         // On flash now, and only there.
         using (var written = FlashFile.Open(path, direct: false)) written.Drop(0, written.Length);
-        return Open(model, path, set) ?? throw new InvalidDataException($"{path} was written and does not read back as {model.FilePath}'s {set.Name}.");
+        return Open(model, path, set, kinds) ?? throw new InvalidDataException($"{path} was written and does not read back as {model.FilePath}'s {set.Name}.");
     }
 
     /// <summary>
@@ -280,27 +286,112 @@ public sealed class TileStore
     /// Layer <paramref name="layer"/> read from the model's own file (<paramref name="source"/>) into <paramref name="into"/>,
     /// which holds the store's data from <paramref name="start"/>: tensor by tensor, past the cache into
     /// <paramref name="window"/> (<see cref="MostSourceBytes"/> long) in reads of <paramref name="readBytes"/> on
-    /// <paramref name="channels"/> readers, each repacked into the tiles where a written store would hold it.
+    /// <paramref name="channels"/> readers, each repacked into the tiles where a written store would hold it - and, given a
+    /// second window as long (<paramref name="ahead"/>), the next tensor read into it while this one is repacked. Returns
+    /// the bytes of the model's file read, the time the reads took, and the time the repacking took: the one on flash, the
+    /// other on the CPU, side by side where there is a second window.
     /// </summary>
-    public unsafe void ReadLayer(FlashFile source, int layer, byte* into, long start, byte* window, int channels, int readBytes)
+    /// <remarks>
+    /// READ AHEAD WHILE REPACKING (the P30, 2026-11-15: of the 52 seconds a pass of the 9B spent loading its layers, flash
+    /// took 9 and the repacking 43, one after the other). With the repack a source byte at a time (Ptq1PairMatrix) and the
+    /// next tensor coming in beside it, a layer takes the longer of the two, not their sum.
+    /// </remarks>
+    public unsafe (long Bytes, TimeSpan Reading, TimeSpan Repacking) ReadLayer(FlashFile source, int layer, byte* into, long start, byte* window, int channels, int readBytes, byte* ahead = null)
     {
         ArgumentNullException.ThrowIfNull(source);
-        foreach (var e in LayerEntries(layer))
+        return ReadLayers([new InPlaceRead(this, source, layer, (nint)into, start)], window, channels, readBytes, ahead);
+    }
+
+    /// <summary>One set's layer to read in place (<see cref="ReadLayers"/>): its store, the model's file, and where it lands.</summary>
+    /// <param name="Store">The set's store, read in place.</param>
+    /// <param name="Source">The model's own file, open.</param>
+    /// <param name="Layer">The layer.</param>
+    /// <param name="Into">Where the store's data from <paramref name="Start"/> lands.</param>
+    /// <param name="Start">The offset in the store's data that <paramref name="Into"/> holds.</param>
+    public readonly record struct InPlaceRead(TileStore Store, FlashFile Source, int Layer, nint Into, long Start);
+
+    /// <summary>
+    /// As <see cref="ReadLayer"/>, for several sets' layers as one run - a layer's mixing and its feed-forward - so the
+    /// first tensor of one set is read while the last of the one before is repacked, and no tensor's read or repack waits
+    /// on its own where a second window is given.
+    /// </summary>
+    public static unsafe (long Bytes, TimeSpan Reading, TimeSpan Repacking) ReadLayers(IReadOnlyList<InPlaceRead> sets, byte* window, int channels, int readBytes, byte* ahead = null)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+        var tensors = new List<(InPlaceRead Read, Entry Entry)>();
+        foreach (var set in sets)
         {
-            var rows = ReadTensor(source, Set, e, window, channels, readBytes);
-            var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
-            var output = new Span<byte>(into + (e.WeightsOffset - start), (int)(e.End - e.WeightsOffset));
-            output.Clear();
-            Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, output[..weightsLength],
-                System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(output[weightsLength..]), RepackDegree);
+            ArgumentNullException.ThrowIfNull(set.Store);
+            ArgumentNullException.ThrowIfNull(set.Source);
+            foreach (var e in set.Store.LayerEntries(set.Layer)) tensors.Add((set, e));
         }
+        long bytes = 0, reading = 0, repacking = 0;
+        if (tensors.Count == 0) return (0, TimeSpan.Zero, TimeSpan.Zero);
+        nint here = (nint)window, there = (nint)(ahead != null ? ahead : window);
+        var first = tensors[0];
+        reading += Fetch(first.Read.Source, first.Read.Store.Set, first.Entry, window, channels, readBytes);
+        for (var i = 0; i < tensors.Count; i++)
+        {
+            var (read, e) = tensors[i];
+            bytes += SourceSpan(e);
+            if (i + 1 < tensors.Count && ahead != null)
+            {
+                var (nextRead, next) = tensors[i + 1];
+                var (from, to) = (here, there);
+                long packed = 0, fetched = 0;
+                Parallel.Invoke(
+                    () => packed = Pack(e, (byte*)from, (byte*)read.Into, read.Start),
+                    () => fetched = Fetch(nextRead.Source, nextRead.Store.Set, next, (byte*)to, channels, readBytes));
+                repacking += packed;
+                reading += fetched;
+                (here, there) = (there, here);
+            }
+            else
+            {
+                repacking += Pack(e, (byte*)here, (byte*)read.Into, read.Start);
+                if (i + 1 < tensors.Count)
+                {
+                    var (nextRead, next) = tensors[i + 1];
+                    reading += Fetch(nextRead.Source, nextRead.Store.Set, next, (byte*)here, channels, readBytes);
+                }
+            }
+        }
+        return (bytes, Stopwatch.GetElapsedTime(0, reading), Stopwatch.GetElapsedTime(0, repacking));
+    }
+
+    // A tensor's page-aligned span of the model's file read into window past the cache; the Stopwatch ticks it took.
+    internal static unsafe long Fetch(FlashFile source, TileSet set, Entry e, byte* window, int channels, int readBytes)
+    {
+        var began = Stopwatch.GetTimestamp();
+        ReadTensor(source, set, e, window, channels, readBytes);
+        return Stopwatch.GetTimestamp() - began;
+    }
+
+    // A tensor's rows, in window as Fetch left them, repacked into the tiles where a written store holds them, in `into`
+    // that holds the store's data from `start` - on `repackers`' threads where it is given, else shared on the thread
+    // pool; the Stopwatch ticks it took.
+    internal static unsafe long Pack(Entry e, byte* window, byte* into, long start, WorkerPool? repackers = null)
+    {
+        var began = Stopwatch.GetTimestamp();
+        var rows = new ReadOnlySpan<byte>(window + (e.GgufOffset - (e.GgufOffset & ~(long)(FlashFile.Page - 1))), checked((int)e.GgufBytes));
+        var weightsLength = (int)FlashFile.Pages(e.WeightsBytes);
+        var output = new Span<byte>(into + (e.WeightsOffset - start), (int)(e.End - e.WeightsOffset));
+        // EVERY TILE BYTE AND EVERY SCALE IS WRITTEN (Ptq1PairMatrix.Repack): only what pads them to whole pages is
+        // cleared, as a written store holds it - not the whole slot, a pass of the 9B's 1.9 GB, before it is written over.
+        output[(int)e.WeightsBytes..weightsLength].Clear();
+        output[(weightsLength + (int)(e.ScaleCount * sizeof(float)))..].Clear();
+        var scales = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(output[weightsLength..]);
+        if (repackers is not null) Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, output[..weightsLength], scales, repackers);
+        else Ptq1PairMatrix.Repack(rows, e.Rows, e.Columns, output[..weightsLength], scales, RepackDegree);
+        return Stopwatch.GetTimestamp() - began;
     }
 
     /// <summary>
-    /// The store of <paramref name="set"/> at <paramref name="path"/> when it was cut from <paramref name="model"/>; null when
-    /// there is none, or it is another model's or another set's.
+    /// The store of <paramref name="set"/> at <paramref name="path"/> when it was cut from <paramref name="model"/>, holding
+    /// <paramref name="kinds"/> of the set's kinds (all when null); null when there is none, or it is another model's,
+    /// another set's, or holds other kinds.
     /// </summary>
-    public static TileStore? Open(GgufFile model, string path, TileSet set)
+    public static TileStore? Open(GgufFile model, string path, TileSet set, IReadOnlyCollection<int>? kinds = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(set);
@@ -320,7 +411,7 @@ public sealed class TileStore
             var indexOffset = BinaryPrimitives.ReadInt64LittleEndian(h[40..]);
             var dataOffset = BinaryPrimitives.ReadInt64LittleEndian(h[48..]);
             var dataBytes = BinaryPrimitives.ReadInt64LittleEndian(h[56..]);
-            if (count != Held(model, c, set) || dataOffset + dataBytes > stream.Length) return null;
+            if (count != Held(model, c, set, kinds) || dataOffset + dataBytes > stream.Length) return null;
 
             var index = new byte[(long)count * EntryBytes];
             stream.Position = indexOffset;
@@ -329,7 +420,7 @@ public sealed class TileStore
             for (var i = 0; i < count; i++)
             {
                 var e = ReadEntry(index.AsSpan(i * EntryBytes, EntryBytes));
-                if ((uint)e.Kind >= (uint)set.Kinds.Count) return null;
+                if ((uint)e.Kind >= (uint)set.Kinds.Count || (kinds is not null && !kinds.Contains(e.Kind))) return null;
                 if (entries.Count > 0 && (e.Layer < entries[^1].Layer || (e.Layer == entries[^1].Layer && e.Kind <= entries[^1].Kind))) return null;
                 var tensor = model.Tensor($"blk.{e.Layer}.{set.Kinds[e.Kind]}.weight");
                 if (tensor is null || tensor.Offset != e.GgufOffset || tensor.ByteCount != e.GgufBytes || tensor.Rows != e.Rows || tensor.RowLength != e.Columns)
@@ -424,21 +515,21 @@ public sealed class TileStore
         }
     }
 
-    // Tensors of `set` the model has, every layer counted.
-    private static int Held(GgufFile model, ModelConfig c, TileSet set)
+    // Tensors of `set` the model has, every layer counted - of `kinds` alone where they are given.
+    private static int Held(GgufFile model, ModelConfig c, TileSet set, IReadOnlyCollection<int>? kinds = null)
     {
         var held = 0;
         for (var il = 0; il < c.Layers; il++)
-            foreach (var kind in set.Kinds)
-                if (model.Tensor($"blk.{il}.{kind}.weight") is not null) held++;
+            for (var k = 0; k < set.Kinds.Count; k++)
+                if ((kinds is null || kinds.Contains(k)) && model.Tensor($"blk.{il}.{set.Kinds[k]}.weight") is not null) held++;
         return held;
     }
 
     // Threads a repack is shared over: half the cores, the rest left to the phone.
-    private static int RepackDegree => Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
+    internal static int RepackDegree => Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
 
     // The page-aligned span of the model's file that holds a tensor's rows.
-    private static long SourceSpan(Entry e) => FlashFile.Pages(e.GgufOffset + e.GgufBytes) - (e.GgufOffset & ~(long)(FlashFile.Page - 1));
+    internal static long SourceSpan(Entry e) => FlashFile.Pages(e.GgufOffset + e.GgufBytes) - (e.GgufOffset & ~(long)(FlashFile.Page - 1));
 
     // A tensor's rows, read from the model's file into window past the cache: the page-aligned span that holds them, in
     // the device's reads on its channels. The rows are where they fall in it.

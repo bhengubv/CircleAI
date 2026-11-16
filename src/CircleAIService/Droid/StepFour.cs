@@ -207,9 +207,9 @@ public sealed partial class ServiceApplication
         await ModelSetup.WaitForHousekeepingAsync(CircleNeuronService.HousekeepingDone, _ => { }).ConfigureAwait(false);
     }
 
-    // A model that just arrived: a brain is loaded and warmed (the supervisor decides which brain
-    // runs - a better one waits to be validated); the ears are built and warmed; a voice warms the
-    // greeting. Never throws.
+    // A model that just arrived: a brain is taken up - the supervisor chooses again with it here, so it
+    // is validated, waits on its index or answers - or, where no brain answers yet, the brain is loaded
+    // and warmed; the ears are built and warmed; a voice warms the greeting. Never throws.
     private async Task PrimeLandedAsync(string name)
     {
         try
@@ -220,7 +220,11 @@ public sealed partial class ServiceApplication
             switch (entry.Modality)
             {
                 case ModelModality.Chat when !BrainCompanions.IsCompanion(entry):
-                    CircleLog.Info("Setup", $"{name} is here; priming the brain");
+                    // TAKEN UP NOW, NOT AT THE NEXT LOAD (the owner, 2026-11-14: "Yes, do it"). Asking a brain that answers
+                    // to be ready asks nothing: on the P30 the 4B the climb fetched sat behind the 2B, unvalidated, because
+                    // the supervisor chooses only when it loads. With no brain answering yet, the first load chooses.
+                    CircleLog.Info("Setup", $"{name} is here; taking it up");
+                    if (_supervisor is { } supervisor && await supervisor.TakeUpAsync(name, CancellationToken.None).ConfigureAwait(false)) break;
                     if (CircleNeuronService.Brain is { } brain) await brain.EnsureReadyAsync(CancellationToken.None).ConfigureAwait(false);
                     break;
                 case ModelModality.Asr:

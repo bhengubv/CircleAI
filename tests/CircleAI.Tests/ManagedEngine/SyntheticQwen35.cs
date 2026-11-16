@@ -40,10 +40,18 @@ internal static class SyntheticQwen35
     /// a ring to go round.</param>
     /// <param name="quietLayer">A layer that adds nothing to any word: its ffn_down and its mixing's output (ssm_out or
     /// attn_output) scaled to zero, every other weight as it would be. -1 for none.</param>
+    /// <param name="folded">The kinds of trunk weight ("ffn_down", "ffn_gate" ...) that fold a Hadamard rotation into their
+    /// input, as Bonsai 2's files do (prism.hadamard, version 1, blocks of 128, no signs): the same trits, read through a
+    /// turned input. Null for none.</param>
+    /// <param name="speaks">Gives the model a tokenizer and a chat template, so the engine's generator can open it and take
+    /// a turn: a token a byte and sixteen markers (<see cref="SpeakingVocabulary"/> tokens), no merges, ChatML turns, and a
+    /// context of 4,096. Its weights are as random as ever: what it says means nothing, and it says the same every time.</param>
     public static byte[] Build(GgmlType packing, int seed = 7, bool mixedPacking = false, bool mtp = false,
-        Head head = Head.Tied, bool bf16Gates = false, int layers = Layers, int quietLayer = -1)
+        Head head = Head.Tied, bool bf16Gates = false, int layers = Layers, int quietLayer = -1,
+        IReadOnlyList<string>? folded = null, bool speaks = false)
     {
         var rng = new Random(seed);
+        var foldedNames = new List<string>();
         var b = new GgufBuilder()
             .String("general.architecture", "qwen35")
             .Key("qwen35.block_count", GgufType.UInt32, w => w.Write((uint)(layers + (mtp ? 1 : 0))))
@@ -57,13 +65,24 @@ internal static class SyntheticQwen35
             .Key("qwen35.rope.freq_base", GgufType.Float32, w => w.Write(10000f))
             .Key("qwen35.attention.layer_norm_rms_epsilon", GgufType.Float32, w => w.Write(1e-6f))
             .Key("qwen35.full_attention_interval", GgufType.UInt32, w => w.Write(2u))
-            .Key("qwen35.context_length", GgufType.UInt32, w => w.Write(64u))
+            .Key("qwen35.context_length", GgufType.UInt32, w => w.Write(speaks ? 4096u : 64u))
             .Key("qwen35.ssm.conv_kernel", GgufType.UInt32, w => w.Write((uint)ConvKernel))
             .Key("qwen35.ssm.inner_size", GgufType.UInt32, w => w.Write((uint)SsmInner))
             .Key("qwen35.ssm.state_size", GgufType.UInt32, w => w.Write((uint)SsmState))
             .Key("qwen35.ssm.group_count", GgufType.UInt32, w => w.Write((uint)SsmGroups))
             .Key("qwen35.ssm.time_step_rank", GgufType.UInt32, w => w.Write((uint)SsmHeads))
-            .Strings("tokenizer.ggml.tokens", Enumerable.Range(0, Vocabulary).Select(i => $"t{i}").ToArray());
+            .Strings("tokenizer.ggml.tokens", speaks ? SpokenTokens() : Enumerable.Range(0, Vocabulary).Select(i => $"t{i}").ToArray());
+        var vocabulary = speaks ? SpeakingVocabulary : Vocabulary;
+        if (speaks)
+        {
+            // The fleet's tokenizer, at its smallest: byte-level BPE with no merges, the bytes plain tokens (1) and the
+            // markers control tokens (3), and ChatML for the turns.
+            b.String("tokenizer.ggml.model", "gpt2")
+                .String("tokenizer.ggml.pre", "qwen35")
+                .Int32s("tokenizer.ggml.token_type", [.. Enumerable.Repeat(1, 256), .. Enumerable.Repeat(3, Markers.Length)])
+                .Strings("tokenizer.ggml.merges", [])
+                .String("tokenizer.chat_template", ChatMl);
+        }
 
         var mixedDone = false;
         byte[] Ternary(string name, int columns, int rows, float scale)
@@ -76,6 +95,7 @@ internal static class SyntheticQwen35
             }
             var bytes = Pack(rng, columns, rows, scale, type);
             b.Tensor(name, [columns, rows], (uint)type, bytes);
+            if (folded is not null && folded.Any(kind => name.EndsWith("." + kind + ".weight", StringComparison.Ordinal))) foldedNames.Add(name);
             return bytes;
         }
 
@@ -103,7 +123,7 @@ internal static class SyntheticQwen35
 
         float Near(float centre, float spread) => centre + (float)(rng.NextDouble() * 2 - 1) * spread;
 
-        var embedding = Ternary("token_embd.weight", Embedding, Vocabulary, 0.25f);
+        var embedding = Ternary("token_embd.weight", Embedding, vocabulary, 0.25f);
         Floats("output_norm.weight", [Embedding], _ => Near(1f, 0.1f));
         for (var il = 0; il < layers; il++)
         {
@@ -160,14 +180,37 @@ internal static class SyntheticQwen35
         switch (head)
         {
             case Head.Own:
-                Ternary("output.weight", Embedding, Vocabulary, 0.25f);
+                Ternary("output.weight", Embedding, vocabulary, 0.25f);
                 break;
             case Head.EmbeddingsCopy:
-                b.Tensor("output.weight", [Embedding, Vocabulary], (uint)packing, embedding);
+                b.Tensor("output.weight", [Embedding, vocabulary], (uint)packing, embedding);
                 break;
+        }
+        if (foldedNames.Count > 0)
+        {
+            b.Key("prism.hadamard.version", GgufType.UInt32, w => w.Write(1u))
+                .Key("prism.hadamard.block_size", GgufType.UInt32, w => w.Write(128u))
+                .String("prism.hadamard.transform", "normalized-sylvester-walsh-hadamard")
+                .String("prism.hadamard.axis", "input-last-dimension")
+                .String("prism.hadamard.sign_mode", "identity")
+                .Strings("prism.hadamard.weight_names", foldedNames);
         }
         return b.Build();
     }
+
+    /// <summary>Tokens of a model that speaks: a token a byte, then sixteen markers - a whole number of the vector kernel's tiles.</summary>
+    public const int SpeakingVocabulary = 256 + 16;
+
+    private static readonly string[] Markers =
+        ["<|endoftext|>", "<|im_start|>", "<|im_end|>", "<think>", "</think>", .. Enumerable.Range(0, 11).Select(i => $"<|unused_{i}|>")];
+
+    private static string[] SpokenTokens() =>
+        [.. Enumerable.Range(0, 256).Select(b => CircleAI.Inference.Managed.Text.ByteLevel.Symbol((byte)b).ToString()), .. Markers];
+
+    // ChatML, as the fleet's templates write a plain turn.
+    private const string ChatMl =
+        "{%- for message in messages %}{{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>' + '\\n' }}{%- endfor %}" +
+        "{%- if add_generation_prompt %}{{- '<|im_start|>assistant\\n' }}{%- endif %}";
 
     /// <summary>The output head of a synthetic model.</summary>
     public enum Head

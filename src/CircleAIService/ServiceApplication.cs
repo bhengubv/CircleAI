@@ -110,6 +110,11 @@ public sealed partial class ServiceApplication : Application
         InstallWolverineFiles(inferenceProcess: true);
         global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
 
+        // THE KEPT RECORDS OF INDEX CHECKS, READ BY THE ENGINE IN THIS PROCESS: which share of a brain's neurons was tried
+        // and failed, so its next index lists more (IndexingRungs) even where the phone cleared the engine's cache folder.
+        // The service's process sets the same folder for the climb (BrainInWaiting.KeptChecksDirectory, below).
+        CircleAI.Inference.Managed.Store.IndexingQueue.KeptDirectory = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI", "index-checks");
+
         // A TEST SWITCH, NOT A LOG: with soak/prompt-dump.on in this app's own test folder,
         // the exact text handed to the model each turn is written beside it, so what it
         // receives is read rather than assumed - on 2026-10-20 the persona had never
@@ -147,6 +152,7 @@ public sealed partial class ServiceApplication : Application
                 CircleAI.Inference.QwenTextGenerator.SamplerJsonForTest = System.IO.File.ReadAllText(samplerFile).Trim();
                 global::Android.Util.Log.Info("CircleAI.Worker", "sampler from the test folder");
             }
+
 
             // AND THE EXPERIMENT THIS PRODUCT'S OWN MMAP NOTES ASK FOR AND NOBODY EVER RAN:
             // soak/force-mmap.on puts a model that FITS IN RAM through the mmap +
@@ -294,6 +300,14 @@ public sealed partial class ServiceApplication : Application
                 CircleAI.Service.Droid.PretendConditions.Charging(Plugged()),
                 CircleAI.Service.Droid.PretendConditions.Hot(thermal.ShouldPauseInference));
             CircleAI.Core.DeviceContext.FormFactorProbe = FormFactorHere;
+
+            // AND WHETHER SOMEBODY IS USING THE PHONE, AS ITS SCREEN SAYS IT. Work that waits for an idle phone - the
+            // brain's indexing, a unit at a time - asks this before it starts and while it runs.
+            CircleAI.Core.DeviceContext.InUseProbe = InUse;
+
+            // AND THE PHONE'S OWN LOW-MEMORY LINE: the memory available under which Android begins ending other apps'
+            // processes. The indexing keeps a quarter clear of it (IndexingWhen.ShortOfMemory).
+            CircleAI.Core.DeviceContext.LowMemoryLineProbe = LowMemoryLine;
         }
         catch (Exception ex)
         {
@@ -301,10 +315,61 @@ public sealed partial class ServiceApplication : Application
         }
     }
 
-    // Whether the phone is charging, or null when it does not say.
+    // Whether somebody is using the phone, as its screen says it (IndexingWhen.InUse): no when it is dark, yes when it is
+    // lit and would go dark by itself - and null, the screen does not say, when the phone is keeping it lit or will not
+    // answer.
+    private bool? InUse()
+    {
+        try
+        {
+            if ((GetSystemService(PowerService) as global::Android.OS.PowerManager)?.IsInteractive is not { } lit) return null;
+            return CircleAI.Inference.Managed.Store.IndexingWhen.InUse(lit, lit && KeptLitWhileItCharges());
+        }
+        catch { return null; }
+    }
+
+    // Where Android begins ending other apps' processes for memory, in bytes; null when it will not say.
+    private long? LowMemoryLine()
+    {
+        try
+        {
+            if (GetSystemService(ActivityService) is not global::Android.App.ActivityManager manager) return null;
+            var info = new global::Android.App.ActivityManager.MemoryInfo();
+            manager.GetMemoryInfo(info);
+            return info.Threshold > 0 ? info.Threshold : null;
+        }
+        catch { return null; }
+    }
+
+    // WHETHER THE PHONE ITSELF IS KEEPING ITS SCREEN ON: set to stay awake while it charges (Developer options' "Stay
+    // awake" - one bit a kind of charger, the same bits the battery reports what it is plugged into) and plugged into
+    // one of those. On the P30 on 2026-11-13 the setting was 7 - every kind - and the phone was on its cable: its screen
+    // had not gone off in days, with nobody near it.
+    private bool KeptLitWhileItCharges()
+    {
+        try
+        {
+            var stayOn = global::Android.Provider.Settings.Global.GetInt(ContentResolver, global::Android.Provider.Settings.Global.StayOnWhilePluggedIn, 0);
+            if (stayOn == 0) return false;
+            var battery = RegisterReceiver(null, new global::Android.Content.IntentFilter(global::Android.Content.Intent.ActionBatteryChanged));
+            var plugged = battery?.GetIntExtra(global::Android.OS.BatteryManager.ExtraPlugged, 0) ?? 0;
+            return CircleAI.Inference.Managed.Store.IndexingWhen.KeptLit(stayOn, plugged);
+        }
+        catch { return false; }
+    }
+
+    // WHETHER THE PHONE IS ON ITS CHARGER: charging, or plugged in and not charging - or null when it does not say. A phone
+    // on its cable can stop charging and still be on it: the P30 on 2026-11-15 on its USB cable at 40 C read "USB powered:
+    // true" and "status: 4" (not charging), and BatteryManager.IsCharging alone said it was off its charger - where the
+    // indexing now builds nothing (IndexingWhen.OffItsCharger). The model fetch reads it the same way (ModelFetchService).
     private bool? Plugged()
     {
-        try { return (GetSystemService(BatteryService) as global::Android.OS.BatteryManager)?.IsCharging; }
+        try
+        {
+            if ((GetSystemService(BatteryService) as global::Android.OS.BatteryManager)?.IsCharging == true) return true;
+            var battery = RegisterReceiver(null, new global::Android.Content.IntentFilter(global::Android.Content.Intent.ActionBatteryChanged));
+            return battery is null ? null : battery.GetIntExtra(global::Android.OS.BatteryManager.ExtraPlugged, 0) != 0;
+        }
         catch { return null; }
     }
 
@@ -560,8 +625,8 @@ public sealed partial class ServiceApplication : Application
             });
             if (soak.Running) soak.Start(null, readiness.BootId, resume: true);
             CircleAI.Service.Droid.SoakReceiver.KillWorker = supervisor.KillForTest;
-            CircleAI.Service.Droid.SoakReceiver.AskOnce = (model, dir, engine, question, max, image) =>
-                supervisor.AskOnceForTestAsync(model, dir, engine, question, max, CancellationToken.None, image);
+            CircleAI.Service.Droid.SoakReceiver.AskOnce = (model, dir, engine, question, max, image, drafts, seed) =>
+                supervisor.AskOnceForTestAsync(model, dir, engine, question, max, CancellationToken.None, image, drafts, seed);
 
             // THE REST OF S9'S CHECKS, FROM ADB (SoakReceiver): a picture the way the link sends one,
             // the log files read back, a brain pinned to be stepped down from, a model fetched as
@@ -603,6 +668,13 @@ public sealed partial class ServiceApplication : Application
                               .ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted),
                 null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(15));
 
+            // THE BRAIN IN WAITING IS LOADED WHILE THE PHONE IS IDLE, where the engine builds its index, and the brain
+            // that answers comes back when the phone is picked up (InferenceSupervisor.SitWithTheBrainInWaitingAsync).
+            _sitting = new System.Threading.Timer(_ =>
+                _ = supervisor.SitWithTheBrainInWaitingAsync(CancellationToken.None)
+                              .ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted),
+                null, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(1));
+
             global::Android.Util.Log.Info("CircleAI.Asks", "request path ready: queue, readiness, supervised brain");
         }
         catch (Exception ex)
@@ -612,6 +684,7 @@ public sealed partial class ServiceApplication : Application
     }
 
     private System.Threading.Timer? _validation;
+    private System.Threading.Timer? _sitting;
 
     private static long VersionCodeOf(global::Android.Content.Context context)
     {
@@ -1133,6 +1206,13 @@ public sealed partial class ServiceApplication : Application
 
             CircleAI.Device.CircleNeuronService.Catalogue = catalogue;
             CircleAI.Device.CircleNeuronService.StateDirectory = stateDir;
+
+            // AND THE RECORD OF EVERY INDEX CHECK THAT FAILED IS KEPT HERE, beside the catalogue, in the app's files - not
+            // only in the engine's folder, which is the cache folder Android empties when the phone is short of room (the
+            // owner, 2026-11-14: "Yes, do it"). It says which share of a brain's neurons was tried and failed, so the
+            // brain's next index lists more (IndexingRungs) rather than the same again; the inference process reads the
+            // same folder (OnCreateInferenceProcess).
+            CircleAI.Inference.BrainInWaiting.KeptChecksDirectory = System.IO.Path.Combine(circleDir, "index-checks");
 
             // AND WHERE A MEASURED MODEL COST GOES, WHICH IS THE WHOLE POINT OF
             // MEASURING IT.

@@ -27,49 +27,34 @@
 // call swallowed so diagnostics can never be the thing that breaks. It had no model
 // name in it and no reader; both are one line each. Writing a second mechanism
 // beside a correct one is how a repo ends up with two.
+//
+// AND THE MARK IS A REASON, NOT A VERDICT (the owner, 2026-11-15: "no models should be
+// blocked - if it fails then check why it failed. clean up and try again, everything
+// depends on the reason why"). Two deaths in a row with evidence used to refuse the
+// model on this phone for good, until a person pardoned it. Now a death is counted, in a
+// row, and the count is what the next tries are paced by (FailurePolicy.HoldOff) and why
+// the model's files are checked again before its next load (the supervisor): damaged
+// files are repaired, and a whole model is tried again, each try waiting longer than the
+// last. Nothing here refuses a model any more, and every start lifts a refusal an
+// earlier rule wrote (LiftRefusals).
 
 using System;
 using CircleAI.Core.Models;
 
 namespace CircleAI.Inference;
 
-/// <summary>Turning a crash during a model load into a verdict this device keeps.</summary>
+/// <summary>Turning a crash during a model's work into a reason this device keeps, and the model tried again.</summary>
 public static class CrashVerdict
 {
     /// <summary>What a breadcrumb for a model load looks like.</summary>
     private const string Prefix = "loading ";
 
-    /// <summary>The reason a person is told, and the catalogue stores.</summary>
+    /// <summary>The reason the earlier rules refused a model with, and the catalogue stored.</summary>
     /// <remarks>
-    /// KEPT AS IT WAS, BECAUSE IT IS ALSO HOW THE OLD RULE'S REFUSALS ARE FOUND. Those
-    /// carry this text and no strikes; see <see cref="Reconsider"/>.
+    /// KEPT, BECAUSE A PHONE UPDATING FROM AN EARLIER BUILD MAY STILL HOLD REFUSALS THAT CARRY IT. Nothing writes it
+    /// now; <see cref="LiftRefusals"/> lifts every refusal, this reason's and any other's.
     /// </remarks>
     public const string Reason = "it stopped this phone the last time";
-
-    /// <summary>How many deaths in a row, while loading one model, refuse it.</summary>
-    /// <remarks>
-    /// TWO, AND THE OLD ANSWER WAS ONE.
-    /// <para>
-    /// One was right for the case it was written for: a 35B whose metadata claimed
-    /// 2.5 GB aborted a Circle OS phone and took a dozen system apps with it, and a
-    /// native abort does not get better on the second try. It was wrong for the
-    /// commoner case. A surviving breadcrumb proves only that the process died
-    /// somewhere inside a load, not that the model killed it - and on a P30 at
-    /// 95-100 % swap the OS kills this service for memory all the time, during a
-    /// cold load that takes 13 to 23 seconds. Measured 2026-10-10: after a run of
-    /// those kills, every chat model on that phone was refused, Qwen3.5-0.8B among
-    /// them, and the assistant ran a weaker model it did not need to.
-    /// </para>
-    /// <para>
-    /// A model that genuinely cannot load dies EVERY time, so it is still refused,
-    /// one attempt later. An OS kill that happens to land mid-load rarely lands
-    /// twice in a row. The cost of the change is said plainly: a model that really
-    /// does kill the phone gets one more try before it is stopped. The structural
-    /// fit check refuses models that could never fit before any of this runs, so
-    /// this is the backstop, not the gate.
-    /// </para>
-    /// </remarks>
-    public const int StrikesToRefuse = 2;
 
     /// <summary>The breadcrumb to write before loading <paramref name="modelName"/>.</summary>
     public static string Breadcrumb(string modelName)
@@ -91,20 +76,19 @@ public static class CrashVerdict
     }
 
     /// <summary>
-    /// Record a refusal when <paramref name="crumb"/> shows the last load died, and
-    /// report what was decided.
+    /// Count the death <paramref name="crumb"/> shows the last load died of against the model it names, when it is the
+    /// model's to count, and report what is done about it.
     /// </summary>
-    /// <param name="catalog">Where the verdict is kept. Null does nothing.</param>
+    /// <param name="catalog">Where the count is kept. Null does nothing.</param>
     /// <param name="crumb">What survived from the last run, or null.</param>
     /// <param name="say">Where to report, in words safe to show a person.</param>
-    /// <returns>The model refused, or null when there was nothing to refuse.</returns>
+    /// <returns>The model the death was counted against, or null when none was.</returns>
     /// <remarks>
-    /// A STRIKE, AND A REFUSAL ONLY AT <see cref="StrikesToRefuse"/> IN A ROW. This
-    /// used to refuse on the first death, which turned the OS killing the service
-    /// for memory into a permanent verdict on whatever model happened to be loading
-    /// - see <see cref="StrikesToRefuse"/> for what that cost on the P30. The reason
-    /// is stored so a human can read it and reverse it with
-    /// <see cref="IModelCatalog.Pardon"/>.
+    /// COUNTED, NEVER REFUSED. Two in a row used to refuse the model here until a person pardoned it - for the case it was
+    /// written for, a 35B whose metadata claimed 2.5 GB aborting a Circle OS phone. The count still says how many deaths
+    /// in a row: what the next tries are paced by (FailurePolicy.HoldOff) and why the model's files are checked again
+    /// before its next load. A clean load clears it (<see cref="Loaded"/>). The structural fit check keeps a model that
+    /// could never fit off the phone before any of this runs.
     ///
     /// NEVER THROWS. This runs on the path that brings the brain up, and a
     /// diagnostic that can take that down is worse than no diagnostic.
@@ -152,20 +136,12 @@ public static class CrashVerdict
             var strikes = catalog.Strike(model);
             if (strikes == 0)
             {
-                // NOT CATALOGUED: there is no row to hold a verdict, and nothing that
-                // selects from the catalogue can pick it again. "0 of 2" would be a lie.
+                // NOT CATALOGUED: there is no row to hold the count.
                 say?.Invoke($"{model} stopped while {doing}, and it is not in this phone's catalogue");
                 return null;
             }
 
-            if (strikes < StrikesToRefuse)
-            {
-                say?.Invoke($"{model} stopped while {doing} ({strikes} of {StrikesToRefuse}); trying it again before refusing it");
-                return null;
-            }
-
-            catalog.Refuse(model, Reason);
-            say?.Invoke($"{model} stopped this phone {strikes} times in a row while {doing}; not using it again");
+            say?.Invoke($"{model} stopped while {doing}, {strikes} time{(strikes == 1 ? "" : "s")} in a row: its files are checked before it is tried again, and each try waits longer than the last");
             return model;
         }
         catch (Exception ex)
@@ -197,59 +173,18 @@ public static class CrashVerdict
     }
 
     /// <summary>
-    /// Give every model the old one-strike rule refused a single strike instead.
+    /// Lift every refusal this device holds, whatever its reason: no model is refused any more, so one an earlier rule
+    /// wrote is tried again like any other.
     /// </summary>
-    /// <returns>How many came back.</returns>
+    /// <returns>How many were lifted; -1 when it could not finish, so the caller tries again at the next start.</returns>
     /// <remarks>
-    /// THE MODELS THAT RULE GOT WRONG ARE STILL SITTING THERE REFUSED. Changing the
-    /// rule does nothing for them: their refusal is already written, and nothing
-    /// re-reads it. On the P30 that is Qwen3.5-0.8B - the model this product targets,
-    /// complete on disk, refused after the OS killed the service during loads.
-    /// <para>
-    /// So each comes back on ONE strike, which is exactly what the new rule would
-    /// have recorded for the death that refused it. Not a pardon: a model that
-    /// really cannot load dies again and is refused again. Safe to run on every
-    /// start - it only ever matches refusals written before strikes existed.
-    /// </para>
+    /// THE REFUSALS THE EARLIER RULES WROTE ARE STILL THERE, AND NOTHING RE-READS ONE (the owner, 2026-11-15: "no models
+    /// should be blocked"). Changing the rule alone would leave every model a phone refused before refused for good. Run
+    /// on every start: nothing writes a refusal now, so after the first it finds none. A pardon starts the model's count
+    /// of deaths afresh (IModelCatalog.Pardon); a hold-off the supervisor keeps for it is its own and still applies
+    /// (FailurePolicy.HoldOff). NEVER THROWS, for the same reason as <see cref="Record"/>.
     /// </remarks>
-    public static int Reconsider(IModelCatalog? catalog, Action<string>? say = null)
-    {
-        try
-        {
-            if (catalog is null) return 0;
-            var n = catalog.ForgiveFirstStrikes(Reason);
-            if (n > 0)
-                say?.Invoke($"{n} model(s) refused after a single stop are back on one strike of {StrikesToRefuse}");
-            return n;
-        }
-        catch (Exception ex)
-        {
-            say?.Invoke("could not reconsider earlier refusals: " + ex.Message);
-            return 0;
-        }
-    }
-
-    /// <summary>
-    /// Give every model refused for stopping this phone ONE strike instead - run once,
-    /// when the rule that refused it changed.
-    /// </summary>
-    /// <returns>How many came back; -1 when it could not finish, so the caller tries again.</returns>
-    /// <remarks>
-    /// THE REFUSALS THE UNKNOWN RULE MADE ARE STILL WRITTEN. Until 2026-10-23 a death
-    /// nothing could explain, inside a load, was a strike and two refused the model - on
-    /// the P30 that was the low-memory killer twice, refusing the only brain. The rule
-    /// changed; the refusals it made did not, and nothing re-reads a refusal. They carry
-    /// <see cref="Reason"/> AND their strikes, so <see cref="Reconsider"/>, which only
-    /// matches refusals with none, leaves them alone.
-    /// <para>
-    /// NOT SAFE ON EVERY START, UNLIKE <see cref="Reconsider"/>. It cannot tell a refusal
-    /// the old rule made from one two native crashes earned, so run every start it would
-    /// give a model that really crashes the phone a fresh try each time. The caller runs
-    /// it once. Each model comes back on ONE strike, so a real crash refuses it again.
-    /// NEVER THROWS, for the same reason as <see cref="Record"/>.
-    /// </para>
-    /// </remarks>
-    public static int ReconsiderAmbiguousRefusals(IModelCatalog? catalog, Action<string>? say = null)
+    public static int LiftRefusals(IModelCatalog? catalog, Action<string>? say = null)
     {
         try
         {
@@ -257,27 +192,27 @@ public static class CrashVerdict
             var n = 0;
             foreach (var a in catalog.AllAssessed())
             {
-                if (!string.Equals(a.RefusedReason, Reason, StringComparison.Ordinal)) continue;
+                if (!a.Refused) continue;
                 catalog.Pardon(a.Entry.Name);
-                catalog.Strike(a.Entry.Name);
                 n++;
             }
             if (n > 0)
-                say?.Invoke($"{n} model(s) refused for stopping this phone are back on one strike of {StrikesToRefuse}");
+                say?.Invoke($"{n} model{(n == 1 ? "" : "s")} this phone had refused {(n == 1 ? "is" : "are")} tried again: a stop is a reason to look into, never a verdict");
             return n;
         }
         catch (Exception ex)
         {
-            say?.Invoke("could not reconsider earlier refusals: " + ex.Message);
+            say?.Invoke("could not lift earlier refusals: " + ex.Message);
             return -1;
         }
     }
 
-    /// <summary>Has this device already refused <paramref name="modelName"/>?</summary>
+    /// <summary>Does this device hold a refusal of <paramref name="modelName"/>?</summary>
     /// <remarks>
     /// Asked on the load path, so it must be cheap and must never throw. An absent
-    /// catalogue answers false: a device with no verdicts refuses nothing, which is
-    /// the behaviour that existed before any of this.
+    /// catalogue answers false. Nothing writes a refusal any more and every start lifts
+    /// the ones an earlier rule wrote (<see cref="LiftRefusals"/>), so after that this is
+    /// false for every model.
     /// </remarks>
     public static bool IsRefused(IModelCatalog? catalog, string? modelName)
     {

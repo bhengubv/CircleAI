@@ -46,6 +46,14 @@ public static class CatalogueBootstrap
     /// <param name="keep">
     /// Models housekeeping must not touch - the one the brain is running or loading.
     /// </param>
+    /// <param name="indexDirectory">
+    /// Where the engine records how far a brain's indexing has got; the engine's own store folder when null.
+    /// Housekeeping reads it: a brain whose index is still being built replaces nothing yet.
+    /// </param>
+    /// <param name="keptDirectory">
+    /// Where a copy of the record of every failed check is kept, outside the engine's folder;
+    /// BrainInWaiting.KeptChecksDirectory when null, and none is kept when that is null too.
+    /// </param>
     public static AssessmentResult Run(
         IModelCatalog catalog,
         IModelAssessor assessor,
@@ -55,7 +63,9 @@ public static class CatalogueBootstrap
         ILogger? logger = null,
         string? modelsDirectory = null,
         bool reclaimInferior = false,
-        Func<string, bool>? keep = null)
+        Func<string, bool>? keep = null,
+        string? indexDirectory = null,
+        string? keptDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(assessor);
@@ -129,8 +139,8 @@ public static class CatalogueBootstrap
 
         var result = assessor.Assess(probe);
         log.LogInformation(
-            "Model catalogue: assessed {Assessed} model(s), {Compatible} run on this device (RAM source: {RamSource}).",
-            result.Assessed, result.Compatible, probe.RamSource);
+            "Model catalogue: assessed {Assessed} model(s), {Compatible} run on this device (RAM source: {RamSource}; brains read from flash: {FromFlash}).",
+            result.Assessed, result.Compatible, probe.RamSource, probe.BrainsReadFromFlash ? "yes" : "no");
 
         // Only surface on a probe we can trust. A HEURISTIC probe reports the GC
         // heap limit, not the hardware, and would make every model look
@@ -152,8 +162,65 @@ public static class CatalogueBootstrap
             {
                 // Console, like the resync line above: ILogger reaches nothing on
                 // Android, and a deletion has to be visible somewhere.
+                // A lesser model is redundant beside a brain this device reads from flash, whatever their sizes
+                // (ModelFit.ReadFromFlash, asked of this probe): that is how the space is made for the best one.
+                // And a brain whose index is still being built replaces nothing yet, nor one that has not answered
+                // here since: the one beside it answers until then (BrainInWaiting.HasTakenOver, from the engine's
+                // record of how far that index has got and the speed this device measured of it).
+                // AND WE CLEAN UP AFTER OURSELVES (the owner, 2026-11-14: "we need to clean up after ourselves or we will
+                // kill users phones"). A brain that goes takes what the engine made of it - its stores, its index -
+                // out of the engine's folder too, which is not in the model store and which nothing looked at.
+                // AND A BRAIN WHOSE INDEX FAILED ITS CHECK HERE GOES (the owner, 2026-11-14: "Yes, remove them"), once
+                // another has loaded here and answers. The record of its check stays: it is what tells the climb that
+                // step failed (BrainInWaiting.StepOf), so the brain is not fetched again into the same check.
+                var store = indexDirectory ?? Managed.ManagedChatGenerator.DefaultStoreDirectory;
+
+                // AND WHAT EACH FAILED CHECK SAID IS KEPT WHERE THE PHONE DOES NOT CLEAR IT (the owner, 2026-11-14: "Yes,
+                // do it"), before anything goes - and the record of each index built after one failed. The engine's
+                // folder is the app's cache folder, and a phone short of room clears it; the record is what says which
+                // share of a brain's neurons was tried (IndexingRungs), so its next index lists more and not the same
+                // again. The copies are read wherever the engine's own is gone, by the climb and by the engine.
+                var kept = keptDirectory ?? BrainInWaiting.KeptChecksDirectory;
+                if (!string.IsNullOrWhiteSpace(kept))
+                {
+                    var (keptNow, letGo) = Managed.Store.IndexingQueue.KeepFailed(store, kept);
+                    foreach (var name in keptNow)
+                    {
+                        log.LogInformation("Model housekeeping: the record of {Model}'s index check is kept in {Kept}, which the phone does not clear.", name, kept);
+                        Console.WriteLine($"CIRCLEAI-HOUSEKEEPING kept the record of {name}'s index check in {kept}, which the phone does not clear");
+                    }
+                    foreach (var name in letGo)
+                    {
+                        log.LogInformation("Model housekeeping: the kept record of {Model}'s index check is let go: its index serves, or one has begun again from the first share.", name);
+                        Console.WriteLine($"CIRCLEAI-HOUSEKEEPING let go of the kept record of {name}'s index check: its index serves, or one has begun again from the first share");
+                    }
+                }
+
                 CatalogueHousekeeping.Reclaim(catalog, modelsDir, log, keep,
-                    line => Console.WriteLine("CIRCLEAI-HOUSEKEEPING " + line));
+                    line => Console.WriteLine("CIRCLEAI-HOUSEKEEPING " + line),
+                    entry => ModelFit.ReadFromFlash(entry, probe),
+                    entry => !ModelFit.ReadFromFlash(entry, probe)
+                             || BrainInWaiting.HasTakenOver(entry, probe, BrainInWaiting.IndexOf(entry, indexDirectory, kept),
+                                                            BrainSpeed.MeasuredOf(entry.Name)),
+                    removeStore: id => catalog.Assessment(id)?.Entry is { } gone && BrainInWaiting.FileOf(gone) is { } file
+                        ? Managed.ManagedChatGenerator.RemoveStoreOf(file, store,
+                              keepRecord: BrainInWaiting.Failed(BrainInWaiting.IndexOf(gone, indexDirectory, kept)))
+                        : 0,
+                    failedHere: entry => BrainInWaiting.FailedHere(entry, probe, BrainInWaiting.IndexOf(entry, indexDirectory, kept)));
+
+                // AND WHAT AN INDEX THAT FAILED ITS CHECK LEFT. It serves nobody, and an earlier build left such pieces
+                // where its engine never removed them: on the P30 the 27B's sat on 3.6 GB of a phone with 4.3 GB free.
+                // Here, at every start, from the record alone. The record stays - it is what says which share failed,
+                // so the next index lists more (IndexingRungs) and is not built again into the same failure.
+                foreach (var failed in Managed.Store.IndexingQueue.RemoveFailed(store))
+                {
+                    var megabytes = failed.Bytes / 1048576;
+                    var measured = (failed.Agreement / 10.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+                    log.LogInformation(
+                        "Model housekeeping: the index of {Model} failed its check ({Measured}%) and serves nobody; what it left is removed, {Freed} MB given back to the flash.",
+                        failed.Model, measured, megabytes);
+                    Console.WriteLine($"CIRCLEAI-HOUSEKEEPING index of {failed.Model} failed its check ({measured}%): {megabytes} MB removed");
+                }
             }
             catch (Exception ex)
             {

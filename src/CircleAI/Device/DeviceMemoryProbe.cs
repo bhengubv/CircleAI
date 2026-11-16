@@ -40,7 +40,14 @@ public static class DeviceMemoryProbe
     /// invented, and Core then says the figure was inferred instead of
     /// reporting a guess as a measurement.
     /// </remarks>
-    public static void Install() => DeviceProbe.PlatformMemoryProbe = Read;
+    public static void Install()
+    {
+        DeviceProbe.PlatformMemoryProbe = Read;
+
+        // AND WHETHER THIS PHONE'S ENGINE COMPUTES A BRAIN FROM FLASH - the engine's own answer, told to the probe
+        // beside its memory so every fit question asked of this phone knows it (ModelFit.ReadFromFlash).
+        DeviceProbe.PlatformFlashReadProbe = () => CircleAI.Inference.Managed.ManagedChatGenerator.ComputesFromFlashHere;
+    }
 
     private static DeviceProbe.PlatformMemory Read()
     {

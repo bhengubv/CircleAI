@@ -58,6 +58,9 @@ public sealed class InferenceSupervisor : IBrainWorker
     private Timer? _beat;
     private bool _recovered;
     private string? _pendingCandidate;
+    private string? _inWaiting;       // the brain this phone chose that cannot answer yet, while another answers for it
+    private string? _inWaitingFile;   // its file, which is what the engine's record of its indexing is named for
+    private bool _loadedForIndex;     // the brain loaded now was loaded for its index: built small, not warmed, and it answers nobody
     private bool _nothingRunnable;
     private DateTimeOffset _lastUse = DateTimeOffset.UtcNow;
     private DateTimeOffset _lastTurn = DateTimeOffset.MinValue;      // the last time it was asked anything
@@ -133,6 +136,16 @@ public sealed class InferenceSupervisor : IBrainWorker
     public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         await EnsureReadyAsync(ct).ConfigureAwait(false);
+
+        // A QUESTION WHILE THE BRAIN IN WAITING IS LOADED FOR ITS INDEX (BrainInWaiting): the brain that answers is
+        // brought back first. On the P30 the 27B with no index wrote a token every 26 to 74 seconds; the 2B beside it
+        // is loaded in seconds and answers at seven or eight a second.
+        if (LoadedForItsIndex() is { } sitting)
+        {
+            Say($"ask {job.AskId} came while {sitting} was loaded for its index: the answering brain is brought back for it");
+            await ReleaseAsync(ct).ConfigureAwait(false);
+            await EnsureReadyAsync(ct).ConfigureAwait(false);
+        }
         var model = Status.ModelId;
 
         // THE WATCHDOG: no progress for 90 s means a hung native call, not a slow
@@ -260,11 +273,11 @@ public sealed class InferenceSupervisor : IBrainWorker
     public async Task ReleaseAsync(CancellationToken ct)
     {
         string? model;
-        lock (_gate) model = _status.ModelId;
+        lock (_gate) { model = _status.ModelId; _loadedForIndex = false; }
         try { await _connection.ReleaseAsync(ct).ConfigureAwait(false); }
         catch (WorkerDiedException) { /* already gone, which is what was wanted */ }
         Set(new BrainWorkerStatus(BrainPhase.Installed, LoadStep.None, model, null, null, null, DateTimeOffset.UtcNow));
-        _log("the brain was released to free memory");
+        Say("the brain was released to free memory");
     }
 
     /// <inheritdoc />
@@ -337,14 +350,15 @@ public sealed class InferenceSupervisor : IBrainWorker
     /// </remarks>
     public async Task<(string Text, TurnTiming? Timing, long LoadMs)> AskOnceForTestAsync(
         string model, string modelDirectory, ModelEngine? engine, string question, int maxTokens, CancellationToken ct,
-        byte[]? image = null)
+        byte[]? image = null, int drafts = 0, int? seed = null)
     {
         if (SchedulerIdle?.Invoke() == false) throw new InvalidOperationException("the queue is answering; try again when it is idle");
         await ReleaseAsync(ct).ConfigureAwait(false);
         try
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            await _connection.LoadAsync(new WorkerLoadRequest(model, modelDirectory, SkipLoadHash: true, engine), null, ct).ConfigureAwait(false);
+            await _connection.LoadAsync(new WorkerLoadRequest(model, modelDirectory, SkipLoadHash: true, engine, Drafts: drafts, Seed: seed),
+                                        null, ct).ConfigureAwait(false);
             var loadMs = clock.ElapsedMilliseconds;
 
             var text = new System.Text.StringBuilder();
@@ -406,6 +420,12 @@ public sealed class InferenceSupervisor : IBrainWorker
 
         _log($"balance: the brain's shape is now {shape.Describe()} (was {before.Rung})");
         if (Status.Phase != BrainPhase.Ready || SchedulerIdle?.Invoke() == false) return; // the next load takes it
+
+        // NOR IS A BRAIN TAKEN AWAY WHILE ITS INDEX IS BEING BUILT. It answers nobody, so the shape is nothing to it (it
+        // is built as the engine builds it: LoadAsync), and letting it go ends the unit in hand: on the P30 on 2026-11-13
+        // "calm again for 10 minutes: the brain grows back" threw away seven and a half minutes of a ten-minute unit.
+        // The next load that answers takes the shape.
+        if (LoadedForItsIndex() is not null) return;
 
         // ONLY THE C# ENGINE READS THE WORKING MEMORY'S BITS: a change of bits alone does not reload
         // an MNN brain, which would come back exactly as it went.
@@ -500,7 +520,7 @@ public sealed class InferenceSupervisor : IBrainWorker
 
     // ── loading ──────────────────────────────────────────────────────────────
 
-    private async Task LoadAsync(string? forced)
+    private async Task LoadAsync(string? forced, bool forItsIndex = false)
     {
         string? model = null;
         try
@@ -539,7 +559,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             var skipHash = Verified(model);
             Set(new BrainWorkerStatus(BrainPhase.Loading, skipHash ? LoadStep.LoadingWeights : LoadStep.Verifying, model, null, null, _connection.Pid, DateTimeOffset.UtcNow));
             Report(BrainPhase.Loading, skipHash ? LoadStep.LoadingWeights : LoadStep.Verifying, model, null, ReadinessSentences.Loading);
-            _log($"loading {model} in the inference process (hash {(skipHash ? "trusted" : "checked")})");
+            Say($"loading {model} in the inference process (hash {(skipHash ? "trusted" : "checked")})");
 
             // THE MARK THAT OUTLIVES BOTH PROCESSES. If the phone reboots or the app is
             // updated mid-load, nothing survives to see the death - except this.
@@ -556,7 +576,10 @@ public sealed class InferenceSupervisor : IBrainWorker
                 using var limit = new CancellationTokenSource(LoadLimit);
                 var shape = Shape; // the balance's working memory and context (Step 4)
                 var lastStep = -1;
-                await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash, null, shape.KvMode, shape.ContextShare),
+                // A BRAIN LOADED FOR ITS INDEX IS BUILT SMALL, WITH THE ENGINE'S OWN MEMORY (BrainInWaiting.LoadShape),
+                // whatever the balance asks of a brain that answers.
+                var (kvMode, contextShare) = BrainInWaiting.LoadShape(forItsIndex, shape.KvMode, shape.ContextShare);
+                await _connection.LoadAsync(new WorkerLoadRequest(model, _store, skipHash, null, kvMode, contextShare, forItsIndex),
                     new Progress<LoadStep>(step =>
                     {
                         if (Interlocked.Exchange(ref lastStep, (int)step) != (int)step)
@@ -590,12 +613,13 @@ public sealed class InferenceSupervisor : IBrainWorker
             }
 
             CrashVerdict.Loaded(_catalogue(), model);
+            lock (_gate) _loadedForIndex = forItsIndex;
             ClearSetback(model);
             MarkVerified(model);
             lock (_gate) { _failures = 0; _retryAt = DateTimeOffset.MinValue; _lastUse = DateTimeOffset.UtcNow; }
             Set(new BrainWorkerStatus(BrainPhase.Ready, LoadStep.None, model, null, null, _connection.Pid, DateTimeOffset.UtcNow));
             Report(BrainPhase.Ready, LoadStep.None, model, null, ReadinessSentences.Ready);
-            _log($"brain ready: {model} in {clock.ElapsedMilliseconds} ms (free RAM at start {freeAtStart:0.00} GB)");
+            Say($"brain ready: {model} in {clock.ElapsedMilliseconds} ms (free RAM at start {freeAtStart:0.00} GB)");
             StartHeartbeat();
         }
         catch (WorkerDiedException died)
@@ -717,6 +741,10 @@ public sealed class InferenceSupervisor : IBrainWorker
             CrashVerdict.Record(_catalogue(), CrashVerdict.Breadcrumb(subject), line => _log(line),
                                 killedByTheSystem: !failure.CountsAgainstModel, doing: Doing(failure.Phase, working),
                                 why: $"{failure.Kind}, {failure.Evidence}");
+
+        // A CRASH IS A REASON TO LOOK, NOT A VERDICT (the owner, 2026-11-15): the model's files are checked before its
+        // next load - a damaged file is repaired, not loaded again - and the next try waits (FailurePolicy.HoldsOff).
+        if (subject is not null && failure.CountsAgainstModel) ForgetVerified(subject);
         if (model is not null && FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);
 
         _readiness.Failed(failure);
@@ -858,7 +886,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             // STEP 1, SAID OUT LOUD: the device as read, the brain chosen for it, and - when a
             // higher-ranked one was too slow to talk with here - which and why.
             var context = DeviceContext.Read(probe);
-            _log("plan: " + BrainPlan.Explain(context, wanted is null ? null : registry.GetLatestModel(wanted), registry.AllModels)
+            Say("plan: " + BrainPlan.Explain(context, wanted is null ? null : registry.GetLatestModel(wanted), registry.AllModels)
                  + " | " + context.Describe());
         }
 
@@ -867,7 +895,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         if (!string.IsNullOrWhiteSpace(wanted) && !loader.ModelPresent(wanted!))
         {
             var here = StandIn();
-            _log($"the selector wanted {wanted}, which is not on this phone; {(here is null ? "nothing else is" : "using " + here)}");
+            Say($"the selector wanted {wanted}, which is not on this phone; {(here is null ? "nothing else is" : "using " + here)}");
             wanted = here;
         }
 
@@ -896,7 +924,7 @@ public sealed class InferenceSupervisor : IBrainWorker
                 .FirstOrDefault();
             if (other is not null)
             {
-                _log($"{wanted} was killed for memory at {killedAt:0.00} GB free; {probe.UsableRamGb:0.00} GB now - using {other}");
+                Say($"{wanted} was killed for memory at {killedAt:0.00} GB free; {probe.UsableRamGb:0.00} GB now - using {other}");
                 wanted = other;
             }
         }
@@ -909,28 +937,49 @@ public sealed class InferenceSupervisor : IBrainWorker
             var instead = loader.BestInstalledChatModel(probe, refused: id => !UsableNow(id));
             if (!string.IsNullOrWhiteSpace(instead))
             {
-                _log($"{wanted} is stepped down from for now (Wolverine: {tuning.Describe()}); using {instead}");
+                Say($"{wanted} is stepped down from for now (Wolverine: {tuning.Describe()}); using {instead}");
                 wanted = instead;
             }
             else _log($"{wanted} is stepped down from, and nothing else this phone holds can answer; keeping it");
         }
 
+        // A BRAIN WHOSE INDEX FAILED ITS CHECK HERE IS NOT THIS PHONE'S BRAIN (2026-11-14; BrainInWaiting.PastAFailedIndex).
+        // The selector knows nothing of an index: it went on naming the 27B on the P30, and the brain the climb fetches
+        // next (ModelChoice.NextStep) would never have been loaded. Of the brains here this phone may use now, loaded or
+        // not, the best that has not failed takes its place - and is validated just below like any that has not loaded.
+        if (registry.GetLatestModel(wanted!) is { } picked)
+        {
+            var past = BrainInWaiting.PastAFailedIndex(picked,
+                loader.InstalledIds().Where(UsableNow).Select(id => registry.GetLatestModel(id)!), probe,
+                entry => BrainInWaiting.IndexOf(entry));
+            if (past.Said is { } said) Say(said);
+            wanted = past.Brain.Name;
+        }
+
         // KEEP THE WORKING MODEL UNTIL ITS REPLACEMENT IS VALIDATED. A better model that
         // has never loaded on this phone is a candidate; the proven one keeps answering.
-        if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false })
+        //
+        // NOT A BRAIN THAT WAITS ON ITS INDEX (2026-11-14; BrainInWaiting.WaitsOnItsIndex): asked three questions with no index,
+        // it would read every layer from flash for every word. It goes on to the brain in waiting below, where the brain
+        // beside it answers until its index serves - the 9B the climb fetches after the 4B on the P30.
+        bool WaitsOnItsIndexHere(string id) => registry.GetLatestModel(id) is { } e && BrainInWaiting.WaitsOnItsIndex(e, probe, BrainInWaiting.IndexOf(e));
+        bool IndexFailedHere(string id) => registry.GetLatestModel(id) is { } e && BrainInWaiting.FailedHere(e, probe, BrainInWaiting.IndexOf(e));
+        if (catalogue is not null && catalogue.Assessment(wanted!) is { Proven: false } && !WaitsOnItsIndexHere(wanted!))
         {
             // OF THE PROVEN BRAINS THIS PHONE MAY USE NOW (UsableNow), THE BONSAI 2 FLEET FIRST, THEN BY RANK
             // (ModelChoice.Best) - the rule every pick uses, with no speed gate (the owner, 2026-11-04). With
-            // no proven brain it may use now, the candidate answers.
+            // no proven brain it may use now, the candidate answers. NOR ONE WHOSE INDEX FAILED HERE: it answers nobody, and
+            // the P30's 27B, proven by the loads that built its index, would have been the brain "kept" while the 4B waited.
             var proven = CircleAI.Inference.ModelChoice.Best(loader.InstalledIds()
                 .Where(UsableNow)
+                .Where(id => !IndexFailedHere(id))
                 .Select(id => catalogue.Assessment(id))
                 .Where(a => a is { Proven: true, Refused: false })
                 .Select(a => a!.Entry));
             if (proven is not null && proven.Name != wanted && !Rejected(wanted!))
             {
                 lock (_gate) _pendingCandidate = wanted;
-                _log($"{wanted} has not loaded on this phone yet; keeping {proven.Name} until it is validated");
+                Say($"{wanted} has not loaded on this phone yet; keeping {proven.Name} until it is validated");
                 wanted = proven.Name;
             }
         }
@@ -953,7 +1002,174 @@ public sealed class InferenceSupervisor : IBrainWorker
             if (instead is not null) wanted = instead.Name;
         }
 
+        // THE BRAIN THIS PHONE CHOSE CANNOT ANSWER YET (2026-11-13; BrainInWaiting). The engine reads it from flash, the
+        // phone cannot keep it in RAM, and its index is not complete - "a background process for hours of course just
+        // like updating an OS" (the owner). Until it is, the best brain here that the phone does keep in RAM goes on
+        // answering, and the chosen one is loaded while the phone is idle, where its index gets built
+        // (SitWithTheBrainInWaitingAsync). With nothing here to stand in, the chosen one answers as well as it can.
+        string? waiting = null, waitingFile = null;
+        if (registry.GetLatestModel(wanted!) is { } best)
+        {
+            var others = loader.InstalledIds()
+                .Where(id => id != wanted && UsableNow(id) && catalogue?.Assessment(id) is { Proven: true, Refused: false })
+                .Select(id => registry.GetLatestModel(id)!)
+                .ToList();
+            // WHO ANSWERS, WHO WAITS AND WHAT IS SAID OF IT ARE DECIDED IN THE LIBRARY (BrainInWaiting.Plan), where each case
+            // is a test: an index that is complete and failed its check leaves nothing to build, so its brain is not
+            // loaded for it again; a record with every unit done and no measure kept has its check still to run.
+            var plan = BrainInWaiting.Plan(best, others, probe, entry => BrainInWaiting.IndexOf(entry));
+            if (plan.Said is { } said) Say(said);
+            waiting = plan.Waiting?.Name;
+            waitingFile = plan.WaitingFile;
+            wanted = plan.Answers.Name;
+        }
+        lock (_gate) { _inWaiting = waiting; _inWaitingFile = waitingFile; }
+
         return wanted;
+    }
+
+    // ── the brain in waiting ─────────────────────────────────────────────────
+
+    // A LOAD FOR THE INDEX THAT FAILED IS NOT TRIED AGAIN THE NEXT MINUTE (BrainInWaiting.SitAgainAfter): the failures in a
+    // row, and no other load for the index before this.
+    private int _sitFailures;
+    private DateTimeOffset _sitNotBefore = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// While the phone is idle - nothing saying it is in use, neither hot nor low, nothing asked for a few minutes - loads the brain
+    /// in waiting, so the engine that holds it builds its index (IndexingQueue, a unit at a time). When the phone is
+    /// picked up again the brain that answers is brought back. Called on a clock by the service.
+    /// </summary>
+    /// <remarks>
+    /// THE ENGINE BUILDS AN INDEX FOR THE MODEL IT HOLDS, in its own idle clock, so a brain that is never loaded is never
+    /// indexed: without this the phone would answer with the 2B for good and the 27B would wait for an index nothing
+    /// was building. Its first load is also where the engine begins the queue and records it, which is how this
+    /// process comes to know how far it has got.
+    /// <para>
+    /// WHAT TO DO IS DECIDED IN THE LIBRARY (BrainInWaiting.Sitting), where every branch is a test on any machine. Three
+    /// of them - the wait after a load that failed, the phone picked up while the brain sits, a check that fails while
+    /// it is loaded - had run nowhere while they were written here, in a head no test project can reference.
+    /// </para>
+    /// </remarks>
+    public async Task SitWithTheBrainInWaitingAsync(CancellationToken ct)
+    {
+        string? inWaiting;
+        string? running;
+        DateTimeOffset lastTurn, notBefore;
+        bool loading;
+        lock (_gate)
+        {
+            inWaiting = _inWaiting;
+            running = _status.Phase == BrainPhase.Ready ? _status.ModelId : null;
+            lastTurn = _lastTurn;
+            loading = _loading is not null;
+            notBefore = _sitNotBefore;
+        }
+        if (inWaiting is not { } waiting) return;
+
+        var now = DateTimeOffset.UtcNow;
+        var move = BrainInWaiting.Sitting(
+            new SittingNow(waiting, running, loading, SchedulerIdle?.Invoke() == true, PhoneIdle(), now - lastTurn, now, notBefore),
+            failedItsCheck: () => FailedItsCheck(waiting),
+            readyToAnswer: () => ReadyToAnswer(waiting),
+            heldOff: () => HeldOff(waiting) is not null);
+        switch (move)
+        {
+            case SittingMove.LetGoFailed:
+                Say($"{waiting}'s index failed its check: it is let go, and the answering brain is loaded");
+                await BringTheAnsweringBrainBackAsync(waiting, ct).ConfigureAwait(false);
+                return;
+            case SittingMove.LetGoInUse:
+                Say($"the phone is in use again: {waiting} is let go with its index as far as it got, and the answering brain is loaded");
+                await BringTheAnsweringBrainBackAsync(waiting, ct).ConfigureAwait(false);
+                return;
+            case SittingMove.LoadForItsIndex:
+                break;
+            default:
+                return;
+        }
+
+        Say($"the phone is idle: {waiting} is loaded so that its index gets built; a question brings {running ?? "the answering brain"} back");
+        await ReleaseAsync(ct).ConfigureAwait(false);
+        Task sitting;
+        lock (_gate)
+        {
+            if (_loading is not null) return;   // a question got in first: it is answered, and the sitting waits
+            sitting = _loading = Task.Run(() => LoadAsync(waiting, forItsIndex: true));
+        }
+        try
+        {
+            await sitting.WaitAsync(ct).ConfigureAwait(false);
+            lock (_gate) { _sitFailures = 0; _sitNotBefore = DateTimeOffset.MinValue; }
+        }
+        catch (Exception ex)
+        {
+            TimeSpan wait;
+            lock (_gate)
+            {
+                wait = BrainInWaiting.SitAgainAfter(++_sitFailures);
+                _sitNotBefore = DateTimeOffset.UtcNow + wait;
+            }
+            Say($"{waiting} did not load for its index ({ex.GetType().Name}); it is tried again in {wait.TotalMinutes:0} min, and the next question loads the answering brain");
+        }
+    }
+
+    // The brain in waiting is let go and the brain that answers is loaded - before anything is asked.
+    private async Task BringTheAnsweringBrainBackAsync(string waiting, CancellationToken ct)
+    {
+        await ReleaseAsync(ct).ConfigureAwait(false);
+        try { await EnsureReadyAsync(ct).ConfigureAwait(false); }
+        catch (Exception ex) { Say($"the answering brain did not load after {waiting} was let go ({ex.GetType().Name}); the next question loads it"); }
+    }
+
+    // The brain in waiting, when it is the one loaded and still cannot answer: it is here for its index.
+    private string? LoadedForItsIndex()
+    {
+        lock (_gate) return _loadedForIndex && _status.Phase == BrainPhase.Ready ? _status.ModelId : null;
+    }
+
+    // Whether a brain's index failed its check with nothing left to try (IndexingStatus.NothingLeftToTry), by the engine's
+    // record of it. One that failed at a smaller share is not let go: its engine goes on to an index listing more neurons
+    // in the same sitting (IndexingRungs; the owner, 2026-11-15: "clean up and try again").
+    private static bool FailedItsCheck(string model)
+    {
+        try
+        {
+            using var registry = new ModelRegistryService();
+            return registry.GetLatestModel(model) is { } entry && BrainInWaiting.IndexOf(entry) is { NothingLeftToTry: true };
+        }
+        catch { return false; }
+    }
+
+    // Whether a brain answers as it should here now (BrainInWaiting.Ready), by the engine's record of its index.
+    private static bool ReadyToAnswer(string model)
+    {
+        try
+        {
+            using var registry = new ModelRegistryService();
+            return registry.GetLatestModel(model) is not { } entry
+                   || BrainInWaiting.Ready(entry, DeviceProbe.Snapshot(), BrainInWaiting.IndexOf(entry));
+        }
+        catch { return true; }
+    }
+
+    // Whether the phone is in nobody's hand and well (BrainInWaiting.PhoneIdle), by what the device says of itself.
+    private static bool PhoneIdle()
+    {
+        try
+        {
+            return BrainInWaiting.PhoneIdle(DeviceContext.InUseProbe?.Invoke(), DeviceContext.PowerProbe?.Invoke() ?? PowerState.Unknown);
+        }
+        catch { return false; }
+    }
+
+    // Said where the service's log file keeps it as well as in logcat: which brain answers and which waits is read
+    // back hours later, and logcat on a phone holds minutes.
+    private void Say(string line)
+    {
+        // CircleLog writes logcat and the file; the plain log is only for where that fails.
+        try { CircleAI.Core.Logging.CircleLog.Info("Supervisor", line); }
+        catch { _log(line); }
     }
 
     // ── validation of a better model ─────────────────────────────────────────
@@ -973,6 +1189,24 @@ public sealed class InferenceSupervisor : IBrainWorker
         // hold-off at once, and reject for a week a model that was only told to wait.
         if (HeldOff(candidate) is not null) return false;
 
+        // ONE AT A TIME (2026-11-14): the clock asks, and so does a brain that lands (TakeUpAsync) - a second validation
+        // would let go the brain the first is asking its questions.
+        if (Interlocked.Exchange(ref _validating, 1) != 0) return false;
+        try
+        {
+            return await ValidateAsync(candidate, active, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _validating, 0);
+        }
+    }
+
+    private int _validating;
+
+    // The candidate loaded and asked three questions with known answers: kept only if it answers them all.
+    private async Task<bool> ValidateAsync(string candidate, string? active, CancellationToken ct)
+    {
         _log($"validating {candidate} while the phone is idle and charging");
         await ReleaseAsync(ct).ConfigureAwait(false);
         var golden = new (string Q, string A)[]
@@ -1046,6 +1280,96 @@ public sealed class InferenceSupervisor : IBrainWorker
         catch { return false; }
     }
 
+    // ── a brain that lands ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// A brain has landed on the phone (BundleModelLoader.ModelLanded): the choice is made again now, with it among the
+    /// rest, not at the next load - so it is validated, waits on its index or answers, as the choice says. False when no
+    /// brain answers yet: then the first load chooses, through the catalogue's gate.
+    /// </summary>
+    /// <remarks>
+    /// WHAT TO DO IS DECIDED IN THE LIBRARY (BrainInWaiting.TakingUp), where each case is a test. The supervisor chose only
+    /// when it loaded, and a brain that answers is not loaded again: on the P30 on 2026-11-14 the 4B the climb fetched
+    /// landed at 15:42:52 behind the 2B, and an hour and a half later nothing had validated it.
+    /// </remarks>
+    public async Task<bool> TakeUpAsync(string landed, CancellationToken ct)
+    {
+        // NOT ON THE DOWNLOAD'S THREAD: a landing is said from inside the download, and choosing reads the catalogue, the
+        // registry and the index records.
+        await Task.Yield();
+
+        // A LOAD IN FLIGHT CHOSE BEFORE THIS BRAIN WAS HERE, or was told what to load: the choice is made once it is done.
+        Task? inFlight;
+        lock (_gate) inFlight = _loading;
+        if (inFlight is not null)
+        {
+            try { await inFlight.WaitAsync(ct).ConfigureAwait(false); }
+            catch (Exception) when (!ct.IsCancellationRequested) { /* a load that failed says why itself */ }
+        }
+
+        string? running;
+        bool forItsIndex;
+        lock (_gate)
+        {
+            running = _status.Phase == BrainPhase.Ready ? _status.ModelId : null;
+            forItsIndex = _loadedForIndex;
+        }
+
+        var (move, choice) = BrainInWaiting.TakingUp(running, forItsIndex, () =>
+        {
+            Say($"{landed} is here: the brain is chosen again now, not at the next load");
+            return Choose();
+        });
+        switch (move)
+        {
+            case TakeUpMove.FirstLoadChooses:
+                return false;
+            case TakeUpMove.SittingDecides:
+                Say($"{running} is loaded for its index: it goes when the clock that sits with it says, and the next load takes {choice ?? "the brain chosen"}");
+                return true;
+            case TakeUpMove.Stays:
+                await ValidateNowIfDueAsync(ct).ConfigureAwait(false);
+                return true;
+        }
+
+        // THE CHOICE IS ANOTHER BRAIN, and it answers from now - once nobody is asking: an answer being given is not cut off
+        // for it. Ten minutes at most; after that the next load takes it, as before.
+        for (var waited = 0; waited < 40 && SchedulerIdle?.Invoke() != true; waited++)
+            await Task.Delay(TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+        if (SchedulerIdle?.Invoke() != true)
+        {
+            Say($"{choice} is this phone's brain now, and it was asked something for ten minutes: the next load takes it");
+            return true;
+        }
+
+        Say($"{choice} is this phone's brain now: {running} is let go and {choice} is loaded");
+        await ReleaseAsync(ct).ConfigureAwait(false);
+        Task loading;
+        lock (_gate)
+        {
+            if (_loading is not null) return true;   // a question got in first, and its load chose
+            loading = _loading = Task.Run(() => LoadAsync(choice!));
+        }
+        try { await loading.WaitAsync(ct).ConfigureAwait(false); }
+        catch (Exception ex) { Say($"{choice} did not load ({ex.GetType().Name}); the next question loads the brain this phone chooses"); }
+        return true;
+    }
+
+    // The candidate the choice left to be validated is validated now when its time has come - nobody asking, the phone on
+    // charge - and else by the clock, every quarter of an hour, which is said.
+    private async Task ValidateNowIfDueAsync(CancellationToken ct)
+    {
+        string? candidate;
+        lock (_gate) candidate = _pendingCandidate;
+        if (candidate is null) return;
+        if (await ValidateCandidateIfDueAsync(ct).ConfigureAwait(false)) return;
+
+        // One that was tried, or is being tried, says what came of it itself.
+        bool notTried;
+        lock (_gate) notTried = _pendingCandidate == candidate && Volatile.Read(ref _validating) == 0;
+        if (notTried) Say($"{candidate} is validated once nobody is asking and the phone is on charge: the clock asks every 15 minutes");
+    }
+
     // ── what survives a process: verified files, kills, rejections ───────────
 
     private string StatePath(string kind, string model) =>
@@ -1087,6 +1411,14 @@ public sealed class InferenceSupervisor : IBrainWorker
             File.WriteAllText(path, $"{a.Size}:{a.Modified}");
         }
         catch { /* the next load hashes again; slower, never wrong */ }
+    }
+
+    // After a crash counted against the model: its next load checks its files' hash again rather than trusting the last
+    // check, so a damaged file is found and repaired before it is loaded into the same crash.
+    private void ForgetVerified(string model)
+    {
+        try { File.Delete(StatePath("verified", model)); }
+        catch { /* the stamp stays; the next load trusts it, as it would have */ }
     }
 
     // "freeGb|build": the free RAM a load of the model was killed at, and the build of this app that was killed (its
@@ -1231,21 +1563,6 @@ public sealed class InferenceSupervisor : IBrainWorker
         return new BrainWorkerException(held);
     }
 
-    // ONCE, WHEN THE RULE FOR UNEXPLAINED DEATHS CHANGED (2026-10-23): the refusals it made
-    // come back on one strike. See CrashVerdict.ReconsiderAmbiguousRefusals for why only once.
-    private void ReconsiderAmbiguousRefusalsOnce()
-    {
-        try
-        {
-            var marker = Path.Combine(_stateDir, "reconsidered-unexplained-deaths.txt");
-            if (File.Exists(marker) || _catalogue() is not { } catalogue) return;
-            if (CrashVerdict.ReconsiderAmbiguousRefusals(catalogue, line => _log(line)) < 0) return;   // not done: next start
-            Directory.CreateDirectory(_stateDir);
-            File.WriteAllText(marker, DateTimeOffset.UtcNow.ToString("O"));
-        }
-        catch { /* tried again at the next start */ }
-    }
-
     // ── the previous process ─────────────────────────────────────────────────
 
     /// <summary>
@@ -1260,10 +1577,10 @@ public sealed class InferenceSupervisor : IBrainWorker
             var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(_stateDir);
             var (bootChanged, updated) = ExitEvidence.CompareRunStamp(_context, _stateDir);
 
-            // THE OLD RULES' REFUSALS FIRST, then the last run's death under today's rule -
-            // so a refusal being healed is not struck once more before it is looked at.
-            CircleAI.Inference.CrashVerdict.Reconsider(_catalogue(), line => _log(line));
-            ReconsiderAmbiguousRefusalsOnce();
+            // EVERY REFUSAL AN EARLIER RULE WROTE IS LIFTED FIRST, then the last run's death is counted under today's
+            // rule: no model is refused any more (the owner, 2026-11-15: "no models should be blocked"), and nothing
+            // writes a refusal now, so after the first start this finds none.
+            CircleAI.Inference.CrashVerdict.LiftRefusals(_catalogue(), line => _log(line));
 
             // AND THE INFERENCE PROCESS'S OWN MARKER (S6): a step it began - a load, an answer -
             // and never finished, because the process ended with no handler run. A marker still
@@ -1293,6 +1610,7 @@ public sealed class InferenceSupervisor : IBrainWorker
                 };
                 var failure = FailureClassifier.Classify(facts);
                 CrashVerdict.Record(_catalogue(), crumb, line => _log(line), killedByTheSystem: !failure.CountsAgainstModel);
+                if (model is not null && failure.CountsAgainstModel) ForgetVerified(model);   // its files are checked before it is tried again
 
                 // THE MAIN PROCESS DIED INSIDE A LOAD - on the P30, iAware taking both
                 // processes for memory. Not the model's crash: that kills the worker alone,
@@ -1323,6 +1641,21 @@ public sealed class InferenceSupervisor : IBrainWorker
                 var beat = await _connection.HeartbeatAsync(CancellationToken.None).ConfigureAwait(false);
                 if (beat is null) return;
                 lock (_gate) _heartbeat = beat;
+
+                // THE INDEX, AS THE ENGINE RECORDS IT ON FLASH: how far its indexing has got in the phone's idle time, or
+                // that it is complete - the line a person is shown under "Tap and talk". The engine is in the worker's
+                // process; its record is in the cache folder both processes share.
+                // Where another brain answers while this phone's own is indexed, the record read is the one being built.
+                try
+                {
+                    string? waitingFile;
+                    lock (_gate) waitingFile = _inWaitingFile;
+                    IndexReadiness.Report(_readiness, CircleAI.Inference.Managed.ManagedChatGenerator.DefaultStoreDirectory, DateTimeOffset.UtcNow, waitingFile);
+                }
+                catch (Exception ex)
+                {
+                    _log("the index's state could not be read: " + ex.GetType().Name);
+                }
 
                 // THE CEILING (OPEN-GAPS E33). The watchdog counts the worker's CPU time as progress,
                 // so a native call that spins and never writes is not ended there - it is ended here,

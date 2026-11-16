@@ -109,6 +109,21 @@ public sealed record DeviceContext(
     /// <summary>The form factor, installed by a platform head. Null infers it from the device tier.</summary>
     public static Func<FormFactor>? FormFactorProbe { get; set; }
 
+    /// <summary>
+    /// Whether the person is using the device right now - on a phone, what its screen says (IndexingWhen.InUse) - installed by a platform
+    /// head; null from it, or no probe at all, reads as unknown. Work that waits for an idle phone (the indexing queue)
+    /// asks this.
+    /// </summary>
+    public static Func<bool?>? InUseProbe { get; set; }
+
+    /// <summary>
+    /// The device's own low-memory line, in bytes: the memory available under which its system begins ending other
+    /// apps' processes (Android's ActivityManager.MemoryInfo.threshold) - installed by a platform head; null from it,
+    /// or no probe at all, reads as unknown. Work that must not cost the phone its memory (the indexing queue) keeps
+    /// clear of it.
+    /// </summary>
+    public static Func<long?>? LowMemoryLineProbe { get; set; }
+
     /// <summary>Where the kernel lists CPUs. A setting so a test can point it at a fake tree.</summary>
     internal static string CpuRoot { get; set; } = "/sys/devices/system/cpu";
 

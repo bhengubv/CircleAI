@@ -99,6 +99,12 @@ public sealed class Speculator
     /// <summary>Forgets what the draft source carried, when the state was replaced.</summary>
     public void Forget() => _source.Forget();
 
+    /// <summary>
+    /// Whether the draft source drafts from the trunk's hidden states (the MTP head), so every token the trunk runs must
+    /// be shown to it with its own h_nextn - by <see cref="Run"/> one at a time, or <see cref="Observed"/> after a batch.
+    /// </summary>
+    public bool NeedsHidden => _source.NeedsHidden;
+
     /// <summary>Runs one token on the trunk, as Forward does, and lets the draft source see it.</summary>
     public void Run(int token, ModelState state, Span<float> logits = default)
     {
@@ -106,6 +112,19 @@ public sealed class Speculator
         var position = state.Position;
         _model.Forward(token, state, logits, _one);
         _source.Observe([token], position, [_one]);
+    }
+
+    /// <summary>
+    /// Lets the draft source see <paramref name="tokens"/> the trunk has just run in one batch at
+    /// <paramref name="position"/> onward, <paramref name="hidden"/>[i] being the trunk's h_nextn after tokens[i] - the
+    /// batched read's counterpart of <see cref="Run"/>, so a streamed trunk reads its prompt in whole passes and the MTP
+    /// head still catches up on every one. The caller ran the batch (ForwardBatch) and gathered the hidden states.
+    /// </summary>
+    public void Observed(ReadOnlySpan<int> tokens, int position, IReadOnlyList<float[]> hidden)
+    {
+        ArgumentNullException.ThrowIfNull(hidden);
+        if (tokens.Length == 0) return;
+        _source.Observe(tokens, position, hidden);
     }
 
     /// <summary>

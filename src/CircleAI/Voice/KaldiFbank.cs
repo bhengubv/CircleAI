@@ -130,7 +130,13 @@ public sealed class KaldiFbank
     private readonly int[]     _melStart;    // first non-zero fft bin per mel bin
 
     private readonly List<float> _samples = new();
-    private int _framesRead;
+
+    // WHERE THE HELD AUDIO SITS IN THE WHOLE STREAM, so letting audio go never moves a frame (Consume). _origin is
+    // the stream position of _samples[0] - the samples already let go - and _base the stream number of the frame the
+    // caller calls 0 - the frames already consumed. Both stay 0 for a caller that never consumes, and then every
+    // number below is what it always was.
+    private long _origin;
+    private long _base;
 
     public KaldiFbank(KaldiFbankOptions? options = null)
     {
@@ -144,7 +150,9 @@ public sealed class KaldiFbank
     /// <summary>Feature dimension — one value per mel bin.</summary>
     public int Dimension => _o.NumMelBins;
 
-    /// <summary>Frames whose window is fully covered by the audio received so far.</summary>
+    /// <summary>
+    /// Frames whose window is fully covered by the audio received so far, counted from the first one not yet consumed.
+    /// </summary>
     public int FramesReady { get; private set; }
 
     /// <summary>Adds audio. Samples are float in [-1, 1].</summary>
@@ -171,8 +179,10 @@ public sealed class KaldiFbank
 
     private void Recount(bool flush)
     {
-        var n = _samples.Count;
-        int frames;
+        // Counted over the WHOLE stream, then from the first frame not yet consumed - so a frame keeps its number
+        // whatever audio has been let go. Counted, not walked: a loop from frame 0 grew with every hour of listening.
+        var n = _origin + _samples.Count;
+        long frames;
         if (_o.SnipEdges)
         {
             frames = n < _o.FrameLength ? 0 : 1 + (n - _o.FrameLength) / _o.FrameShift;
@@ -186,13 +196,13 @@ public sealed class KaldiFbank
         {
             // Mid-stream: only frames whose window is entirely inside the audio we
             // actually hold. The mirrored tail is deliberately withheld.
-            frames = 0;
-            while (FirstSampleOf(frames) + _o.FrameLength <= n) frames++;
+            var reach = FirstSampleOf(0) + _o.FrameLength;   // where frame 0's window ends
+            frames = n < reach ? 0 : 1 + (n - reach) / _o.FrameShift;
         }
-        FramesReady = Math.Max(0, frames);
+        FramesReady = (int)Math.Max(0, frames - _base);
     }
 
-    private int FirstSampleOf(int frame) =>
+    private long FirstSampleOf(long frame) =>
         _o.SnipEdges
             ? frame * _o.FrameShift
             // Centred: midpoint of the frame, minus half a window. Frame 0 starts
@@ -200,14 +210,18 @@ public sealed class KaldiFbank
             : frame * _o.FrameShift + _o.FrameShift / 2 - _o.FrameLength / 2;
 
     /// <summary>Computes one frame's 80 log-mel values.</summary>
+    /// <param name="index">The frame, counted from the first one not yet consumed (<see cref="Consume"/>).</param>
     public float[] GetFrame(int index)
     {
         if (index < 0 || index >= FramesReady)
             throw new ArgumentOutOfRangeException(nameof(index),
                 $"frame {index} is not ready ({FramesReady} available)");
 
-        var n     = _samples.Count;
-        var start = FirstSampleOf(index);
+        // Positions in the WHOLE stream, read from what is held. Nothing a frame from here on needs has been let go:
+        // Consume keeps every sample from the first one of the next frame, and only frame 0 of a stream ever mirrors
+        // off its start - before anything was consumed, while nothing was let go.
+        var n     = _origin + _samples.Count;
+        var start = FirstSampleOf(_base + index);
         var buf   = new float[_o.PaddedWindow];      // zero-padded to the FFT size
 
         for (var i = 0; i < _o.FrameLength; i++)
@@ -220,7 +234,7 @@ public sealed class KaldiFbank
                 if (s < 0) s = -s - 1;
                 else       s = 2 * n - 1 - s;
             }
-            buf[i] = _samples[s];
+            buf[i] = _samples[(int)(s - _origin)];
         }
 
         // Order matters and is Kaldi's: mean, then pre-emphasis, then window.
@@ -262,25 +276,40 @@ public sealed class KaldiFbank
     /// <summary>Drops frames already consumed, so a long session does not grow forever.</summary>
     /// <remarks>
     /// Samples before the earliest still-needed window can go. Kept simple: the
-    /// caller says how many frames it has finished with.
+    /// caller says how many frames it has finished with, and what was frame
+    /// <paramref name="frames"/> is frame 0 from then on.
+    /// <para>
+    /// IT USED TO MOVE EVERY FRAME AFTER IT. With centred frames the next frame's window starts 120 samples before
+    /// its hop, and this renumbered the held audio as if it were the start of a new utterance - frame 0 at -120,
+    /// mirrored. So each call re-read 120 samples: three seconds fed in 100 ms blocks, consumed after each, came out
+    /// as 321 frames instead of 299, and 290 of the 299 were different numbers (2026-11-15). The frames now keep
+    /// their place in the whole stream (_origin, _base), and consuming changes nothing but what is held.
+    /// </para>
     /// </remarks>
     public void Consume(int frames)
     {
+        frames = Math.Min(frames, FramesReady);
         if (frames <= 0) return;
-        _framesRead += frames;
-        var keepFrom = Math.Max(0, FirstSampleOf(_framesRead));
-        if (keepFrom <= 0) return;
-        _samples.RemoveRange(0, Math.Min(keepFrom, _samples.Count));
-        // Indices are relative to the buffer, so shift the frame origin with it.
-        _framesRead = 0;
+        _base += frames;
+        var keepFrom = Math.Max(_origin, FirstSampleOf(_base));
+        var drop = (int)Math.Min(keepFrom - _origin, _samples.Count);
+        if (drop > 0)
+        {
+            _samples.RemoveRange(0, drop);
+            _origin += drop;
+        }
         Recount(flush: false);
     }
+
+    /// <summary>The samples held now - what the next frames' windows still need, for a caller that consumes.</summary>
+    internal int SamplesHeld => _samples.Count;
 
     /// <summary>Clears all audio and frame state, for a new utterance.</summary>
     public void Reset()
     {
         _samples.Clear();
-        _framesRead = 0;
+        _origin = 0;
+        _base = 0;
         FramesReady = 0;
     }
 

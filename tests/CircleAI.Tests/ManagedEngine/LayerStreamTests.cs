@@ -169,6 +169,58 @@ public sealed class LayerStreamTests
         });
     }
 
+    // WHAT A LOAD'S TIME WENT TO (the P30, 2026-11-15: "layers: 3708 MB read from flash in 160786 ms (23 MB/s)" on flash
+    // that reads 205 MB/s): a set read in place is read from the model's file and then repacked into tiles, and the stream
+    // says how long each took - the repacking the CPU's, and none of it for a written store's own tiles.
+    [Fact]
+    public void A_stream_says_what_its_loads_time_went_to()
+    {
+        WithModel(89, (file, directory) =>
+        {
+            var copy = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: false, pairedOverride: true);
+            foreach (var inPlace in new[] { true, false })
+            {
+                var mix = inPlace ? TileStore.OverModel(file, TileSet.Mixing) : TileStore.Write(file, Path.Combine(directory, "model.mix"), TileSet.Mixing);
+                var ffn = inPlace ? TileStore.OverModel(file, TileSet.FeedForward) : TileStore.Write(file, Path.Combine(directory, "model.ffn"), TileSet.FeedForward);
+                var streamed = LanguageModel.Load(file, null, headFromStore: false, ffnFromStore: true, pairedOverride: true, mixFromStore: true);
+                var stream = new LayerStream(mix, ffn, channels: 2, readBytes: FlashFile.Page, warmBudget: 0, slots: 2);
+                try
+                {
+                    Assert.Equal(inPlace, stream.InPlace);
+                    streamed.Stream = stream;
+                    Same(copy, streamed);
+                }
+                finally
+                {
+                    stream.Dispose();   // every load the ring had in hand finishes first, so the two counts are of the same loads
+                }
+
+                var (_, read, reading) = stream.TakeCounts();
+                var (fromFlash, flashing, repacking) = stream.TakeParts();
+                Assert.True(read > 0 && fromFlash > 0 && flashing > TimeSpan.Zero, $"in place {inPlace}: {read} bytes loaded, {fromFlash} read from flash in {flashing}");
+                // Side by side, each within the loads' whole time.
+                Assert.True(flashing <= reading + TimeSpan.FromMilliseconds(1) && repacking <= reading + TimeSpan.FromMilliseconds(1),
+                    $"in place {inPlace}: reading {flashing} or repacking {repacking} took longer than the loads' {reading}");
+                if (inPlace)
+                {
+                    Assert.True(repacking > TimeSpan.Zero, "a set read in place was not repacked");
+                }
+                else
+                {
+                    Assert.Equal(TimeSpan.Zero, repacking);   // a written store's tiles land as they are
+                    Assert.Equal(read, fromFlash);
+                }
+
+                // And the first load, alone, said once: a whole layer's tiles, what the model's file gave of it in place.
+                var first = stream.TakeFirstLoad();
+                Assert.NotNull(first);
+                Assert.True(first.Bytes > 0 && first.Whole > TimeSpan.Zero, $"in place {inPlace}: the first load says {first}");
+                Assert.Equal(inPlace, first.FromFlash > 0 && first.Repacking > TimeSpan.Zero);
+                Assert.Null(stream.TakeFirstLoad());
+            }
+        });
+    }
+
     [Fact]
     public void No_token_runs_on_layers_that_are_not_there()
     {

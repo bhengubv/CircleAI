@@ -138,6 +138,9 @@ public static class ReadinessComponents
 
     /// <summary>The assistant role (default digital assistant).</summary>
     public const string Assistant = "assistant";
+
+    /// <summary>The brain's index, built in the phone's idle time (<see cref="IndexReadiness"/>).</summary>
+    public const string Index = "index";
 }
 
 /// <summary>Everything the service says about itself, at one sequence number.</summary>

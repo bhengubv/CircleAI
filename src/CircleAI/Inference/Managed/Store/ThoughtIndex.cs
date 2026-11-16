@@ -8,11 +8,16 @@
 //
 // Lists are whole tiles of 16 neurons - the vector kernel's - sorted by neuron.
 //
+// COHERENT THOUGHTS (the owner, 2026-11-15: "We index thoughts so what we keep warm have to be coherent"): where an index
+// is built coherent, a word's thought is found once, at the first layer, and kept through every layer - each layer's list
+// for a thought is the neurons that thought's words fired most there. A thought is then one thing from the first layer to
+// the last, and what is kept warm of it can be all of it.
+//
 // Layout, little-endian:
 //   header   magic "CAIINDEX", version, layers, embedding, feed-forward, groups a layer, neurons a list, sketch width,
-//            and the watch's records it was built from
+//            the watch's records it was built from, and whether its thoughts are coherent (0 in a file from before)
 //   layers   per layer: the centres (groups x sketch width floats), how many words each group held (ints), then each
-//            group's list (neurons a list ushorts)
+//            group's list (neurons a list ushorts). A coherent index holds the first layer's centres at every layer.
 
 using System.Buffers.Binary;
 
@@ -34,7 +39,7 @@ public sealed class ThoughtIndex
     private readonly ushort[][][] _lists; // by layer, by group: the neurons, sorted
 
     private ThoughtIndex(string path, int layers, int embedding, int feedForward, int groups, int listNeurons, long records,
-        float[][] centres, int[][] sizes, ushort[][][] lists)
+        float[][] centres, int[][] sizes, ushort[][][] lists, bool coherent = false)
     {
         FilePath = path;
         Layers = layers;
@@ -43,13 +48,45 @@ public sealed class ThoughtIndex
         Groups = groups;
         ListNeurons = listNeurons;
         Records = records;
+        Coherent = coherent;
         _centres = centres;
         _sizes = sizes;
         _lists = lists;
+        Fingerprint = Mark(lists);
+    }
+
+    /// <summary>
+    /// Whether a word's thought is found once, at the first layer, and kept through every layer (the file's header says);
+    /// false where each layer groups its words on its own.
+    /// </summary>
+    public bool Coherent { get; }
+
+    // FNV-1a over every list's neurons, in order.
+    private static ulong Mark(ushort[][][] lists)
+    {
+        var mark = 14695981039346656037UL;
+        foreach (var layer in lists)
+        {
+            foreach (var list in layer)
+            {
+                foreach (var neuron in list)
+                {
+                    mark = (mark ^ (byte)neuron) * 1099511628211UL;
+                    mark = (mark ^ (byte)(neuron >> 8)) * 1099511628211UL;
+                }
+            }
+        }
+        return mark;
     }
 
     /// <summary>The file.</summary>
     public string FilePath { get; }
+
+    /// <summary>
+    /// A mark of which neurons the lists hold. Pieces written for these lists carry it (<see cref="CachedIndex"/>), so
+    /// pieces written for another index's lists - the same shape, other neurons - are never taken for this one's.
+    /// </summary>
+    public ulong Fingerprint { get; }
 
     /// <summary>Layers indexed.</summary>
     public int Layers { get; }
@@ -86,24 +123,44 @@ public sealed class ThoughtIndex
     /// <paramref name="groups"/> thought groups and posting lists of <paramref name="listNeurons"/> neurons (rounded up to
     /// whole tiles) - the neurons the group's words marked most often.
     /// </summary>
-    public static ThoughtIndex Build(WatchRecords watch, string path, int groups, int listNeurons)
+    public static ThoughtIndex Build(WatchRecords watch, string path, int groups, int listNeurons, bool coherent = false) =>
+        TryBuild(watch, path, groups, listNeurons, stop: null, coherent)!;
+
+    /// <summary>The neurons a list of <paramref name="listNeurons"/> holds for a layer of <paramref name="feedForward"/>: whole tiles, the layer at most.</summary>
+    public static int ListOf(int listNeurons, int feedForward)
+    {
+        const int tile = Kernels.Ptq1PairMatrix.TileRows;
+        return Math.Min(feedForward, (listNeurons + tile - 1) / tile * tile);
+    }
+
+    /// <summary>
+    /// <see cref="Build"/>, asking <paramref name="stop"/> as it goes: null when it said to stop, and then nothing is
+    /// written (the indexing queue's unit, which stands aside for a question).
+    /// </summary>
+    public static ThoughtIndex? TryBuild(WatchRecords watch, string path, int groups, int listNeurons, Func<bool>? stop, bool coherent = false)
     {
         ArgumentNullException.ThrowIfNull(watch);
         ArgumentOutOfRangeException.ThrowIfLessThan(groups, 1);
-        const int tile = Kernels.Ptq1PairMatrix.TileRows;
-        listNeurons = Math.Min(watch.FeedForward, (listNeurons + tile - 1) / tile * tile);
+        listNeurons = ListOf(listNeurons, watch.FeedForward);
+        if (coherent) return TryBuildCoherent(watch, path, groups, listNeurons, stop);
         var width = ThoughtSketch.Width;
+        const int look = 256;   // records between looks at `stop`
+        long seen = 0;
 
         // THE SKETCHES, every layer's, in one pass: the groups come from them.
         var sketches = new List<float[]>[watch.Layers];
         for (var il = 0; il < watch.Layers; il++) sketches[il] = [];
         foreach (var (layer, sketch, _) in watch.Each())
+        {
+            if (seen++ % look == 0 && stop?.Invoke() == true) return null;
             if ((uint)layer < (uint)watch.Layers) sketches[layer].Add((float[])sketch.Clone());
+        }
 
         var centres = new float[watch.Layers][];
         var sizes = new int[watch.Layers][];
         for (var il = 0; il < watch.Layers; il++)
         {
+            if (stop?.Invoke() == true) return null;
             var (c, assigned) = KMeans(sketches[il], Math.Max(1, Math.Min(groups, sketches[il].Count)), groups, width, seed: il);
             centres[il] = c;
             sizes[il] = new int[groups];
@@ -120,6 +177,7 @@ public sealed class ThoughtIndex
             for (var il = first; il < end; il++) counts[il - first] = new int[groups * watch.FeedForward];
             foreach (var (layer, sketch, strong) in watch.Each())
             {
+                if (seen++ % look == 0 && stop?.Invoke() == true) return null;
                 if (layer < first || layer >= end) continue;
                 var g = Nearest(centres[layer], groups, sketch);
                 var row = counts[layer - first].AsSpan(g * watch.FeedForward, watch.FeedForward);
@@ -135,6 +193,85 @@ public sealed class ThoughtIndex
         }
 
         var index = new ThoughtIndex(path, watch.Layers, watch.Embedding, watch.FeedForward, groups, listNeurons, watch.Count, centres, sizes, lists);
+        index.Write();
+        return index;
+    }
+
+    // ONE THOUGHT A WORD, FOR EVERY LAYER: the thoughts are the groups of the words' first-layer sketches, a word keeps its
+    // thought through every layer, and each layer's list for a thought is the neurons its words fired most there. Watch
+    // writes a passage a layer at a time - each of its words at the first layer, then each at the next (LanguageModel
+    // .ForwardBatch) - so a word is its place in each layer's run, and a passage begins where the layers start again.
+    private static ThoughtIndex? TryBuildCoherent(WatchRecords watch, string path, int groups, int listNeurons, Func<bool>? stop)
+    {
+        var width = ThoughtSketch.Width;
+        const int look = 256;   // records between looks at `stop`
+        long seen = 0;
+
+        // THE FIRST LAYER'S SKETCHES, the words of each passage in order: the thoughts are their groups.
+        var first = new List<float[]>();
+        var runs = new List<int>();   // the words each passage held
+        var previous = -1;
+        foreach (var (layer, sketch, _) in watch.Each())
+        {
+            if (seen++ % look == 0 && stop?.Invoke() == true) return null;
+            if (layer == 0)
+            {
+                if (previous != 0) runs.Add(0);
+                runs[^1]++;
+                first.Add((float[])sketch.Clone());
+            }
+            previous = layer;
+        }
+        if (first.Count == 0) throw new InvalidDataException("Watch recorded no word at the first layer, where coherent thoughts are found.");
+        var (centre, assigned) = KMeans(first, Math.Max(1, Math.Min(groups, first.Count)), groups, width, seed: 0);
+        var held = new int[groups];
+        foreach (var g in assigned) held[g]++;
+
+        // THE LISTS: every layer's records counted into the thought of the word each is, a few layers at a time.
+        var lists = new ushort[watch.Layers][][];
+        const int layersAPass = 8;
+        for (var low = 0; low < watch.Layers; low += layersAPass)
+        {
+            var high = Math.Min(watch.Layers, low + layersAPass);
+            var counts = new int[high - low][];
+            for (var il = low; il < high; il++) counts[il - low] = new int[groups * watch.FeedForward];
+            int passage = -1, current = -1, at = 0, start = 0;   // start: the passage's first word among `assigned`
+            foreach (var (layer, _, strong) in watch.Each())
+            {
+                if (seen++ % look == 0 && stop?.Invoke() == true) return null;
+                if (layer != current)
+                {
+                    if (current < 0 || layer < current)
+                    {
+                        if (passage >= 0) start += runs[passage];
+                        passage++;
+                    }
+                    current = layer;
+                    at = 0;
+                }
+                var word = start + at++;
+                if (layer < low || layer >= high || passage >= runs.Count || at > runs[passage]) continue;
+                var row = counts[layer - low].AsSpan(assigned[word] * watch.FeedForward, watch.FeedForward);
+                for (var n = 0; n < watch.FeedForward; n++)
+                    if ((strong[n >> 3] & (1 << (n & 7))) != 0) row[n]++;
+            }
+            for (var il = low; il < high; il++)
+            {
+                lists[il] = new ushort[groups][];
+                for (var g = 0; g < groups; g++)
+                    lists[il][g] = Top(counts[il - low].AsSpan(g * watch.FeedForward, watch.FeedForward), listNeurons);
+            }
+        }
+
+        // The first layer's centres stand at every layer: a word's thought is found there, and kept.
+        var centres = new float[watch.Layers][];
+        var sizes = new int[watch.Layers][];
+        for (var il = 0; il < watch.Layers; il++)
+        {
+            centres[il] = centre;
+            sizes[il] = held;
+        }
+        var index = new ThoughtIndex(path, watch.Layers, watch.Embedding, watch.FeedForward, groups, listNeurons, watch.Count, centres, sizes, lists, coherent: true);
         index.Write();
         return index;
     }
@@ -155,6 +292,7 @@ public sealed class ThoughtIndex
             var listNeurons = reader.ReadInt32();
             if (reader.ReadInt32() != ThoughtSketch.Width) return null;
             var records = reader.ReadInt64();
+            var coherent = reader.ReadInt32() != 0;   // 0 in a file from before coherent thoughts
             stream.Position = HeaderBytes;
             var centres = new float[layers][];
             var sizes = new int[layers][];
@@ -172,7 +310,7 @@ public sealed class ThoughtIndex
                     for (var n = 0; n < listNeurons; n++) lists[il][g][n] = reader.ReadUInt16();
                 }
             }
-            return new ThoughtIndex(path, layers, embedding, feedForward, groups, listNeurons, records, centres, sizes, lists);
+            return new ThoughtIndex(path, layers, embedding, feedForward, groups, listNeurons, records, centres, sizes, lists, coherent);
         }
         catch (Exception ex) when (ex is IOException or EndOfStreamException)
         {
@@ -197,6 +335,7 @@ public sealed class ThoughtIndex
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(28), ListNeurons);
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(32), ThoughtSketch.Width);
             BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(36), Records);
+            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(44), Coherent ? 1 : 0);
             writer.Write(header);
             for (var il = 0; il < Layers; il++)
             {

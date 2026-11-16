@@ -168,6 +168,50 @@ public sealed class PrismHadamardTests(ITestOutputHelper output)
         });
     }
 
+    // SPLIT UNDOES THE FOLD (the indexed mind: "Where a format folds a rotation into a tensor ... Split undoes it so each
+    // piece holds true neurons"). A folded weight's row, unfolded, gives over the inputs as they are what the row gives over
+    // the turned inputs - so entry n of the unfolded row is input n's own weight.
+    [Fact]
+    public void An_unfolded_row_reads_the_inputs_as_they_are()
+    {
+        GgufBuilder.Read(Folded().Build(), file =>
+        {
+            var fold = PrismHadamard.FromGguf(file)!.InputOf("blk.0.ffn_down.weight")!;
+            var row = Random(16, 3);
+            var x = Random(16, 4);
+            var turned = new float[16];
+            fold.Apply(x, turned);
+            double folded = 0, unfolded = 0;
+            for (var i = 0; i < 16; i++) folded += row[i] * turned[i];
+            var own = (float[])row.Clone();
+            fold.Unfold(own);
+            for (var i = 0; i < 16; i++) unfolded += own[i] * x[i];
+            Assert.InRange(Math.Abs(folded - unfolded), 0, 1e-5);
+
+            // One input alone: what the row gives it is the unfolded row's entry for it.
+            for (var n = 0; n < 16; n++)
+            {
+                var alone = new float[16];
+                alone[n] = 1;
+                fold.Apply(alone, turned);
+                double weight = 0;
+                for (var i = 0; i < 16; i++) weight += row[i] * turned[i];
+                Assert.InRange(Math.Abs(weight - own[n]), 0, 1e-5);
+            }
+        });
+    }
+
+    [Fact]
+    public void A_transform_that_regroups_does_not_unfold_a_row_in_place()
+    {
+        GgufBuilder.Read(Folded(grouped: true).Build(), file =>
+        {
+            var regrouping = PrismHadamard.FromGguf(file)!.InputOf("blk.0.ssm_out.weight")!;
+            Assert.True(regrouping.Regroups);
+            Assert.Throws<InvalidOperationException>(() => regrouping.Unfold(new float[regrouping.Width]));
+        });
+    }
+
     [Fact]
     public void Weights_of_one_width_share_one_transform_and_the_tied_head_is_one_of_them()
     {

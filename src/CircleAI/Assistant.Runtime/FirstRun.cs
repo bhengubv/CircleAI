@@ -361,8 +361,17 @@ public static class FirstRun
                     // two-strike rule refused it and the 0.8B was fetched after all.
                     // AND BY THE RULE THE SELECTOR USES (ModelChoice.Best): the Bonsai 2
                     // fleet first, then rank - no speed gate (the owner, 2026-11-04).
+                    //
+                    // AND ONE THAT ANSWERS AT ONCE: the memory free now is asked of every brain, one the engine reads
+                    // from flash included (2026-11-13). ModelFit.Fits(m, probe) asks such a brain only for room on
+                    // flash - right for the selector and for the upgrade, which may want the 27B on a 3.6 GB phone -
+                    // and through it a fresh phone with room planned 5.9 GB of the 27B as its FIRST brain: a word every
+                    // 26 to 80 seconds on a P30, nothing else there to answer, until an index it had not begun passed
+                    // its check. "Just like updating an OS" (the owner): the phone answers while the best brain is
+                    // fetched and indexed behind it. So the first brain is the best that fits the memory free now,
+                    // and the best one the flash holds is the upgrade (ModelChoice.Upgrade).
                     pick = CircleAI.Inference.ModelChoice.Best(
-                               eligible.Where(m => CircleAI.Inference.ModelFit.Fits(m, probe)))
+                               eligible.Where(m => CircleAI.Inference.ModelFit.Fits(m, probe.UsableRamGb, probe.StorageFreeGb)))
                         ?? CircleAI.Inference.ModelChoice.SmallestEverHeld(
                                eligible.Where(m => CircleAI.Inference.ModelFit.FitsStorage(m, probe.StorageFreeGb)),
                                probe);

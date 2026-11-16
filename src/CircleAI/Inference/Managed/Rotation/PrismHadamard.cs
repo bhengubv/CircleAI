@@ -74,6 +74,19 @@ public sealed class InputTransform
         for (var b = 0; b < output.Length; b += BlockSize) PrismHadamard.Transform(output.Slice(b, BlockSize));
     }
 
+    /// <summary>
+    /// Turns a row of the folded weight back to the weight's own inputs, in place. The weight reads a turned input,
+    /// x' = H(s * x), so over the inputs as they are its row is s * H(row) - H is its own transpose. After this, entry n
+    /// of the row is what input n by itself contributes. Not for a transform that <see cref="Regroups"/>.
+    /// </summary>
+    public void Unfold(Span<float> row)
+    {
+        if (row.Length != Width) throw new ArgumentException($"This transform turns {Width} values, not {row.Length}.", nameof(row));
+        if (_grouping is not null) throw new InvalidOperationException("A regrouping transform's rows are not unfolded in place.");
+        for (var b = 0; b < row.Length; b += BlockSize) PrismHadamard.Transform(row.Slice(b, BlockSize));
+        if (_signs is not null) Turn(row, _signs);
+    }
+
     private static unsafe void Turn(Span<float> values, float[] signs)
     {
         fixed (float* x = values)

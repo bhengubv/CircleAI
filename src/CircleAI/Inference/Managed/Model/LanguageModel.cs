@@ -51,7 +51,7 @@ public sealed class LanguageModel
     private readonly float[] _outputNorm;
     private readonly TernaryMatrix _embedding; // the lookup table and, tied, the head
     private readonly TernaryMatrix? _output;   // an untied head's own table (the 27B's output.weight)
-    private readonly MtpHead? _mtp;            // a PQ2_0-MTP file's draft head
+    private MtpHead? _mtp;                      // a PQ2_0-MTP file's draft head - the file's own, or one attached from a sibling (AttachMtp)
 
     // One turned buffer, one quantisation and one lookup table per product width.
     private readonly Dictionary<int, InputTables> _inputs = [];
@@ -257,11 +257,16 @@ public sealed class LanguageModel
         Take(layer.Output, tiles.Mixing, 6, il);
         if (Index is null)
         {
-            // THE INDEX SERVES GATE AND UP where it is on: the stream brings ffn_down and the mixing alone.
             Take(layer.FfnGate, tiles.FeedForward, 0, il);
             Take(layer.FfnUp, tiles.FeedForward, 1, il);
+            Take(layer.FfnDown, tiles.FeedForward, 2, il);
         }
-        Take(layer.FfnDown, tiles.FeedForward, 2, il);
+        else
+        {
+            // THE INDEX SERVES THE KNOWLEDGE LAYER: a word's gate, up and down come as its pieces. A stream that still
+            // brings ffn_down whole has it read whole, to the bit; one that brings the mixing alone leaves it to the piece.
+            layer.FfnDown.Pair = tiles.FeedForward[2];
+        }
 
         static void Take(TernaryMatrix? matrix, Ptq1PairMatrix?[] tiles, int kind, int il)
         {
@@ -347,8 +352,16 @@ public sealed class LanguageModel
     public ThoughtWatch? Watch { get; set; }
 
     /// <summary>
-    /// The index serving the feed-forward's gate and up (<see cref="IndexedFeedForward"/>): a word's thought finds its group,
-    /// and only that group's neurons are computed - from RAM, the cached index or the core - every other neuron zero. Null
+    /// Asked before each layer of a batch (ForwardBatch): true stops the pass there with an
+    /// <see cref="OperationCanceledException"/>, the state it was reading into left part-read for the caller to reset.
+    /// For work that must stand aside for a question - the indexing queue's Watch. Null never stops a pass.
+    /// </summary>
+    public Func<bool>? Interrupt { get; set; }
+
+    /// <summary>
+    /// The index serving the knowledge layers (<see cref="IndexedFeedForward"/>): a word's thought finds its group, and only
+    /// that group's neurons are computed - their gate and up, and their down unless a stream brings the layer's own ffn_down
+    /// whole - from RAM, the cached index or the core, every other neuron zero. Null
     /// computes every neuron. The vector kernel's: a model that does not pair cannot take one.
     /// </summary>
     public IndexedFeedForward? Index
@@ -519,6 +532,26 @@ public sealed class LanguageModel
 
     /// <summary>Whether the file carries a multi-token-prediction head (Bonsai 2's PQ2_0-MTP files).</summary>
     public bool HasMtp => _mtp is not null;
+
+    /// <summary>
+    /// Reads an MTP head (blk.{n_layer}) from <paramref name="mtpFile"/> - a sibling file that packs the SAME trunk as
+    /// this one (a Bonsai 2 PQ2_0-MTP file beside this trunk's PTQ1_0) - and drafts with it, so a streamed trunk whose own
+    /// file carries no head can still draft for itself. The head's weights are trained on this trunk's hidden states; the
+    /// two trunks must be the same model, which the caller proves. <paramref name="mtpFile"/> must outlive this model (its
+    /// bytes stay mapped). Throws if this model already has a head, if the file carries none, or if its shape differs.
+    /// </summary>
+    public void AttachMtp(GgufFile mtpFile)
+    {
+        ArgumentNullException.ThrowIfNull(mtpFile);
+        if (_mtp is not null) throw new InvalidOperationException("This model already has an MTP head.");
+        if (!ModelConfig.HasMtpHead(mtpFile)) throw new ArgumentException("The file carries no MTP head (no nextn_predict_layers).", nameof(mtpFile));
+        var theirs = ModelConfig.FromGguf(mtpFile);
+        if (theirs.Embedding != Config.Embedding || theirs.Layers != Config.Layers || theirs.Heads != Config.Heads
+            || theirs.KvHeads != Config.KvHeads || theirs.HeadDim != Config.HeadDim || theirs.FeedForward != Config.FeedForward
+            || theirs.Vocabulary != Config.Vocabulary)
+            throw new ArgumentException("The MTP file's trunk is a different shape from this model's; its head would not fit.", nameof(mtpFile));
+        _mtp = new MtpHead(mtpFile, Config, Config.Layers);
+    }
 
     /// <summary>A new, empty key/value cache for the MTP head, up to <paramref name="capacity"/> positions.</summary>
     public MtpState NewMtpState(int capacity)
@@ -862,6 +895,9 @@ public sealed class LanguageModel
         var rope = state.RopePosition; // text: each token one further, as Forward places it
         for (var il = 0; il < c.Layers; il++)
         {
+            // WORK THAT STANDS ASIDE (the indexing queue's Watch): asked before each layer, so whoever is waiting for the
+            // engine waits a layer of this batch, not the pass.
+            if (Interrupt?.Invoke() == true) throw new OperationCanceledException("The batch was asked to stand aside.");
             if (_skip is { } skip && skip[il]) continue;   // a skipped layer adds nothing to any of the batch's thoughts
             var layer = _layers[il];
             // A LAYER READ FROM FLASH ONCE FOR THE WHOLE BATCH: every token of it computes on the same tiles.
@@ -907,21 +943,34 @@ public sealed class LanguageModel
                 if (Index is { } index && layer.FfnDown.Pair is null)
                 {
                     // THE INDEX SERVES THE WHOLE KNOWLEDGE LAYER: each word in full before the next, since one read buffer
-                    // backs the pieces - its group's gate, up and down, every other neuron zero.
-                    for (var i = 0; i < n; i++)
+                    // backs the pieces - its group's gate, up and down, every other neuron zero. The words a group at a
+                    // time (Grouped), so each piece is read once for the batch; what Watch records, in the words' order.
+                    var order = Grouped(index, il, b, n);
+                    for (var k = 0; k < n; k++)
                     {
-                        var piece = index.Piece(il, b.H[i]);
+                        var i = order[k];
+                        var piece = index.Piece(il, (int)(b.Keys[k] / n));
                         IndexedScatter(piece, Prepare(b.H[i], layer.FfnGate.Input).Pair, b.Gate[i], b.Up[i]);
                         Gate(b.Gate[i], b.Up[i]);
+                        piece.Down.Project(b.Gate[i], piece.Neurons, b.Mix[i]);
+                    }
+                    for (var i = 0; i < n; i++)
+                    {
                         RecordGroups(il, b.Gate[i]);
                         Watch?.Record(il, b.H[i], b.Gate[i]);
-                        piece.Down.Project(b.Gate[i], piece.Neurons, b.Mix[i]);
                     }
                 }
                 else
                 {
                     if (Index is { } served)
-                        for (var i = 0; i < n; i++) IndexedScatter(served.Piece(il, b.H[i]), Prepare(b.H[i], layer.FfnGate.Input).Pair, b.Gate[i], b.Up[i]);
+                    {
+                        var order = Grouped(served, il, b, n);
+                        for (var k = 0; k < n; k++)
+                        {
+                            var i = order[k];
+                            IndexedScatter(served.Piece(il, (int)(b.Keys[k] / n), down: false), Prepare(b.H[i], layer.FfnGate.Input).Pair, b.Gate[i], b.Up[i]);
+                        }
+                    }
                     else
                         Products(b.H, n, layer.FfnGate.Input, (layer.FfnGate, b.Gate), (layer.FfnUp, b.Up));
                     for (var i = 0; i < n; i++)
@@ -978,6 +1027,22 @@ public sealed class LanguageModel
 
     // ---- the batch's buffers and products ----
 
+    // THE BATCH'S WORDS A GROUP AT A TIME at layer il: each word's group - its thought - asked of the index once, and the
+    // words ordered by it, then by place, so a piece read from flash serves every word of the batch that wants it before the
+    // next is read: one read a prompt, not one a word (on the P30 on 2026-11-15, 32 words read one list's pieces 32 times
+    // over, 20.7 GB). b.Keys[k] / n is the k-th word's group. Each word computes on its own buffers, so the order changes
+    // nothing it computes.
+    private static ReadOnlySpan<int> Grouped(IndexedFeedForward index, int il, BatchBuffers b, int n)
+    {
+        for (var i = 0; i < n; i++)
+        {
+            b.Keys[i] = (long)index.GroupOf(il, b.H[i], word: i) * n + i;
+            b.Order[i] = i;
+        }
+        Array.Sort(b.Keys, b.Order, 0, n);
+        return b.Order.AsSpan(0, n);
+    }
+
     private BatchBuffers? _batch;
 
     private BatchBuffers Batch(int n)
@@ -1011,6 +1076,8 @@ public sealed class LanguageModel
             Gate = Rows(c.FeedForward);
             Up = Rows(c.FeedForward);
             Head = new int[size];
+            Keys = new long[size];
+            Order = new int[size];
         }
 
         public int Size { get; }
@@ -1027,6 +1094,8 @@ public sealed class LanguageModel
         public float[][] Gate { get; }
         public float[][] Up { get; }
         public int[] Head { get; }
+        public long[] Keys { get; }   // the index's words in the order it serves them: group, then place (Grouped)
+        public int[] Order { get; }
     }
 
     // The products of several weights that read the same activations, for each of the first n
@@ -1628,7 +1697,7 @@ public sealed class LanguageModel
         // feed-forward is giving the layer its own ffn_down (then it is read whole, to the bit).
         if (Index is { } index)
         {
-            var piece = index.Piece(il, _h);
+            var piece = index.Piece(il, _h, down: layer.FfnDown.Pair is null);
             IndexedScatter(piece, lut.Pair, _ffnGate, _ffnUp);
             Gate(_ffnGate, _ffnUp);
             RecordGroups(il, _ffnGate);

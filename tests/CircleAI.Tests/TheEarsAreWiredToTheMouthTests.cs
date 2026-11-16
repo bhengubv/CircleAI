@@ -207,7 +207,10 @@ public sealed class TheEarsAreWiredToTheMouthTests
         var app = Code(Source("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                               "Services", "ServiceConversation.cs"));
 
-        Assert.True(app.Contains("new VoiceTurn().ListenAsync(", StringComparison.Ordinal),
+        // THE ENDPOINTER AND THE LISTEN THROUGH IT, AS TWO STATEMENTS. This looked for "new VoiceTurn().ListenAsync(" in
+        // one, and the app has built the turn with its ears first since 2026-11-07 (d6e6429): the same endpointer, the
+        // same listen, and a guard that had pointed at nothing for a week.
+        Assert.True(app.Contains("var turn = new VoiceTurn", StringComparison.Ordinal) && app.Contains("await turn.ListenAsync(mic, ct)", StringComparison.Ordinal),
             "the app's question must end on silence after speech, through the SDK's endpointer");
         Assert.False(app.Contains("if (buffer.Count >= LinkAudio.MaxAudioBytes) break;", StringComparison.Ordinal),
             "recording to the link's byte limit is what made every turn 25,6 seconds long");

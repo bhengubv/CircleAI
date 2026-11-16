@@ -212,7 +212,9 @@ public sealed class AssistantPersonaTests
         // below HearAsync while the turn still greeted first. Measuring the
         // order of the two awaits is what the comment above always meant.
         var greets = source.IndexOf("await GreetAsync(ct)", StringComparison.Ordinal);
-        var hears  = source.IndexOf("await HearAsync(ct)", StringComparison.Ordinal);
+        // The capture's call, whatever it is handed: it has taken the turn's clock and microphone since 2026-11-08
+        // (6a47851), and "await HearAsync(ct)" matched nothing from then on.
+        var hears  = source.IndexOf("await HearAsync(", StringComparison.Ordinal);
 
         Assert.True(greets > 0, "the turn does not greet at all");
         Assert.True(hears > 0, "the turn does not capture at all");

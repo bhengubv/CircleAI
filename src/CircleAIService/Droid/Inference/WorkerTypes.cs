@@ -18,8 +18,15 @@ public sealed record WorkerHello(int Pid, long StartedAtUnixMs, string? LoadedMo
 /// <param name="Engine">Open it with this engine rather than the one its catalogue row names; null keeps the row's.</param>
 /// <param name="KvMode">The working memory's bits the balance asks for (Step 4); null builds it as the engine does.</param>
 /// <param name="ContextShare">The share of the context the balance asks for (Step 4); 1 is all of it.</param>
+/// <param name="ForItsIndex">
+/// The brain is loaded so that its index gets built, not to answer (BrainInWaiting): it is built and not warmed -
+/// no first prefill, which for a model read from flash is minutes of reading that nobody is waiting for.
+/// </param>
+/// <param name="Drafts">Tokens a C# brain's own MTP head drafts ahead per pass - a developer's check only; 0 decodes plainly.</param>
+/// <param name="Seed">The seed every turn samples with - a developer's check only; null draws a new one each turn.</param>
 public sealed record WorkerLoadRequest(string ModelId, string ModelDirectory, bool SkipLoadHash, CircleAI.Core.ModelEngine? Engine = null,
-                                       CircleAI.Core.KvCompressionMode? KvMode = null, double ContextShare = 1.0);
+                                       CircleAI.Core.KvCompressionMode? KvMode = null, double ContextShare = 1.0, bool ForItsIndex = false,
+                                       int Drafts = 0, int? Seed = null);
 
 /// <summary>The worker process died: when, and what it was doing.</summary>
 /// <param name="ModelId">The brain it was told to load - the main slot's.</param>

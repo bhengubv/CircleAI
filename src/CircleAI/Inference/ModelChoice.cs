@@ -24,10 +24,34 @@
 // going red. It lives beside DeviceAwareModelSelector now, which is the other
 // half of the same question.
 
+using System.Globalization;
 using CircleAI.Core;
 using CircleAI.Core.Models;
 
 namespace CircleAI.Inference;
+
+/// <summary>How a brain's step up has gone on a device (<see cref="ModelChoice.NextStep"/>).</summary>
+public enum StepState
+{
+    /// <summary>Not tried: it is not here, and nothing here has said no to it.</summary>
+    NotTried = 0,
+
+    /// <summary>Here and being made ready: it has not loaded yet, or its index is being built, or it has not answered since.</summary>
+    Underway = 1,
+
+    /// <summary>A success: it has loaded here and answers as it should.</summary>
+    Passed = 2,
+
+    /// <summary>It failed here: refused from evidence, or its index is complete and failed its check.</summary>
+    Failed = 3,
+}
+
+/// <summary>What the upgrade does next on a device, and what is said of it.</summary>
+/// <param name="Fetch">The brain to fetch now; null when nothing is.</param>
+/// <param name="Answers">The last success: the best brain here that has passed. Null when none has yet.</param>
+/// <param name="Limit">Whether the climb ends here for now: the next step up failed, or the device cannot carry it.</param>
+/// <param name="Said">What is said of it, for the log.</param>
+public readonly record struct UpgradeStep(ModelEntry? Fetch, ModelEntry? Answers, bool Limit, string Said);
 
 /// <summary>Picks the model this device should use for a modality.</summary>
 /// <remarks>
@@ -279,6 +303,130 @@ public static class ModelChoice
     /// <summary>Whether <paramref name="m"/> is a better brain than <paramref name="than"/>, by <see cref="Best"/>'s rule.</summary>
     public static bool Better(ModelEntry m, ModelEntry than) =>
         (Fleet(m), m.QualityRank).CompareTo((Fleet(than), than.QualityRank)) > 0;
+
+    /// <summary>
+    /// The next step of the upgrade: of <paramref name="chat"/> - the brains this device may be offered - the brain one
+    /// step above the last success here, when the device's flash has room for it and for its index. One step at a
+    /// time, and only after a success; a step with nothing left to try (BrainInWaiting.StepOf), or that the flash cannot
+    /// carry, ends the climb for now, and the last success goes on answering.
+    /// </summary>
+    /// <remarks>
+    /// "WITH EACH SUCCESS THE MODEL IS UPGRADED, UNTIL A LIMIT PATTERN IS ESTABLISHED" (the indexed mind's rule), AND
+    /// "A DEVICE TOO SMALL FOR A MODEL TAKES A SMALLER ONE BY WHAT ITS PROFILE SAYS, AND REPORTS THAT". What stood here
+    /// took the best brain the flash had room to download, in one jump: a phone answering with the 2B fetched the 27B,
+    /// no 4B and no 9B between, and found its limit after six gigabytes and a night of indexing (the P30, 2026-11-13).
+    /// The owner, 2026-11-14: "We no longer care too much about RAM. We care more about flash" - so what a step is
+    /// asked is the flash: its file's room, and its index's where it answers through one
+    /// (<see cref="ModelFit.FlashNeededGb"/>). RAM chooses nothing here but which brains need no index.
+    /// <para>
+    /// THE FAMILY'S STEPS, WHERE THE FAMILY IS OFFERED: the Bonsai 2 brains by rank - the 2B, the 4B, the 9B, the 27B.
+    /// From a brain of another engine the next step is the family's lowest, whatever that brain's rank.
+    /// </para>
+    /// <para>
+    /// ONE CANDIDATE AT A TIME: a better brain already here that is still being made ready is waited for, and nothing
+    /// is fetched beside it - one whose index failed its check at a smaller share among them, being indexed again listing
+    /// more of its neurons; gone from the flash, it is fetched again. One with nothing left to try - its index failed with
+    /// every neuron listed, the engine's fault - is not waited for and is not climbed past: when the step below it has
+    /// passed, it is the next step, and the climb ends there until the engine changes.
+    /// </para>
+    /// <para>
+    /// "NO MODELS SHOULD BE BLOCKED - IF IT FAILS THEN CHECK WHY IT FAILED. CLEAN UP AND TRY AGAIN, EVERYTHING DEPENDS ON
+    /// THE REASON WHY" (the owner, 2026-11-15). Every failed step ended the climb on that phone for good.
+    /// </para>
+    /// <para>
+    /// THE BACKGROUND FETCHER'S RULE (ModelFetchService), HERE SO IT IS A TEST. It sat in the Android assembly, which
+    /// no test project can reference, and the rule that decides which brain a phone downloads on Wi-Fi had none.
+    /// </para>
+    /// </remarks>
+    /// <param name="chat">The brains this device may be offered: not retired, declined, or a brain's companion.</param>
+    /// <param name="present">Whether a model is on the device.</param>
+    /// <param name="probe">The device.</param>
+    /// <param name="state">How a brain's step has gone here (BrainInWaiting.StepOf).</param>
+    /// <param name="engines">The brain engines this build ships; null asks the build.</param>
+    /// <param name="flash">What the device's flash measured, in words, said beside a result; null when it is not known.</param>
+    public static UpgradeStep NextStep(IEnumerable<ModelEntry> chat, Func<string, bool> present, DeviceProbe probe,
+                                       Func<ModelEntry, StepState> state,
+                                       IReadOnlyCollection<ModelEngine>? engines = null, string? flash = null)
+    {
+        ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(present);
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(state);
+
+        // Asked once of each brain: whether it is here is a look at the flash, and how it has gone is its record's.
+        var isHere = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var went = new Dictionary<string, StepState>(StringComparer.Ordinal);
+        bool Here(ModelEntry e) => isHere.TryGetValue(e.Name, out var known) ? known : isHere[e.Name] = present(e.Name);
+        StepState Went(ModelEntry e) => went.TryGetValue(e.Name, out var known) ? known : went[e.Name] = state(e);
+
+        var rows = chat.Where(e => EngineChoice.CanRun(e, engines)).ToList();
+        var here = rows.Where(Here).ToList();
+        if (here.Count == 0) return new UpgradeStep(null, null, false, "no brain is here yet: the first run fetches one");
+
+        // WITH EACH SUCCESS: nothing is fetched above a brain that has not loaded and answered here.
+        var answers = Best(here.Where(e => Went(e) == StepState.Passed));
+        if (answers is null)
+        {
+            return new UpgradeStep(null, null, false,
+                $"{Best(here)!.Name} is here and has not yet loaded and answered: nothing is fetched above it until it has");
+        }
+
+        var ladder = rows.Any(Fleet) ? rows.Where(Fleet).ToList() : rows;
+        var above = ladder.Where(e => Better(e, answers)).ToList();
+        if (above.Count == 0)
+            return new UpgradeStep(null, answers, false, $"{answers.Name} answers, and no brain this device is offered is above it");
+
+        var inFlight = Best(here.Where(e => Better(e, answers) && ModelFit.CouldEverHold(e, probe)
+                                            && Went(e) is StepState.Underway or StepState.NotTried));
+        if (inFlight is not null)
+        {
+            return new UpgradeStep(null, answers, false,
+                $"{inFlight.Name} is here and is being made ready, and {answers.Name} answers: nothing is fetched until it has passed or failed");
+        }
+
+        var beside = flash is null ? string.Empty : $" (flash: {flash})";
+        var rank = above.Min(e => e.QualityRank);
+        var step = above.Where(e => e.QualityRank == rank).ToList();
+        var pick = Best(step.Where(e => ModelFit.CouldEverHold(e, probe)));
+        if (pick is null)
+        {
+            return new UpgradeStep(null, answers, true,
+                $"{Best(step)!.Name} is the next step up from {answers.Name}, and this device keeps a brain in RAM and could never hold it: {answers.Name} is this device's limit{beside}");
+        }
+
+        if (Went(pick) == StepState.Failed)
+        {
+            return new UpgradeStep(null, answers, true,
+                $"{pick.Name} is the next step up from {answers.Name}, and its index failed its check here with every neuron listed - the engine's fault, not this device's: {answers.Name} answers, and is this device's limit until the engine changes{beside}");
+        }
+        if (Here(pick)) return new UpgradeStep(null, answers, false, $"{pick.Name} is here: nothing is fetched");
+
+        // THE FLASH IS WHAT IS ASKED: room for the file, and for the index of a brain that answers through one.
+        var needed = ModelFit.FlashNeededGb(pick, probe);
+        if (probe.StorageFreeGb > 0 && needed > probe.StorageFreeGb + 1e-9)
+        {
+            var forWhat = ModelFit.AnswersThroughItsIndex(pick, probe) ? "itself and its index" : "itself";
+            return new UpgradeStep(null, answers, true, string.Create(CultureInfo.InvariantCulture,
+                $"{pick.Name} is the next step up from {answers.Name} and needs {needed:0.0} GB of flash for {forWhat}; {probe.StorageFreeGb:0.0} GB is free: {answers.Name} is this device's limit until there is room{beside}"));
+        }
+
+        return new UpgradeStep(pick, answers, false, $"{answers.Name} has passed here; {pick.Name} is the next step up and is fetched{beside}");
+    }
+
+    /// <summary>
+    /// The brain to fetch as an upgrade (<see cref="NextStep"/>), for a caller that knows only what is on the device:
+    /// every brain here counts as a success. Null when nothing is fetched.
+    /// </summary>
+    /// <param name="chat">The brains this device may be offered: not retired, refused, declined, or a brain's companion.</param>
+    /// <param name="present">Whether a model is on the device.</param>
+    /// <param name="probe">The device.</param>
+    /// <param name="engines">The brain engines this build ships; null asks the build.</param>
+    public static ModelEntry? Upgrade(IEnumerable<ModelEntry> chat, Func<string, bool> present, DeviceProbe probe,
+                                      IReadOnlyCollection<ModelEngine>? engines = null)
+    {
+        ArgumentNullException.ThrowIfNull(present);
+        return NextStep(chat, present, probe, e => present(e.Name) ? StepState.Passed : StepState.NotTried, engines).Fetch;
+    }
 
     /// <summary>
     /// The brain to answer with while the device is under pressure, of those smaller than the one answering:

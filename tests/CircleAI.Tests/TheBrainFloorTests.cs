@@ -694,6 +694,38 @@ public sealed class TheBrainFloorTests : IDisposable
         Assert.Contains("CircleAI.Device.CircleNeuronService.RunningModel", app);
     }
 
+    // THE OWNER, 2026-11-14, of keeping each failed index check's record somewhere Android cannot clear it: "Yes, do it".
+    // The engine's folder is the app's cache folder; the service keeps the copies beside the catalogue, in the app's files,
+    // and says where before the catalogue's start-up runs housekeeping.
+    [Fact]
+    public void The_service_keeps_each_failed_checks_record_in_its_files_and_not_only_in_the_cache()
+    {
+        var app = Source("src", "CircleAIService", "ServiceApplication.cs");
+
+        const string set = "CircleAI.Inference.BrainInWaiting.KeptChecksDirectory = System.IO.Path.Combine(circleDir, \"index-checks\");";
+        var at = app.IndexOf(set, StringComparison.Ordinal);
+        Assert.True(at >= 0, "the service does not say where the records of failed checks are kept");
+
+        var circle = app.LastIndexOf("var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, \"CircleAI\");", at, StringComparison.Ordinal);
+        Assert.True(circle >= 0, "the folder the records are kept in is not the app's files");
+        Assert.True(at < app.IndexOf("CircleAI.Inference.CatalogueBootstrap.Run(", StringComparison.Ordinal),
+            "the catalogue's start-up runs housekeeping before the service says where the records are kept");
+
+        // AND THE INFERENCE PROCESS, WHERE THE ENGINE IS, READS THE SAME FOLDER: which share of a brain's neurons was tried
+        // and failed, so its next index lists more even where the phone cleared the cache folder (IndexingRungs). That
+        // process starts by its own path and set none of this, so the engine could never read a kept record.
+        var inference = app.IndexOf("private void OnCreateInferenceProcess()", StringComparison.Ordinal);
+        var end = app.IndexOf("private void ComposeRequestPath()", Math.Max(inference, 0), StringComparison.Ordinal);
+        Assert.True(inference >= 0 && end > inference, "the inference process's start was not found");
+        Assert.Contains("CircleAI.Inference.Managed.Store.IndexingQueue.KeptDirectory = System.IO.Path.Combine(FilesDir!.AbsolutePath, \"CircleAI\", \"index-checks\");",
+            app[inference..end], StringComparison.Ordinal);
+
+        // One folder for both: the service's setting is the engine's (BrainInWaiting forwards it).
+        var waiting = Source("src", "CircleAI", "Inference", "BrainInWaiting.cs");
+        Assert.Contains("get => IndexingQueue.KeptDirectory;", waiting, StringComparison.Ordinal);
+        Assert.Contains("set => IndexingQueue.KeptDirectory = value;", waiting, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_explicit_ModelId_below_the_floor_is_not_obeyed()
     {

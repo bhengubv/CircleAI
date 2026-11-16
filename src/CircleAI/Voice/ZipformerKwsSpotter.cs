@@ -125,8 +125,12 @@ public sealed class ZipformerKwsSpotter : IDisposable
     private readonly int _contextSize;     // 2   — decoder history width
     private readonly int _unkId;           // treated as blank, like sherpa
 
-    private readonly List<float[]> _features = new();
-    private int _featureCursor;
+    // ONLY WHAT THE ENCODER STILL NEEDS (FeatureChunks): this was a list of every frame the stream ever made, and the
+    // extractor kept every sample behind them - the service grew 5 MB a minute while it listened.
+    private readonly FeatureChunks _chunks;
+
+    // Bumped by Reset, so a chunk whose events reset the stream does not then advance the new one (Drain).
+    private int _generation;
     private int _encoderFrame;
     private int _vocab;
 
@@ -368,6 +372,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
         }
 
         _fbank = new KaldiFbank();
+        _chunks = new FeatureChunks(_fbank, _chunkFrames, _advanceFrames);
         var tokensPath = Path.Combine(directory, "tokens.txt");
         var ids = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var line in File.ReadLines(tokensPath))
@@ -517,23 +522,30 @@ public sealed class ZipformerKwsSpotter : IDisposable
 
     private void Drain()
     {
-        for (var f = _features.Count; f < _fbank.FramesReady; f++)
-            _features.Add(_fbank.GetFrame(f));
+        // TAKE WHAT IS READY, LET THE EXTRACTOR FORGET IT, AND DROP EACH CHUNK'S PAST (FeatureChunks). This read
+        // `for (f = _features.Count; f < _fbank.FramesReady; f++)` - every frame by its number since the stream began,
+        // so neither side could ever forget anything, for as long as the phone listened.
+        _chunks.TakeReady();
 
-        while (_featureCursor + _chunkFrames <= _features.Count)
+        while (_chunks.HasChunk)
         {
-            RunChunk(_featureCursor);
-            _featureCursor += _advanceFrames;
+            // A HANDLER OF THIS CHUNK'S EVENTS CAN RESET THE STREAM (Detected, KeywordProgress are raised mid-decode).
+            // Advancing then would move the new stream's cursor past its first frames, so this pass stops; the next
+            // block of audio starts the new stream cleanly - as StreamingTranscriber does.
+            var generation = _generation;
+            RunChunk();
+            if (_generation != generation) return;
+            _chunks.Advance();
         }
     }
 
-    private void RunChunk(int from)
+    private void RunChunk()
     {
         var dim = _fbank.Dimension;
         var x = new DenseTensor<float>(new[] { 1, _chunkFrames, dim });
         for (var t = 0; t < _chunkFrames; t++)
         {
-            var frame = _features[from + t];
+            var frame = _chunks[t];
             for (var d = 0; d < dim; d++) x[0, t, d] = frame[d];
         }
 
@@ -1212,8 +1224,8 @@ public sealed class ZipformerKwsSpotter : IDisposable
     public void Reset()
     {
         _fbank.Reset();
-        _features.Clear();
-        _featureCursor = 0;
+        _chunks.Clear();
+        _generation++;
         _hyps = null;                 // rebuilt on the next chunk
         _processedLens = 0;
         _encoderFrame = 0;

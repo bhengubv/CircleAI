@@ -48,6 +48,10 @@ public static class AndroidDeviceMemory
         ArgumentNullException.ThrowIfNull(context);
         var app = context.ApplicationContext ?? context;
 
+        // AND WHETHER THIS PHONE'S ENGINE COMPUTES A BRAIN FROM FLASH - the engine's own answer, told to the probe
+        // beside its memory so every fit question asked of this phone knows it (ModelFit.ReadFromFlash).
+        DeviceProbe.PlatformFlashReadProbe = () => CircleAI.Inference.Managed.ManagedChatGenerator.ComputesFromFlashHere;
+
         DeviceProbe.PlatformMemoryProbe = () =>
         {
             long? avail = null, total = null, storage = null;

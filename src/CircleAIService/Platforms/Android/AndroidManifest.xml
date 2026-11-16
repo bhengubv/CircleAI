@@ -19,6 +19,12 @@
   <!-- Models and the catalogue are downloaded here; the client never fetches one. -->
   <uses-permission android:name="android.permission.INTERNET" />
 
+  <!-- AND WHETHER THE NETWORK COSTS BY THE BYTE. A model is fetched in the background only on a network that does
+       not (ModelFetchService), and without this every question to Android about the network throws: on the P30 on
+       2026-11-14 the step up to Ternary-Bonsai-2-4B "waits for a network: SecurityException" on unmetered Wi-Fi, so
+       no upgrade could ever have been fetched there. A normal permission: declaring it is all that is needed. -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
   <!-- THE CONSENT SHEET. LinkConsentActivity asks the person to approve a client with
        a biometric or the device credential, and without this the prompt throws before
        it is shown. It is a normal permission: declaring it is all that is needed. -->

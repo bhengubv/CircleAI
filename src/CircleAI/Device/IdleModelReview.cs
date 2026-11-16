@@ -14,11 +14,11 @@
 // on a plan it could not compute. If nothing is owed, nothing starts and nothing is
 // shown; a person whose models are all down never sees that this exists.
 //
-// IDLE IS THE SCREEN BEING OFF, and that is the honest reading of "the person is not
-// using the phone". Doze would be stricter and wrong - a phone in doze will not run
-// this timer at all, so waiting for it means waiting for the phone to wake, which is
-// the moment the person IS using it. isInteractive is false the moment the screen
-// goes off, which is exactly when a multi-gigabyte download costs nobody anything.
+// IDLE IS NOBODY'S HAND ON IT, by the service's own reading where it gives one (see Idle
+// below, 2026-11-14), and the screen being off only where it gives none - a phone kept lit
+// on its cable was never idle by the screen. Doze would be stricter and wrong - a phone in
+// doze will not run this timer at all, so waiting for it means waiting for the phone to
+// wake, which is the moment the person IS using it.
 
 using Android.App;
 using Android.Content;
@@ -95,7 +95,7 @@ public static class IdleModelReview
     {
         try
         {
-            var idle = ScreenIsOff(app);
+            var idle = Idle(app);
             var busy = ModelFetchService.Fetching;
             var since = DateTimeOffset.UtcNow - _lastReview;
 
@@ -164,6 +164,34 @@ public static class IdleModelReview
             // that has everything.
             global::Android.Util.Log.Warn(LogTag, "the review failed: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Whether the phone is in nobody's hand: the service's own reading where it gives one (BrainInWaiting.PhoneIdle, the
+    /// rule the index is built by), the screen where it does not.
+    /// </summary>
+    /// <remarks>
+    /// IDLE IS NOBODY'S HAND ON IT, NOT THE SCREEN BEING OFF (the owner, 2026-11-13: "no p30 is idle right? so it should be
+    /// running"). A phone on its cable kept lit is lit for days untouched, so a screen-off test never saw it idle: on the
+    /// P30 this review never ran, and the step up it asks for (ModelFetchService) was never asked. So the service's
+    /// reading is taken as the index takes it: a screen that keeps itself lit says nothing of use, and nothing is held
+    /// back for it. A download still waits for Wi-Fi and a charger. Only where the service gives no reading at all is the
+    /// screen asked, as before.
+    /// </remarks>
+    private static bool Idle(Context app)
+    {
+        if (CircleAI.Core.DeviceContext.InUseProbe is { } inUse)
+        {
+            try
+            {
+                return BrainInWaiting.PhoneIdle(inUse(), CircleAI.Core.DeviceContext.PowerProbe?.Invoke() ?? CircleAI.Core.PowerState.Unknown);
+            }
+            catch
+            {
+                return false;   // a reading that fails is no sign the phone is idle
+            }
+        }
+        return ScreenIsOff(app);
     }
 
     /// <summary>Whether the person is not using the phone right now.</summary>

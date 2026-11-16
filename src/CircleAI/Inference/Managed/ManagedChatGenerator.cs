@@ -123,6 +123,13 @@ public sealed record ManagedGeneratorOptions
     /// </summary>
     public string? DrafterPath { get; init; }
 
+    /// <summary>
+    /// A sibling file that carries this trunk's MTP head (a Bonsai 2 PQ2_0-MTP file beside a PTQ1_0 trunk), so a trunk
+    /// whose own file has no head drafts for itself with one. Only read when <see cref="Drafts"/> asks for drafting and
+    /// this trunk has no head of its own; null scans the model's own folder for a matching one, empty turns the scan off.
+    /// </summary>
+    public string? MtpHeadPath { get; init; }
+
     /// <summary>Reply tokens when a call asks for none.</summary>
     public int MaxNewTokens { get; init; } = 512;
 
@@ -234,11 +241,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // options ask for plain decoding.
     private readonly Speculator? _speculator;
 
+    // A sibling file whose MTP head this trunk borrowed (AttachMtp): its bytes stay mapped while the head drafts, so it
+    // lives as long as the generator. Null when the trunk's own file carries the head, or none was attached.
+    private GgufFile? _mtpFile;
+
     // THE HEAD'S STORE BY SCRIPT, ON FLASH: null until it is written and checked, and where it is off; the
     // readers the device's flash takes at once; and the job that makes them, in the background at load.
     private HeadStore? _headStore;
     private int _channels = 4;
     private int _readBytes = 1024 * 1024;
+    private FlashProfile? _flash;   // what the device's flash measured; said beside the index's check, null until measured
     private readonly CancellationTokenSource _storeCancel = new();
     private Task? _storeTask;
 
@@ -258,10 +270,23 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private HeadStore? _drafterHeadStore;
     private HeadSurface? _drafterHead;   // the turn's surface of the drafter's head
     private Speculator? _drafting;
-    private ThoughtIndex? _indexCore;            // the core index on flash, when one was built for this model
-    private CachedIndex? _indexCached;           // its cached portion on flash
-    private IndexedFeedForward? _indexServing;   // the warm index in RAM, serving while the layers' stream is open
-    private TileStore? _ffnDownStore;            // ffn_down alone, read in place, for a stream the index serves
+    private ThoughtIndex? _indexCore;            // step 3, the core index on flash, when one was built for this model
+    private TileStore? _indexMix;                // step 2's layers: every layer's attention, tiled
+    private TileStore? _indexDown;               // step 2's layers: every layer's ffn_down, tiled, where the layers take their own
+    private IndexedFeedForward? _indexServing;   // step 4 in RAM, serving while the layers' stream is open
+    private TileStore? _ffnDownStore;            // ffn_down alone, read in place, for a stream step 2 holds no ffn_down for
+    private CachedIndex? _indexCoreStore;        // step 2's pieces on flash: each thought's neurons at each layer
+    private IndexingQueue? _indexing;            // the index's building, a unit at a time while the phone is idle
+    private StrongBox<IndexingStatus>? _everyNeuron;   // no index built: every neuron from the model's own file, as recorded
+    private IndexUse? _indexUse;                 // what the person's turns used of the index, kept on flash for the night
+    private long _lastCall = Stopwatch.GetTimestamp();   // when a call last wanted the engine (Stopwatch ticks)
+    private long _indexNotBefore;                // no unit of indexing before this (Stopwatch ticks): the rest after one
+    private long _phoneAsked;                    // when a unit last asked the phone whether it is hot or in use
+    private bool _phoneSaysStop;                 // what it said
+    private string _phoneSaysWhy = string.Empty; // and why
+    private string _stoodAsideWhy = string.Empty;   // why the unit in hand last stood aside
+    private bool _stoodAsideForMemory;           // whether that was the phone's memory
+    private bool _indexUsedTheModel;             // a unit read words through the model: the state is not a conversation's
     private FfnWarm? _ffnWarm;
     private long _ffnUsed;
     private long _ffnKeepTicks = (long)(180 * (double)Stopwatch.Frequency);
@@ -316,8 +341,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _logits = new float[model.Config.Vocabulary];
         _state = model.NewState(options.ContextLength, options.KvMode, options.KeyForm);
 
-        if (model.HasMtp && options.Drafts > 0)
-            _speculator = new Speculator(model, new MtpDrafter(model, _state.Capacity), options.Drafts);
+        var drafts = options.Drafts > 0 ? options.Drafts : DraftsForTest;
+        if (model.HasMtp && drafts > 0)
+            _speculator = new Speculator(model, new MtpDrafter(model, _state.Capacity), drafts);
 
         foreach (var key in new[] { "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id" })
         {
@@ -367,6 +393,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         ArgumentNullException.ThrowIfNull(messages);
         var offered = tools is { Count: > 0 } ? tools : null;
         var built = BuildPrompt(messages, offered, _options.Thinking, null);
+        Volatile.Write(ref _lastCall, Stopwatch.GetTimestamp());
         Interlocked.Increment(ref _wanted);
         try
         {
@@ -544,6 +571,52 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// <summary>What this engine reads, said the way a refusal says it.</summary>
     public static string WhatItReads => string.Join(" or ", ModelConfig.Architectures) + " in " + string.Join(" or ", ReadPackings);
 
+    /// <summary>
+    /// Whether a model of <paramref name="architecture"/> packed as <paramref name="quantization"/>, as a catalogue row
+    /// names them, is one this engine computes from flash where it can (<see cref="ComputesFromFlashHere"/>): every layer
+    /// read from the model's own file as it is needed and repacked as it lands, no copy of them kept in RAM. That is the
+    /// packing the vector kernel computes in tiles - PTQ1_0 - and no other; the file is checked again when it is opened
+    /// (<see cref="LanguageModel.WouldPair"/>).
+    /// </summary>
+    /// <remarks>
+    /// THE ENGINE'S HALF OF "RAM IS THE TURBO NOT THE ENGINE". Every fit question asks it through
+    /// <see cref="CircleAI.Inference.ModelFit.ReadFromFlash"/>, so a brain read this way is not held to its size in RAM
+    /// by the selector, the catalogue's assessor or housekeeping - and one that is kept in RAM (PQ2_0, an MTP file,
+    /// another engine's) still is.
+    /// </remarks>
+    public static bool ReadsFromFlash(string? architecture, string? quantization) =>
+        Reads(architecture, quantization) && string.Equals(quantization, "PTQ1_0", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether this engine computes from flash on this device: where the vector kernel's tiles are usable, which is
+    /// what a model's layers are repacked into as they are read. A head tells the device probe with this
+    /// (<see cref="CircleAI.Core.DeviceProbe.PlatformFlashReadProbe"/>).
+    /// </summary>
+    public static bool ComputesFromFlashHere => Kernels.Ptq1PairMatrix.Usable;
+
+    /// <summary>
+    /// Where the engine keeps its stores when its options name no folder: the platform's cache folder. The same folder in
+    /// every process of an app - which is how a process that does not hold the model reads what the engine records there
+    /// (how far its indexing has got: <see cref="IndexingQueue.ReadStatus"/>).
+    /// </summary>
+    public static string DefaultStoreDirectory => Path.Combine(Path.GetTempPath(), "CircleAI", "store");
+
+    /// <summary>
+    /// The seed every turn samples with when its own options give none: null, the default, draws a new one each turn.
+    /// A measurement's knob, set by the Android inference process from each load (a developer's check asks for it:
+    /// SoakReceiver "engine" --ei seed), so the same question asked twice - drafting on and off - can be held to the same
+    /// reply word for word.
+    /// </summary>
+    public static int? SeedForTest { get; set; }
+
+    /// <summary>
+    /// Tokens the MTP head drafts ahead per pass for a brain whose own options ask for none: 0, the default, decodes
+    /// plainly - so every brain the product builds is built without drafting (OPEN-GAPS C7; BrainFactory names no
+    /// drafts). A measurement's knob, set by the Android inference process from each load: only a developer's check asks
+    /// for it (SoakReceiver "engine" --ei drafts), on a phone, to measure whether drafting is faster there.
+    /// </summary>
+    public static int DraftsForTest { get; set; }
+
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
     {
@@ -555,6 +628,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         {
             var threads = options.Threads > 0 ? options.Threads : OperatingSystem.IsAndroid() ? 3 : Math.Max(1, Environment.ProcessorCount - 1);
             var pool = new WorkerPool(threads);
+            GgufFile? mtpFile = null;
             try
             {
                 // A HEAD STORE THAT FITS THIS MODEL, KEPT FROM AN EARLIER LOAD: then the head is read from flash
@@ -571,11 +645,39 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var mix = ffn is null ? null : ExistingMixStore(ggufPath, file, options);
                 var model = LanguageModel.Load(file, pool, headFromStore: store is not null && LanguageModel.WouldPair(file), ffnFromStore: ffn is not null,
                     mixFromStore: mix is not null);
+                // A STREAMED TRUNK DRAFTS FOR ITSELF WITH ITS OWN MTP HEAD (line 662): the product's PTQ1_0 file carries no
+                // head, but its sibling PQ2_0-MTP file holds one over the SAME trunk (proven bit for bit) - so when a
+                // measurement asks for drafts and this file has no head, the head is read from beside it and attached. One
+                // trunk computes, its own head drafts; no second model runs.
+                var askedDrafts = options.Drafts > 0 ? options.Drafts : DraftsForTest;
+                if (askedDrafts > 0 && !model.HasMtp)
+                {
+                    if (FindMtpHead(ggufPath, file, options) is { } mtpPath)
+                    {
+                        try
+                        {
+                            mtpFile = GgufFile.Open(mtpPath);
+                            model.AttachMtp(mtpFile);
+                            CircleLog.Info(Area, $"the MTP head is read from {Path.GetFileName(mtpPath)} beside this trunk, which carries none of its own");
+                        }
+                        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException
+                                                   or InvalidOperationException or OutOfMemoryException or UnauthorizedAccessException)
+                        {
+                            CircleLog.Warn(Area, $"no drafting: the MTP head beside this trunk would not attach ({ex.GetType().Name}: {ex.Message})");
+                            mtpFile?.Dispose();
+                            mtpFile = null;
+                        }
+                    }
+                    else
+                    {
+                        CircleLog.Info(Area, $"no drafting: {askedDrafts} ahead was asked for, but no MTP head was found for {Path.GetFileName(ggufPath)} in its folder or the ones beside it");
+                    }
+                }
                 var tokenizer = ByteLevelBpe.FromGguf(file);
                 var template = JinjaTemplate.Parse(file["tokenizer.chat_template"].AsString());
                 var tower = FindTower(ggufPath, options.VisionTowerPath, file, model.Config);
                 var towerPath = tower?.Path;
-                var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options, towerPath, tower?.Config);
+                var generator = new ManagedChatGenerator(ggufPath, file, pool, model, tokenizer, template, options, towerPath, tower?.Config) { _mtpFile = mtpFile };
                 var thinking = options.Thinking ? "on" : "off";
                 var memory = options.KvMode == CircleAI.Core.KvCompressionMode.Off ? "fp16" : $"{options.KvMode}, keys {options.KeyForm}";
                 var drafting = generator._speculator is { } s ? $", the MTP head drafting {s.Drafts} ahead" : model.HasMtp ? ", its MTP head unused" : "";
@@ -586,6 +688,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             }
             catch
             {
+                mtpFile?.Dispose();
                 pool.Dispose();
                 throw;
             }
@@ -604,6 +707,75 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// stay so a host can still ask and be told there is none.
     /// </summary>
     internal static string? FindDrafter(string modelPath, GgufFile model, ManagedGeneratorOptions options) => null;
+
+    /// <summary>
+    /// The sibling file that carries this trunk's own MTP head, or null for none. A host may name it
+    /// (<see cref="ManagedGeneratorOptions.MtpHeadPath"/>); otherwise the trunk's own folder and the model folders beside it
+    /// are scanned for a Bonsai 2 PQ2_0-MTP file whose trunk is the same shape (the 9B's PQ2_0-MTP file beside its PTQ1_0
+    /// trunk). The model store keeps each model id in its own folder (BundleModelLoader: &lt;root&gt;/&lt;id&gt;/&lt;file&gt;),
+    /// so the head sits one folder over, not beside the trunk file. This is NOT a second model - only its blk.{n_layer} head
+    /// is read - so one model per device still holds. Returns null when the trunk's file already carries a head, when the scan
+    /// is turned off (empty <see cref="ManagedGeneratorOptions.MtpHeadPath"/>), or when nothing nearby matches.
+    /// </summary>
+    internal static string? FindMtpHead(string modelPath, GgufFile model, ManagedGeneratorOptions options)
+    {
+        if (ModelConfig.HasMtpHead(model)) return null; // the trunk's own file has one; nothing to borrow
+        if (options.MtpHeadPath is { } named)
+            return named.Length > 0 && File.Exists(named) && Fits(named) ? named : null;
+
+        var dir = Path.GetDirectoryName(Path.GetFullPath(modelPath));
+        if (dir is null || !Directory.Exists(dir)) return null;
+        var self = Path.GetFullPath(modelPath);
+        foreach (var candidate in NearbyGgufs(dir))
+        {
+            if (string.Equals(Path.GetFullPath(candidate), self, StringComparison.OrdinalIgnoreCase)) continue;
+            if (Path.GetFileName(candidate).IndexOf("MTP", StringComparison.OrdinalIgnoreCase) < 0) continue; // a head file names itself; no need to open every model nearby
+            if (Fits(candidate)) return candidate;
+        }
+        return null;
+
+        // The trunk's own folder first (both files side by side), then each model folder beside it under the store root -
+        // one level only, never a deep walk of wherever the model happens to sit.
+        static IEnumerable<string> NearbyGgufs(string dir)
+        {
+            foreach (var f in Listing(dir)) yield return f;
+            var parent = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (parent is null || !Directory.Exists(parent)) yield break;
+            IEnumerable<string> siblings;
+            try { siblings = Directory.EnumerateDirectories(parent); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException) { yield break; }
+            foreach (var sub in siblings)
+            {
+                if (string.Equals(Path.GetFullPath(sub), Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue; // scanned already
+                foreach (var f in Listing(sub)) yield return f;
+            }
+        }
+
+        static IEnumerable<string> Listing(string dir)
+        {
+            try { return Directory.EnumerateFiles(dir, "*.gguf"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException) { return []; }
+        }
+
+        bool Fits(string path)
+        {
+            try
+            {
+                using var f = GgufFile.Open(path);
+                if (!ModelConfig.HasMtpHead(f)) return false;
+                var mine = ModelConfig.FromGguf(model);
+                var theirs = ModelConfig.FromGguf(f);
+                return theirs.Embedding == mine.Embedding && theirs.Layers == mine.Layers && theirs.Heads == mine.Heads
+                    && theirs.KvHeads == mine.KvHeads && theirs.HeadDim == mine.HeadDim && theirs.FeedForward == mine.FeedForward
+                    && theirs.Vocabulary == mine.Vocabulary;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException
+                                       or UnauthorizedAccessException or KeyNotFoundException)
+            {
+                return false;
+            }
+        }
+    }
 
     /// <summary>
     /// The vision tower to see with, and its shape: <paramref name="asked"/> when given (empty for
@@ -832,8 +1004,10 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             }
             _ffnTimer?.Dispose();
             LetFfnGo("the generator is going");
+            Volatile.Read(ref _indexing)?.Dispose();
             _pool.Dispose();
             _file.Dispose();
+            _mtpFile?.Dispose();
             _towerFile?.Dispose();
         }
         finally
@@ -849,6 +1023,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // Takes the engine for a call, saying so first: a read in the gaps sees that and stands aside.
     private async Task EnterAsync(CancellationToken ct)
     {
+        Volatile.Write(ref _lastCall, Stopwatch.GetTimestamp());
         Interlocked.Increment(ref _wanted);
         try
         {
@@ -878,6 +1053,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
         finally
         {
+            Volatile.Write(ref _lastCall, Stopwatch.GetTimestamp());
             _gate.Release();
         }
     }
@@ -994,17 +1170,26 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 // that whatever real comes along need not wait.
                 // A MODEL WHOSE LAYERS STREAM FROM FLASH reads its whole prompt in passes as big as it can: every pass reads every
                 // layer, so token by token or eight by eight would read the 27B's 6.8 GB that many times.
-                var together = (options.JustRead && !leanState) || built.Slots is not null || _speculator is not null ? 1
+                // A STREAMED TRUNK THAT DRAFTS WITH ITS MTP HEAD STILL READS ITS PROMPT IN PASSES: the head catches up on each
+                // pass from the trunk's own hidden states (Observed), so it never costs a flash pass a token. A head on a trunk
+                // kept whole in RAM reads a token at a time as before - there a pass is no cheaper than a token.
+                var together = (options.JustRead && !leanState) || built.Slots is not null || (_speculator is not null && !leanState) ? 1
                     : Together(i, readTo, primed, leanState ? -1 : lastTurn, leanState ? StreamedReadTogether : LanguageModel.ReadTogether);
                 if (together > 1)
                 {
                     var read = new float[]?[together];
+                    // THE HEAD WATCHES EVERY TOKEN THE TRUNK RUNS: a buffer a token for the trunk's h_nextn, fed to the head
+                    // after the pass so its cache holds the prompt (the batch's counterpart of Speculator.Run).
+                    var hidden = _speculator is { NeedsHidden: true } ? new float[together][] : null;
+                    if (hidden is not null) for (var k = 0; k < together; k++) hidden[k] = new float[_model.Config.Embedding];
                     if (i + together == prompt.Count)
                     {
                         read[together - 1] = _logits;
                         ArmHead();
                     }
-                    _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together), _state, read);
+                    var at = _state.Position;
+                    _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together), _state, read, hidden);
+                    if (hidden is not null) _speculator!.Observed(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together), at, hidden);
                     _history.AddRange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(prompt).Slice(i, together));
                     i += together - 1;
                     continue;
@@ -1054,7 +1239,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 CircleLog.Info(Area, Invariant($"drafting: the drafter caught up to {_history.Count} tokens from {Math.Min(from, _history.Count)} in {Stopwatch.GetElapsedTime(caught).TotalMilliseconds:F0} ms"));
             }
 
-            var sampler = new TokenSampler(Settings(options, thinking), options.Seed);
+            var sampler = new TokenSampler(Settings(options, thinking), options.Seed ?? SeedForTest);
             var generated = new List<int>();
             var reasoning = OpensInThought(prompt, lastTurn);
             var thoughtTokens = 0;
@@ -1414,100 +1599,568 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
     }
 
-    // ---- the indexed mind: Watch, the core index, the cached index, the warm index ----
+    // ---- the indexed mind: the queue that builds it in the phone's idle time, and the tiers that serve it ----
 
-    // Where this model's watch, core index and cached index live, beside its other stores.
+    // Thought groups a layer, and the share of a layer's neurons in each group's list, unless the control file asks otherwise.
+    // The room a pick asks of the flash for an index is summed from these two (ModelFit.IndexToFile), and a test holds
+    // the two together.
+    internal const int IndexGroups = 8;
+    internal const int IndexPercent = 15;
+
+    // After a unit that failed, the queue is left alone this long: a full disk or a damaged file is not hammered on.
+    private static readonly TimeSpan IndexRetryAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// How far this model's indexing has got (<see cref="IndexingQueue"/>): its units done of how many - or, where an index
+    /// would list every neuron, that none is built and every neuron is computed from the model's own file
+    /// (<see cref="IndexingStatus.FromItsOwnFile"/>). Null when it has none - its layers all fit in RAM, it does not compute
+    /// in the vector kernel's tiles, or stores are off.
+    /// </summary>
+    public IndexingStatus? Indexing => Volatile.Read(ref _indexing)?.Status ?? Volatile.Read(ref _everyNeuron)?.Value;
+
+    // ---- for the tests of the idle clock's rules: what the timer does, asked for at once, and what it left ----
+
+    /// <summary>The idle clock's work, done now: what its timer does every fifteen seconds.</summary>
+    internal void IdleNow() => IdleCheck(null);
+
+    /// <summary>Sets when a call last wanted the engine to <paramref name="ago"/> before now.</summary>
+    internal void LastAskedForTest(TimeSpan ago) =>
+        Volatile.Write(ref _lastCall, Stopwatch.GetTimestamp() - (long)(ago.TotalSeconds * Stopwatch.Frequency));
+
+    /// <summary>Whether a finished index is in place to serve this engine's turns.</summary>
+    internal bool IndexAdopted => _indexCore is not null;
+
+    /// <summary>Why the unit of indexing in hand last stood aside; empty when none has.</summary>
+    internal string StoodAsideWhy => _stoodAsideWhy;
+
+    /// <summary>The stores' start-up work - the head's store, the flash measured - which the indexing waits for.</summary>
+    internal Task? StoreWork => _storeTask;
+
+    // Where this model's index lives, beside its other stores.
     private string IndexPath(string kind) => Path.Combine(StoreDirectoryOf(_options)!, Path.GetFileName(_file.FilePath) + "." + kind);
 
-    // The index an earlier job left for this model, opened to serve: the core, and its cached portion when it fits the core.
-    private void OpenIndex()
+    // THE INDEXING, FOUND OR BEGUN (the owner, 2026-11-12: "We queue the indexing for whenever the phone is idle"). A model
+    // whose layers are read from flash has its index built a unit at a time while the phone is idle (IndexingQueue): an
+    // earlier sitting's record is carried on from, and a finished one serves from the first turn. A model whose layers all
+    // fit in RAM is not indexed unless a queue was begun for it, or one is asked for by name (the control file, which gives
+    // the groups and the share: <paramref name="asked"/>). The flash it may take is what the phone has free less what is
+    // kept for the phone, decided when the work begins and kept with it.
+    private void OpenIndex(int? groups = null, int? percent = null, bool asked = false, bool? coherent = null)
     {
-        if (!_model.MixFromStore || !_model.Paired || StoreDirectoryOf(_options) is null) return;
-        if (ThoughtIndex.Open(IndexPath("index")) is not { } core || core.FeedForward != _model.Config.FeedForward || core.Layers != _model.Config.Layers) return;
-        _indexCore = core;
-        _indexCached = CachedIndex.Open(IndexPath("cached"), _file, core);
-        CircleLog.Info(Area, Invariant($"index found: {core.Groups} thought groups a layer from {core.Records:N0} watched records, lists of {core.ListNeurons} neurons; {(_indexCached is { } c ? $"{c.Count} pieces cached on flash" : "no cached index")}"));
-    }
-
-    // A hot phone stops heavy work where it is: the phone stays a phone.
-    private static bool Hot()
-    {
-        try { return CircleAI.Core.DeviceContext.PowerProbe?.Invoke().Hot == true; }
-        catch { return false; }
-    }
-
-    // THE INDEX, BUILT ON THE DEVICE (the indexed mind): Watch over a text in whole passes, every word's thought and strong
-    // neurons at every layer; the core index from what it saw, on flash; the cached index from the model's own file, on flash;
-    // a check - the same held-out words through every neuron and through the index, how often the top word agrees - and then
-    // served, the warm index in RAM. Every step logged with its time and size; a hot phone stops it where it is. Under the gate.
-    private void RunIndexJob(int groups, int percent)
-    {
-        if (!_model.MixFromStore || !_model.Paired)
-        {
-            CircleLog.Info(Area, "index: only for a model whose layers are read from flash in the vector kernel's tiles");
-            return;
-        }
-        var c = _model.Config;
-        var kept = Math.Max(Kernels.Ptq1PairMatrix.TileRows, c.FeedForward * percent / 100);
-        using var spinning = _pool.KeepSpinning();
-        IHeadRows? head = null;
+        Volatile.Read(ref _indexing)?.Dispose();
+        Volatile.Write(ref _indexing, null);
+        Volatile.Write(ref _everyNeuron, null);
+        _indexCore = null;
+        _indexCoreStore = null;
+        _indexMix = null;
+        _indexDown = null;
+        _indexUse = null;
+        if (StoreDirectoryOf(_options) is not { } directory) return;
         try
         {
-            // EVERY NEURON WHILE IT WATCHES: no index serving, the stream bringing the whole feed-forward.
-            StopServingIndex();
-            _indexCore = null;
-            _indexCached = null;
-            LetFfnGo("the index is being built");
-            EnsureFfnWarm();
-            _state.Reset();
-            _history.Clear();
-
-            // 1. WATCH.
-            var started = Stopwatch.GetTimestamp();
-            var tokens = _tokenizer.Encode(WatchText, parseSpecial: false);
-            var together = StreamedReadTogether;
-            var watchPath = IndexPath("watch");
-            using (var watch = new ThoughtWatch(watchPath, c.Layers, c.Embedding, c.FeedForward, kept))
+            if (!_model.MixFromStore || !_model.Paired || _mixStore is not { } mix || _ffnStore is not { } ffn)
             {
-                _model.Watch = watch;
-                try
-                {
-                    for (var at = 0; at < tokens.Count; at += together)
-                    {
-                        if (Hot())
-                        {
-                            CircleLog.Warn(Area, Invariant($"index: the phone is hot; Watch stopped after {at} of {tokens.Count} words"));
-                            return;
-                        }
-                        var n = Math.Min(together, tokens.Count - at);
-                        _model.ForwardBatch(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tokens).Slice(at, n), _state, new float[n][]);
-                    }
-                }
-                finally
-                {
-                    _model.Watch = null;
-                }
-                CircleLog.Info(Area, Invariant($"index: Watch saw {tokens.Count} words at {c.Layers} layers - {watch.Records:N0} records, the strongest {kept} of {c.FeedForward} neurons each - in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s"));
+                IndexingQueue.NotIndexing(_file, directory);
+                return;
             }
-            _state.Reset();
-            _history.Clear();
-            if (Hot())
+            var begun = IndexingQueue.Attempt(_file, directory);
+            if (groups is null && begun is null && LayerRecipe(mix, ffn).Slots == 0)
             {
-                CircleLog.Warn(Area, "index: the phone is hot; stopped after Watch");
+                IndexingQueue.NotIndexing(_file, directory);
+                CircleLog.Info(Area, "index: every layer fits in RAM here, so none is built");
                 return;
             }
 
-            // 2. THE CORE INDEX, on flash.
-            started = Stopwatch.GetTimestamp();
-            var core = ThoughtIndex.Build(ThoughtWatch.Read(watchPath), IndexPath("index"), groups, kept);
-            CircleLog.Info(Area, Invariant($"index: the core built in {Stopwatch.GetElapsedTime(started).TotalSeconds:F1} s - {core.Groups} thought groups a layer, lists of {core.ListNeurons} neurons, {new FileInfo(core.FilePath).Length / 1024.0:F0} KB on flash"));
+            var c = _model.Config;
 
-            // 3. THE CACHED INDEX, on flash: the groups the most words fell in, their pieces from the model's own file.
-            started = Stopwatch.GetTimestamp();
-            var cached = CachedIndex.Build(core, _file, IndexPath("cached"), IndexFlashBudget, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
-            CircleLog.Info(Area, Invariant($"index: the cached index built in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s - {cached.Count} of {core.Layers * core.Groups} pieces, {new FileInfo(cached.FilePath).Length / 1048576.0:F0} MB on flash"));
+            // AN INDEX WHOSE CHECK FAILED IS FOLLOWED BY ONE LISTING MORE NEURONS (IndexingRungs; the owner, 2026-11-15: "if
+            // it fails then check why it failed. clean up and try again"). Its files went when its check failed; the next
+            // share is other work, from the start. Read from the engine's own record or, where the phone cleared that
+            // folder, the copy kept in the app's files - so a share already tried is not built again.
+            if (groups is null && percent is null && begun is { Status.Failed: true } failed)
+            {
+                // THE ENGINE'S OWN GROUPS, NOT THE FAILED INDEX'S: one listing every neuron had one group, and the P30's
+                // 4B, built again from fifteen in a hundred after it, kept that one (2026-11-15).
+                var next = Revision(failed);
+                groups = IndexingRungs.GroupsFor(next, IndexGroups);
+                percent = next;
+            }
 
-            // 4. THE CHECK: the held-out words through every neuron, then through the index, every position's logits in one pass each.
+            var inGroups = groups ?? begun?.Groups ?? IndexGroups;
+            var askedShare = percent ?? begun?.Share ?? IndexPercent;
+            var thoughts = coherent ?? begun?.Coherent ?? false;   // one thought a word for every layer, or each layer's own
+            var list = percent is { } share
+                ? Math.Max(Kernels.Ptq1PairMatrix.TileRows, c.FeedForward * share / 100)
+                : begun?.ListNeurons ?? Math.Max(Kernels.Ptq1PairMatrix.TileRows, c.FeedForward * IndexPercent / 100);
+            var neurons = ThoughtIndex.ListOf(list, c.FeedForward);
+
+            // AT EVERY NEURON NO INDEX IS BUILT (the owner, 2026-11-15, of a brain that needs every neuron: "Yes, take
+            // over"). An index of every neuron is the model's feed-forward copied to flash again - 1.64 times its bytes,
+            // each neuron's output weights rounded to fifteen levels - and the model's own file already is every neuron,
+            // exact. So wherever the indexing comes to every neuron - the share after one that failed, a record that says
+            // so, or an index of every neuron an earlier sitting left, passed or not - nothing is built and nothing of one
+            // is kept: every neuron is computed from the model's own file, RAM keeping what layers it can warm and flash
+            // giving the rest every word, and there is no check to run, since what is computed is what a check measures
+            // an index against. One asked for by name is built as asked, and serves for that sitting only.
+            //
+            // ONE THAT PASSED GIVES WAY TOO. On the P30 on 2026-11-15 the 9B's index of every neuron, built by the engine
+            // before this rule, passed its check and served: copies of its feed-forward on flash, every word read through
+            // them - 1.6 times the bytes of the model's own feed-forward - and an index passes giving the model's own top
+            // word nine times in ten, where its own file gives it every time.
+            if (!asked && neurons >= c.FeedForward)
+            {
+                ComputeEveryNeuron(directory);
+                return;
+            }
+            var words = _tokenizer.Encode(WatchText, parseSpecial: false);
+            var passages = new List<int[]>();
+            for (var at = 0; at < words.Count; at += StreamedReadTogether) passages.Add([.. words.Skip(at).Take(StreamedReadTogether)]);
+            var readBytes = Volatile.Read(ref _readBytes);
+            var withDown = !CachedIndex.LayersTakeTheirOwnDown(neurons, c.FeedForward);
+            var complete = IndexingBudget.CompleteCore(c.Layers, inGroups, neurons, c.Embedding, readBytes, withDown);
+            var shared = IndexingBudget.SharedLayers(_file, neurons);
+            var free = FreeFlash(directory);
+            var (coreBudget, sharedBudget) = IndexingBudget.For(free, complete, shared);
+            var queue = IndexingQueue.Open(_file, directory, new IndexingPlan(passages, inGroups, list, coreBudget, sharedBudget, Volatile.Read(ref _channels), readBytes, askedShare, thoughts));
+            SayTidied(queue);   // what an earlier build left of an index that failed its check
+            if (queue.Plan.CoreBudget < CachedIndex.Stride(neurons, c.Embedding, queue.Plan.ReadBytes, withDown))
+            {
+                queue.Dispose();
+                IndexingQueue.NotIndexing(_file, directory);
+                CircleLog.Info(Area, Invariant($"index: none is built - {(free is { } f ? Invariant($"{f / 1048576.0:F0} MB of flash is free") : "the flash that is free is not known")}, and not one piece fits beside the {IndexingBudget.Reserve / 1048576.0:F0} MB kept for the phone"));
+                return;
+            }
+            Volatile.Write(ref _indexing, queue);
+            var status = queue.Status;
+            if (queue.Complete)
+            {
+                AdoptIndex(queue);
+                return;
+            }
+            CircleLog.Info(Area, Invariant($"index: {status.Done} of {status.Total} units done ({status.Percent}%); {inGroups} {(thoughts ? "coherent thoughts, a word's one thought found at the first layer and kept through every layer" : "thought groups a layer")}, lists of {neurons} of {c.FeedForward} neurons; step 2's pieces may take {queue.Plan.CoreBudget / 1048576.0:F0} MB of the {complete / 1048576.0:F0} MB all of them are, its layers {(queue.Plan.SharedBudget > 0 ? Invariant($"{queue.Plan.SharedBudget / 1048576.0:F0} MB") : Invariant($"none of the {shared / 1048576.0:F0} MB they take - no room, so they are read from the model's own file in place"))}; next, when the phone is idle: {queue.Next}"));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            CircleLog.Warn(Area, $"index: not set up ({ex.GetType().Name}: {ex.Message}); every neuron is computed");
+            Volatile.Read(ref _indexing)?.Dispose();
+            Volatile.Write(ref _indexing, null);
+        }
+    }
+
+    // WHAT FOLLOWS AN INDEX WHOSE CHECK FAILED (IndexingRungs), SAID WITH ITS REASON: the next share where one is left; and
+    // after one that listed every neuron - by this engine or an earlier one - every neuron again, with no index built
+    // (OpenIndex). An index of every neuron differs from every neuron in one thing, its rounded copy of each neuron's
+    // output weights, so that copy is what failed it, not the phone; computed from the model's own file, it is not there.
+    // Not the first share again, as an earlier rule had it: those failed for too few neurons, and nothing about them has
+    // changed - hours of the phone's idle time into the same failures.
+    private static int Revision(IndexAttempt failed)
+    {
+        var measured = Invariant($"{(failed.Status.Agreement ?? 0) / 10.0:F1}%");
+        if (IndexingRungs.Next(failed.Share) is { } next)
+        {
+            CircleLog.Info(Area, Invariant($"index: the last index listed {failed.Share}% of each layer's neurons and its check measured {measured}, under the {IndexingStatus.LeastAgreement / 10.0:F0}% it must reach: too few neurons for this model, so the next lists {next}%"));
+            return next;
+        }
+        CircleLog.Info(Area, Invariant($"index: the last index listed every neuron and its check measured {measured}{(failed.ThisEngine ? string.Empty : ", made by an earlier engine")}: an index of every neuron differs from every neuron only in its copy of each neuron's output weights, rounded to fifteen levels - the fault was that copy, not the phone, so none is built again, and every neuron is computed from the model's own file"));
+        return IndexingRungs.Shares[^1];
+    }
+
+    // AN INDEX THAT HAS JUST FAILED ITS CHECK: the next is opened now, so the phone's idle time goes on to it.
+    private void ReviseAfterItsCheck(IndexingQueue failed)
+    {
+        var share = failed.Plan.Share > 0 ? failed.Plan.Share : IndexingRungs.ShareOf(failed.Plan.ListNeurons, _model.Config.FeedForward);
+        var next = Revision(new IndexAttempt(failed.Plan.Groups, failed.Plan.ListNeurons, share, failed.Status, ThisEngine: true));
+        OpenIndex(IndexingRungs.GroupsFor(next, IndexGroups), next);
+    }
+
+    // EVERY NEURON FROM THE MODEL'S OWN FILE, recorded where the service reads how a brain's index stands (IndexingStatus
+    // .FromItsOwnFile: it serves, and its brain is ready): whatever an index of this model left on flash goes, nothing is
+    // built, and every turn computes every neuron - the layers' stream bringing the whole feed-forward.
+    private void ComputeEveryNeuron(string directory)
+    {
+        SayRemoved(IndexingQueue.RemovePieces(directory, _file.FilePath), "what an index of this model left");
+        Volatile.Write(ref _everyNeuron, new StrongBox<IndexingStatus>(IndexingQueue.EveryNeuronFromItsOwnFile(_file, directory)));
+        CircleLog.Info(Area, Invariant($"index: none is built - an index of this model would list all {_model.Config.FeedForward} neurons of each layer, and the model's own file is every neuron: every neuron is computed from it, exact, nothing copied to flash, RAM keeping what layers it can warm and the rest read from flash every word"));
+    }
+
+    // WHAT THE QUEUE REMOVED FROM FLASH THAT NOTHING READS AGAIN, SAID ONCE (the owner, 2026-11-14: "we need to clean up
+    // after ourselves or we will kill users phones"): Watch's records once the core index is built from them, and every
+    // file of an index whose check failed.
+    private static void SayTidied(IndexingQueue queue)
+    {
+        var (bytes, what) = queue.TakeTidied();
+        SayRemoved(bytes, what);
+    }
+
+    private static void SayRemoved(long bytes, string what)
+    {
+        if (bytes <= 0) return;
+        var given = bytes >= 1048576 ? Invariant($"{bytes / 1048576.0:F0} MB") : Invariant($"{Math.Max(1, bytes / 1024)} KB");
+        CircleLog.Info(Area, $"index: removed {what} - {given} given back to the flash");
+    }
+
+    /// <summary>
+    /// Removes everything the engine keeps in <paramref name="directory"/> (its own store folder when null) for the
+    /// model whose file is named <paramref name="modelFile"/>: the head's store, the feed-forward's, the index, its
+    /// record - the record kept where <paramref name="keepRecord"/> says. For a model that has gone from the device.
+    /// Returns the bytes given back to the flash.
+    /// </summary>
+    /// <remarks>
+    /// A BRAIN THAT IS REMOVED LEFT ALL OF THIS BEHIND. Housekeeping deletes a superseded brain's folder in the model
+    /// store; what the engine made of it sits in the app's cache folder under the file's name, and nothing looked there.
+    /// With the upgrade climbing a step at a time, each brain a device grows out of would have left its stores - and,
+    /// for one that answered through its index, gigabytes of pieces.
+    /// </remarks>
+    /// <param name="modelFile">The model's file.</param>
+    /// <param name="directory">The engine's store folder; its own when null.</param>
+    /// <param name="keepRecord">
+    /// Keep the record of its index (IndexingQueue.RecordName), a few hundred bytes that say how its check went: for a
+    /// brain whose index failed its check here, so the climb knows that step failed and does not fetch it again
+    /// (BrainInWaiting.StepOf).
+    /// </param>
+    public static long RemoveStoreOf(string modelFile, string? directory = null, bool keepRecord = false)
+    {
+        if (string.IsNullOrWhiteSpace(modelFile)) return 0;
+        long freed = 0;
+        try
+        {
+            var store = directory ?? DefaultStoreDirectory;
+            if (!Directory.Exists(store)) return 0;
+            var prefix = Path.GetFileName(modelFile) + ".";
+            var record = IndexingQueue.RecordName(modelFile);
+            foreach (var path in Directory.EnumerateFiles(store, prefix + "*").ToList())
+            {
+                // The file's own name and a dot, then what the engine keeps it as - never a file that only begins alike.
+                var name = Path.GetFileName(path);
+                if (!name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                if (keepRecord && string.Equals(name, record, StringComparison.Ordinal)) continue;
+                try
+                {
+                    var file = new FileInfo(path);
+                    var bytes = file.Length;
+                    file.Delete();
+                    freed += bytes;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Held open or gone: it is left, and tried again the next time a brain is removed.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // The folder could not be listed: nothing is removed.
+        }
+        return freed;
+    }
+
+    // What is free on the flash the stores are on: the phone's own reading where a head installed one (DriveInfo is
+    // refused the data partition on Android), the drive's elsewhere, null when neither says.
+    private static long? FreeFlash(string directory)
+    {
+        try
+        {
+            if (CircleAI.Core.DeviceProbe.PlatformMemoryProbe is { } phone) return phone().StorageFreeBytes;
+            if (OperatingSystem.IsAndroid()) return null;
+            var root = Path.GetPathRoot(Path.GetFullPath(directory));
+            return string.IsNullOrWhiteSpace(root) ? null : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    // THE INDEX A FINISHED QUEUE LEFT ON FLASH, taken up to serve: step 3, step 2's pieces and layers, and what the
+    // person's turns have used of it.
+    private void AdoptIndex(IndexingQueue queue)
+    {
+        if (!queue.Status.Serves)
+        {
+            CircleLog.Info(Area, Invariant($"index: complete, and its check measured {(queue.Status.Agreement ?? 0) / 10.0:F1}% against the {IndexingStatus.LeastAgreement / 10.0:F0}% an index must reach: it does not serve, and every neuron is computed"));
+            return;
+        }
+        if (ThoughtIndex.Open(queue.IndexPath) is not { } core || queue.Split() is not { } split)
+        {
+            CircleLog.Warn(Area, "index: the queue is complete and its files do not open; every neuron is computed");
+            return;
+        }
+        TakeSplit(core, split);
+        _indexUse = IndexUse.Open(IndexPath("use"), core.Layers * core.Groups);
+        CircleLog.Info(Area, Invariant($"index: complete - {Thoughts(core)} from {core.Records:N0} watched records, lists of {core.ListNeurons} neurons; {SaySplit(core, split)}"));
+    }
+
+    // Step 3 and step 2 put in place to serve.
+    private void TakeSplit(ThoughtIndex core, SplitByThoughts split)
+    {
+        _indexCore = core;
+        _indexCoreStore = split.Pieces;
+        _indexMix = split.Mixing;
+        _indexDown = split.Down;
+    }
+
+    // Step 2 in a line, for the log: its pieces, and which of the layers' weights it holds tiled - the rest read from step 1.
+    private static string SaySplit(ThoughtIndex core, SplitByThoughts split)
+    {
+        var pieces = split.Pieces;
+        var down = !pieces.HoldsAll(core) || !pieces.HoldsDown
+            ? split.Down is not null ? "every layer's ffn_down tiled" : "every layer's ffn_down read from step 1, the model's own file, in place"
+            : "each piece its own ffn_down";
+        var mix = split.Mixing is not null ? "every layer's attention tiled" : "every layer's attention read from step 1 in place";
+        return Invariant($"step 2 holds {pieces.Count} of the thoughts' pieces ({(pieces.HoldsAll(core) ? "all of them" : "not all: the rest gathered from step 1")}), {(core.Coherent ? "a thought at a time, its layers in order" : "a layer at a time")}; {mix}; {down}");
+    }
+
+    // No index serves: the model computes every neuron. A stream opened for an index is closed with it. Under the gate.
+    private void DropIndex(string why)
+    {
+        if (_stream is not null && (_indexServing is not null || !_stream.BringsFeedForward)) LetFfnGo(why);
+        StopServingIndex();
+        _indexCore = null;
+        _indexCoreStore = null;
+        _indexMix = null;
+        _indexDown = null;
+        _indexUse = null;
+    }
+
+    private static CircleAI.Core.PowerState PowerNow()
+    {
+        try { return CircleAI.Core.DeviceContext.PowerProbe?.Invoke() ?? CircleAI.Core.PowerState.Unknown; }
+        catch { return CircleAI.Core.PowerState.Unknown; }
+    }
+
+    // Whether the person is using the phone - its screen is on - or null where the device does not say.
+    private static bool? InUseNow()
+    {
+        try { return CircleAI.Core.DeviceContext.InUseProbe?.Invoke(); }
+        catch { return null; }
+    }
+
+    // WHETHER A UNIT OF INDEXING STOPS WHERE IT IS: a call is waiting for the engine, the generator is going, or the phone -
+    // asked once a second at most - is hot or low, has come off its charger, or (unless the work was asked for by name)
+    // has been picked up. OFF ITS CHARGER EVEN WORK ASKED FOR BY NAME STANDS ASIDE (the owner, 2026-11-15: "we should be
+    // able to tap in and out without anything crashing out"): on the P30 that day a named run read on, flat out, in a hand
+    // off its cable, and the phone ended the engine's service two minutes later and kept it from starting again.
+    private bool StandAside(bool named)
+    {
+        if (Volatile.Read(ref _wanted) > 0 || Volatile.Read(ref _disposed) != 0)
+        {
+            _stoodAsideWhy = "a call wants the engine";
+            _stoodAsideForMemory = false;
+            return true;
+        }
+        var now = Stopwatch.GetTimestamp();
+        if (_phoneAsked == 0 || Stopwatch.GetElapsedTime(_phoneAsked, now) >= TimeSpan.FromSeconds(1))
+        {
+            _phoneAsked = now;
+            var power = PowerNow();
+            var memory = string.Empty;
+            _phoneSaysWhy = power.Hot ? "the phone is hot"
+                : power.Low ? "the battery is low"
+                : IndexingWhen.OffItsCharger(power) ? "the phone is off its charger"
+                : !named && InUseNow() == true ? "the phone is in use"
+                : ShortOfMemoryNow(out memory) ? memory
+                : string.Empty;
+            _phoneSaysStop = _phoneSaysWhy.Length > 0;
+            _stoodAsideForMemory = memory.Length > 0;
+        }
+        if (_phoneSaysStop) _stoodAsideWhy = _phoneSaysWhy;
+        return _phoneSaysStop;
+    }
+
+    // WHETHER THE PHONE IS TOO SHORT OF MEMORY FOR A UNIT (IndexingWhen.ShortOfMemory), by its own reading now, and how
+    // it reads. A named run stands aside for it too: no index is worth another app's process.
+    private static bool ShortOfMemoryNow(out string why)
+    {
+        var phone = MemoryNow.Phone();
+        long? line = null;
+        try { line = CircleAI.Core.DeviceContext.LowMemoryLineProbe?.Invoke(); }
+        catch { /* a phone that will not say its line is held to the least there is */ }
+        if (!IndexingWhen.ShortOfMemory(phone.Available, line))
+        {
+            why = string.Empty;
+            return false;
+        }
+        why = Invariant($"the phone is short of memory: {Megabytes(phone.Available)} MB available, and it ends other apps' processes under {Megabytes(line)} MB");
+        return true;
+    }
+
+    private static string Megabytes(long? bytes) => bytes is { } b ? (b / 1048576.0).ToString("F0", CultureInfo.InvariantCulture) : "an unknown number of";
+
+    // WHAT A UNIT'S WORK LEFT BEHIND IS GIVEN BACK: every generation collected and the heap compacted, the large objects
+    // with it. A heap's free pages are still the process's until then, and on a phone they go to swap as they are.
+    private static void Collect() => MemoryNow.GiveBack();
+
+    // Layers between two looks at the memory while a unit reads the model.
+    private const int TendEvery = 8;
+
+    // What the heap must have grown by, between two looks, for a collection to be worth its while.
+    private const long TendWhenGrownBy = 64L << 20;
+
+    // WHILE A UNIT READS THE MODEL ITS MEMORY IS WATCHED, a layer at a time (the model asks before each): every eighth
+    // layer what the memory is is said - the heap, the process, the phone - so a unit that costs the phone its swap
+    // says where it went, and where the heap has grown since the last look it is collected, so one layer's leavings do
+    // not pile on the next's for a pass of sixty-four. Then the unit's own question: whether to stand aside.
+    //
+    // COLLECTED, NOT COMPACTED. The first version compacted the heap at every look, large objects and all, and on the
+    // P30 on 2026-11-13 that made a 750 MB heap - most of it working memory reserved and never written - resident
+    // every eighth layer: "the process holds 535 MB" at the first look and 723 MB at the second, with nothing
+    // collected ("753 MB ... 753 MB after a collection").
+    private Func<bool> Tending(Func<bool>? stop)
+    {
+        var layer = 0;
+        long tended = 0;
+        return () =>
+        {
+            if (layer++ % TendEvery == 0)
+            {
+                var heap = GC.GetTotalMemory(forceFullCollection: false);
+                var collected = heap - tended > TendWhenGrownBy;
+                if (collected) GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
+                tended = GC.GetTotalMemory(forceFullCollection: false);
+                var phone = MemoryNow.Phone();
+                CircleLog.Info(Area, Invariant($"index: memory at layer {layer - 1}: the managed heap {heap / 1048576.0:F0} MB{(collected ? Invariant($", {tended / 1048576.0:F0} MB after a collection") : string.Empty)}; the process holds {Environment.WorkingSet / 1048576.0:F0} MB; the phone has {Megabytes(phone.Available)} MB available and {Megabytes(phone.SwapFree)} MB of swap free"));
+            }
+            return stop?.Invoke() == true;
+        };
+    }
+
+    // THE QUEUE'S UNITS, WHILE THE PHONE IS IDLE: one - or, at bedtime or when the work was asked for by name, one after
+    // another - each recorded on flash as it is done. A unit stands aside the moment a call wants the engine, and runs
+    // again from its start the next time the phone is idle. Under the gate.
+    private void RunIndexing(IndexingQueue queue, bool named)
+    {
+        var host = new IndexingHost(this);
+        _indexUsedTheModel = false;
+        try
+        {
+            while (!queue.Complete)
+            {
+                // A UNIT THAT WORKS FROM FLASH ALONE - the core index, a layer's pieces, the cached portion - holds its own
+                // buffers (a layer's three tensors and its pieces): the layers' stream gives its RAM back first.
+                if (!queue.NextReadsTheModel && (_stream is not null || _ffnWarm is not null)) LetFfnGo("the index's next unit works from flash alone");
+                var what = queue.Next;
+                var started = Stopwatch.GetTimestamp();
+                var done = queue.RunNext(host, () => StandAside(named));
+                var worked = Stopwatch.GetElapsedTime(started);
+                var status = queue.Status;
+                if (!done)
+                {
+                    CircleLog.Info(Area, Invariant($"index: stood aside after {worked.TotalSeconds:F1} s of: {what} ({_stoodAsideWhy}); {status.Done} of {status.Total} units done ({status.Percent}%)"));
+                    if (_stoodAsideForMemory)
+                    {
+                        // THE PHONE'S MEMORY COMES FIRST: the layers' stream and the unit's buffers are given back now, and
+                        // the unit is tried again after a while, when the phone has room.
+                        LetFfnGo("the phone is short of memory");
+                        Collect();
+                        Volatile.Write(ref _indexNotBefore, Stopwatch.GetTimestamp() + (long)(IndexRetryAfter.TotalSeconds * Stopwatch.Frequency));
+                    }
+                    return;
+                }
+                CircleLog.Info(Area, Invariant($"index: {what} - {worked.TotalSeconds:F1} s; {status.Done} of {status.Total} units done ({status.Percent}%)"));
+                SayTidied(queue);
+                Collect();   // what the unit's work left behind does not wait in RAM for the next
+                if (queue.Complete)
+                {
+                    if (_indexCore is null) AdoptIndex(queue);
+                    LetFfnGo("the indexing is done");
+
+                    // A CHECK THAT FAILED IS A REASON, NOT AN END: the next index lists more neurons, built in the phone's
+                    // idle time like this one (IndexingRungs).
+                    if (queue.Status.Failed && ReferenceEquals(Volatile.Read(ref _indexing), queue)) ReviseAfterItsCheck(queue);
+                    return;
+                }
+                if (named) continue;
+
+                // BEDTIME - idle and on charge - goes straight on; otherwise the phone is left alone as long as the unit took.
+                var power = PowerNow();
+                var pace = IndexingWhen.Pace(Volatile.Read(ref _wanted) > 0, Stopwatch.GetElapsedTime(Volatile.Read(ref _lastCall)), power, InUseNow());
+                if (pace == IndexingPace.BackToBack) continue;
+                Volatile.Write(ref _indexNotBefore, Stopwatch.GetTimestamp() + (long)(IndexingWhen.Rest(worked, power).TotalSeconds * Stopwatch.Frequency));
+                return;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or OutOfMemoryException or ArgumentException or InvalidOperationException)
+        {
+            CircleLog.Warn(Area, Invariant($"index: a unit failed ({ex.GetType().Name}: {ex.Message}); it is tried again after {IndexRetryAfter.TotalMinutes:F0} minutes, and every neuron is computed meanwhile"));
+            Volatile.Write(ref _indexNotBefore, Stopwatch.GetTimestamp() + (long)(IndexRetryAfter.TotalSeconds * Stopwatch.Frequency));
+        }
+        finally
+        {
+            _model.Watch = null;
+            _model.Interrupt = null;
+            if (_indexUsedTheModel)
+            {
+                // What the units read is not a conversation: the next turn reads its own from the start.
+                _state.Reset();
+                _history.Clear();
+                _talk = null;
+            }
+            UsedFfn();
+        }
+    }
+
+    // The queue's units that need the model run through the engine that holds it.
+    private sealed class IndexingHost(ManagedChatGenerator engine) : IIndexingHost
+    {
+        public bool Watch(IReadOnlyList<int> words, ThoughtWatch watch, Func<bool>? stop) => engine.WatchPassage(words, watch, stop);
+
+        public int? Check(ThoughtIndex core, SplitByThoughts split, Func<bool>? stop) => engine.CheckIndex(core, split, stop);
+    }
+
+    // WATCH READS A PASSAGE: every neuron computed - no index serving, the stream bringing the whole feed-forward - from a
+    // fresh conversation, every word's thought and strong neurons recorded at every layer. It looks for a waiting call
+    // before each layer. Under the gate.
+    private bool WatchPassage(IReadOnlyList<int> words, ThoughtWatch watch, Func<bool>? stop)
+    {
+        if (_indexCore is not null || _indexServing is not null) DropIndex("Watch reads with every neuron");
+        using var spinning = _pool.KeepSpinning();
+        EnsureFfnWarm();
+        _indexUsedTheModel = true;
+        _state.Reset();
+        _history.Clear();
+        _model.Watch = watch;
+        _model.Interrupt = Tending(stop);
+        try
+        {
+            _model.ForwardBatch(words as int[] ?? [.. words], _state, new float[words.Count][]);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            _model.Watch = null;
+            _model.Interrupt = null;
+            _state.Reset();
+        }
+    }
+
+    // THE CHECK: the held-out words through every neuron, then through the index as a turn will be served it - the layers'
+    // stream reopened the way the index leaves it, the tiers under it - every position's logits in one pass each from a
+    // fresh state; how often the top word agrees and what each pass took, said in the log. The index is then in place to
+    // serve. False when it stood aside for a call: nothing is in place, and the check runs again. Under the gate.
+    /// <summary>What is said after an index's check of the flash it was taken on; nothing where the flash was not measured.</summary>
+    internal static string CheckedOn(FlashProfile? flash) => flash is null ? string.Empty : $"; on flash that reads {flash.Speed}";
+
+    private int? CheckIndex(ThoughtIndex core, SplitByThoughts split, Func<bool>? stop)
+    {
+        var tokens = _tokenizer.Encode(FidelityText, parseSpecial: false);
+        var n = Math.Min(CheckWords, tokens.Count);
+        int[] words = [.. tokens.Take(n)];
+        var logits = new float[n][];
+        for (var i = 0; i < n; i++) logits[i] = new float[_model.Config.Vocabulary];
+        IHeadRows? head = null;
+        using var spinning = _pool.KeepSpinning();
+        _indexUsedTheModel = true;
+        _model.Interrupt = Tending(stop);
+        try
+        {
+            // EVERY NEURON FIRST: no index serving, the stream bringing the whole feed-forward.
+            if (_indexCore is not null || _indexServing is not null) DropIndex("the check reads with every neuron first");
+            EnsureFfnWarm();
+            _stream?.TakeParts();   // what opening the stream read is not the pass's
             if (_model.HeadFromStore && Volatile.Read(ref _headStore) is { } store)
             {
                 head = _stream is { Slots: > 0 }
@@ -1515,69 +2168,84 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                     : store.Load(store.Surface([Script.Latin]), Volatile.Read(ref _channels));
                 _model.Head = head;
             }
-            using (var checking = new IndexedFeedForward(core, cached, _file, warmBudget: 0, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes)))
-            {
-                var (same, positions, full, indexed) = CheckIndex(checking);
-                var (_, cachedReads, cachedBytes, coreReads, _) = checking.TakeCounts();
-                CircleLog.Info(Area, Invariant($"index: the check over {positions} held-out words - the same top word as every neuron {100.0 * same / Math.Max(1, positions):F1}% of the time; every neuron's pass {full.TotalSeconds:F0} s, the index's {indexed.TotalSeconds:F0} s ({cachedReads} pieces from the cached index, {cachedBytes / 1048576.0:F0} MB, {coreReads} from the model's own file)"));
-            }
+            _state.Reset();
+            _history.Clear();
+            var started = Stopwatch.GetTimestamp();
+            _model.ForwardBatch(words, _state, logits);
+            var full = Stopwatch.GetElapsedTime(started);
+            var fullRepacked = _stream?.TakeParts().Repacking ?? TimeSpan.Zero;
+            var tops = logits.Select(l => ArgMax(l)).ToArray();
 
-            // 5. SERVED from the next turn: the stream reopened for ffn_down and the mixing, the warm index in RAM.
-            _indexCore = core;
-            _indexCached = cached;
-            LetFfnGo("the index serves from now on");
+            // THEN AS A TURN WILL HAVE IT: the index in place, the layers' stream opened the way it leaves it.
+            LetFfnGo("the check reads through the index");
+            TakeSplit(core, split);
+            EnsureFfnWarm();
+            _stream?.TakeParts();   // what opening the stream read is not the pass's
+            _state.Reset();
+            started = Stopwatch.GetTimestamp();
+            _model.ForwardBatch(words, _state, logits);
+            var indexed = Stopwatch.GetElapsedTime(started);
+            var same = 0;
+            for (var i = 0; i < n; i++)
+                if (ArgMax(logits[i]) == tops[i]) same++;
+
+            var counts = _indexServing?.TakeCounts() ?? default;
+            var repacked = _stream?.TakeParts().Repacking ?? TimeSpan.Zero;
+            _indexServing?.TakeUsage();   // the check's words are not the person's
+
+            // PASS OR FAIL AGAINST THE MEASUREMENT (IndexingStatus.LeastAgreement): an index that gives another top word
+            // too often serves nobody - every neuron is computed, and the queue keeps the measure with its record.
+            var agreement = (int)Math.Round(1000.0 * same / Math.Max(1, n));
+            var passed = agreement >= IndexingStatus.LeastAgreement;
+
+            // THE FLASH'S SPEED BESIDE THE RESULT: a device finds its own limit by climbing (ModelChoice.NextStep), and
+            // what its flash measured, said with each result, is what the limit is read against.
+            var flash = CheckedOn(Volatile.Read(ref _flash));
+            CircleLog.Info(Area, Invariant($"index: the check over {n} held-out words - the same top word as every neuron {100.0 * same / Math.Max(1, n):F1}% of the time, and an index must reach {IndexingStatus.LeastAgreement / 10.0:F0}% to serve: {(passed ? "PASS" : "FAIL")}; every neuron's pass {full.TotalSeconds:F0} s ({fullRepacked.TotalSeconds:F0} s of it repacking the model's own file), the index's {indexed.TotalSeconds:F0} s ({repacked.TotalSeconds:F0} s repacking); its pieces {Served(counts)}{flash}"));
+            if (passed) _indexUse = IndexUse.Open(IndexPath("use"), core.Layers * core.Groups);
+            else DropIndex("the index failed its check");
+            return agreement;
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or OutOfMemoryException or ArgumentException or InvalidOperationException)
+        catch (OperationCanceledException)
         {
-            CircleLog.Warn(Area, $"index: the job failed ({ex.GetType().Name}: {ex.Message}); every neuron is computed as before");
-            StopServingIndex();
-            _indexCore = null;
-            _indexCached = null;
+            DropIndex("the check stood aside");
+            return null;
+        }
+        catch
+        {
+            DropIndex("the check failed");
+            throw;
         }
         finally
         {
-            _model.Watch = null;
+            _model.Interrupt = null;
             _model.Head = null;
             (head as IDisposable)?.Dispose();
             _state.Reset();
             _history.Clear();
-            UsedFfn();
         }
     }
 
-    // The first CheckWords of the held-out text through every neuron, then through the index - every position's logits in one
-    // pass each, from a fresh state - and how many positions' top words agree.
-    private (int Same, int Positions, TimeSpan Full, TimeSpan Indexed) CheckIndex(IndexedFeedForward checking)
+    // REVISE, AT BEDTIME (the owner, 2026-11-12: "The more you use it the more it learns what the user needs"): the heat of
+    // step 2's pieces written again from what the person's turns used most - what the nights before left counting for half
+    // - so step 4 warms those thoughts first from the next turn. The pieces stay where they lie. Under the gate.
+    private void ReviseIndex(IndexingQueue queue, IndexUse use)
     {
-        var tokens = _tokenizer.Encode(FidelityText, parseSpecial: false);
-        var n = Math.Min(CheckWords, tokens.Count);
-        var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tokens)[..n];
-        var logits = new float[n][];
-        for (var i = 0; i < n; i++) logits[i] = new float[_model.Config.Vocabulary];
-
-        _model.Index = null;
-        _state.Reset();
         var started = Stopwatch.GetTimestamp();
-        _model.ForwardBatch(span, _state, logits);
-        var full = Stopwatch.GetElapsedTime(started);
-        var tops = logits.Select(l => ArgMax(l)).ToArray();
-
-        _model.Index = checking;
-        _state.Reset();
-        started = Stopwatch.GetTimestamp();
         try
         {
-            _model.ForwardBatch(span, _state, logits);
+            LetFfnGo("the night revises what step 4 keeps warm");
+            var words = use.Since;
+            var pieces = queue.Revise(use.Ranking());
+            use.Revised(DateTimeOffset.UtcNow);
+            _indexCoreStore = pieces;
+            CircleLog.Info(Area, Invariant($"index: revised from {words:N0} words of use in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms - step 2's {pieces.Count} pieces carry the day's heat; step 4 warms the thoughts used most first from the next turn"));
         }
-        finally
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or OutOfMemoryException or ArgumentException or InvalidOperationException)
         {
-            _model.Index = null;
+            CircleLog.Warn(Area, $"index: the night's revision failed ({ex.GetType().Name}: {ex.Message}); step 2's heat is as it was");
+            Volatile.Write(ref _indexNotBefore, Stopwatch.GetTimestamp() + (long)(IndexRetryAfter.TotalSeconds * Stopwatch.Frequency));
         }
-        var indexed = Stopwatch.GetElapsedTime(started);
-        var same = 0;
-        for (var i = 0; i < n; i++)
-            if (ArgMax(logits[i]) == tops[i]) same++;
-        return (same, n, full, indexed);
     }
 
     // Held-out words the check reads: every position's logits in RAM at once, the vocabulary wide each.
@@ -1585,7 +2253,106 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // WHAT WATCH READS: plain, varied English - questions, tasks, facts, a story - the kind of words a phone's assistant hears
     // and says. Not the check's text (FidelityText), which is held out.
-    private const string WatchText =
+    //
+    // SIX TIMES AS MUCH, OF SIXTEEN MORE KINDS (2026-11-15): the first text was some 360 words, so 8 thought groups held
+    // about 45 words each to learn a list from, and on the P30 the 9B's index of 8 groups at half its neurons gave the full
+    // read's top word a quarter of the time. Requests, talk, science, history, places, food and health, money and work,
+    // phones, travel, a story, numbers, sport and culture, how-to, questions, weather and nature, school: 2,139 words.
+    private const string WatchText = WatchFirst + WatchKinds;
+
+    private const string WatchKinds =
+        " Wake me up at half past five tomorrow, and turn off the alarm on Saturday. Remind me to take my medicine after " +
+        "breakfast. Call the clinic and ask if they are open on public holidays. Read the last message from my boss. Reply to " +
+        "Lerato and say I will bring the chairs at noon. Turn on Bluetooth and connect to the car. Lower the brightness, the " +
+        "screen is too bright at night. How much battery do I have left? You have forty percent, which is enough for about six " +
+        "hours. Take a photo. Start recording a voice note. Stop. Delete that. Open the calendar and show me next week. Do I " +
+        "have anything on Wednesday? You have a meeting at nine and a dentist appointment at three." +
+        " Hello, how are you today? I am well, thank you, and you? I am a bit tired, I did not sleep much last night. I am " +
+        "sorry to hear that. Maybe a short walk in the fresh air will help. That is a good idea. Tell me a joke. Why did the " +
+        "chicken cross the road? To get to the other side. That is an old one, but it still makes me smile. I feel worried " +
+        "about my exams next month. It is normal to feel nervous before exams. Make a plan, study a little every day, and " +
+        "rest well the night before. Thank you for listening. You are welcome, I am here whenever you want to talk." +
+        " Plants make their food from sunlight, water and carbon dioxide, and they give off oxygen. This is called " +
+        "photosynthesis. The human heart beats about seventy times a minute and pumps blood through the whole body. Sound " +
+        "travels through the air at about three hundred and forty metres a second, but light is almost a million times " +
+        "faster. An atom has a small heavy centre called the nucleus, with electrons moving around it. Ice floats because " +
+        "water expands when it freezes. A magnet has a north pole and a south pole, and opposite poles pull towards each " +
+        "other. A vaccine teaches the body to recognise a germ, so that it can fight it off quickly later." +
+        " Nelson Mandela was released from prison in 1990 after twenty-seven years, and four years later he became the " +
+        "first president of a democratic South Africa. The ancient Egyptians built the pyramids at Giza more than four " +
+        "thousand years ago. The kingdom of Mapungubwe traded gold and ivory near the Limpopo River long before Europeans " +
+        "arrived. The First World War began in 1914 and ended in 1918. People first walked on the Moon in 1969. The printing " +
+        "press, built in Germany in the fifteenth century, made books cheaper and helped ideas spread. Many African countries " +
+        "won their independence in the 1950s and 1960s, Ghana among the first, in 1957." +
+        " Lesotho is a small mountain kingdom completely surrounded by South Africa. The Sahara is the largest hot desert " +
+        "in the world, and it covers much of northern Africa. Lake Victoria is shared by Uganda, Kenya and Tanzania. The " +
+        "Amazon rainforest grows across Brazil and several of its neighbours. Australia is both a country and a continent. " +
+        "The Drakensberg mountains run along the eastern edge of the high plateau. Madagascar, off the coast of Mozambique, " +
+        "is home to animals found nowhere else, such as lemurs. The Indian Ocean is warm along the coast of KwaZulu-Natal, " +
+        "while the Atlantic near the Cape is cold." +
+        " To cook pap, bring salted water to the boil, stir in maize meal slowly so that no lumps form, then cover the pot " +
+        "and let it steam on low heat for twenty minutes. A balanced plate has vegetables, some protein such as beans, fish " +
+        "or chicken, and a starch. Drink enough clean water every day, and more when it is hot. Wash your hands with soap " +
+        "before eating and after using the toilet. If someone has a small burn, cool it under running water for twenty " +
+        "minutes, and do not put butter on it. A very young baby with a fever should be seen by a doctor. Bananas and " +
+        "oranges make good snacks. Too much salt and sugar is bad for the heart." +
+        " My salary is paid on the twenty-fifth of every month. After rent, food and transport I try to save a tenth of what " +
+        "is left. How much is fifteen percent of two thousand rand? It is three hundred rand. Send an invoice to the client " +
+        "for the work we finished in March, and ask them to pay within thirty days. I have a job interview on Monday morning. " +
+        "Prepare by reading about the company, dressing neatly, and arriving ten minutes early. Keep a copy of every receipt " +
+        "in case you need to return something. A loan with a high interest rate can cost much more than the amount you " +
+        "borrowed. Check your bank statement each month for payments you do not recognise." +
+        " Your phone connects to the internet through Wi-Fi or mobile data. Wi-Fi is usually faster at home, and it does " +
+        "not use your data bundle. Bluetooth links your phone to earphones, a speaker or a car over a short distance. To " +
+        "save battery, lower the screen brightness, close apps you are not using, and turn off location when you do not " +
+        "need it. A strong password is long and mixes words, numbers and symbols. Never share the code the bank sends you " +
+        "by message, not even with someone who says they work at the bank. Back up your photos so you do not lose them if " +
+        "the phone is broken or stolen. An update can fix problems and close security holes." +
+        " How do I get to the station from here? Walk straight down this road for two blocks, turn left at the traffic " +
+        "lights, and the station is on your right. The taxi to town costs fifteen rand and leaves when it is full. My " +
+        "flight to Cape Town leaves at seven, so I must be at the airport by half past five. Do you have a window seat? " +
+        "Please keep your bag under the seat in front of you. The bus from Polokwane arrives at the terminal at four in the " +
+        "afternoon. How long does it take to drive from Johannesburg to Bloemfontein? About four hours on the N1. Remember " +
+        "to carry your identity document when you travel." +
+        " There was once an old fisherman who lived alone at the edge of a quiet bay. Each morning before sunrise he rowed " +
+        "his small boat out past the rocks and cast his net. Most days he caught only enough for himself, and he shared the " +
+        "rest with the children who waited on the sand. One stormy evening a young boy was swept off the rocks by a wave. " +
+        "The fisherman heard him shouting, pushed his boat into the dark water and pulled the boy aboard. In the morning the " +
+        "whole village came to his door with bread, tea and blankets, and from that day he was never alone again." +
+        " There are seven days in a week, twelve months in a year, and three hundred and sixty-five days in a year, except " +
+        "a leap year, which has one more. What is one hundred minus thirty-seven? It is sixty-three. Half of ninety is " +
+        "forty-five. A kilometre is one thousand metres, and a kilogram is one thousand grams. If a loaf costs eighteen " +
+        "rand, three loaves cost fifty-four rand. Christmas is on the twenty-fifth of December. What day comes after " +
+        "Thursday? Friday. Count from one to ten: one, two, three, four, five, six, seven, eight, nine, ten. Seventy-two " +
+        "divided by eight is nine." +
+        " South Africa won the Rugby World Cup in 1995, 2007, 2019 and 2023. In football a match has two halves of " +
+        "forty-five minutes, and each team has eleven players on the field. Bafana Bafana is the name of the national " +
+        "football team. Marathon runners cover just over forty-two kilometres. Miriam Makeba was a famous singer who sang " +
+        "about freedom and was known around the world. Many people enjoy reading, singing in a choir, or dancing at parties " +
+        "and festivals. Heritage Day is on the twenty-fourth of September, when people wear traditional clothes and share " +
+        "food from their cultures." +
+        " How do I change a flat tyre? Park on flat ground, put on the handbrake, loosen the nuts a little, lift the car " +
+        "with the jack, take off the wheel, put on the spare, tighten the nuts and lower the car. To plant a tree, dig a " +
+        "hole twice as wide as its roots, set the tree in it, fill it with soil and water it well. To clean a burnt pot, soak " +
+        "it in hot soapy water first. How do I take a screenshot? Press the power button and the volume down button " +
+        "together. To make a budget, write down what you earn, list what you spend, and look for things you can cut." +
+        " What is the biggest animal on Earth? The blue whale is the biggest animal that has ever lived. Why do we have " +
+        "seasons? Because the Earth is tilted, each half of it leans towards the sun for part of the year. How many legs " +
+        "does a spider have? Eight. What language is spoken in Brazil? Portuguese. Who painted the Mona Lisa? Leonardo da " +
+        "Vinci. What is the freezing point of water in Fahrenheit? Thirty-two degrees. Where do penguins live? Mostly in the " +
+        "southern half of the world, and some live on the coast near Cape Town. What is the opposite of ancient? Modern." +
+        " The weather service warns of strong winds along the coast tonight, with waves up to four metres. In winter the " +
+        "highveld has cold, dry mornings and frost, but the days are often sunny. Summer brings thunderstorms late in the " +
+        "day, with lightning and heavy rain that can flood low roads. Never cross a flooded river or bridge. A rainbow " +
+        "appears when the sun shines through drops of rain. Lions live in groups called prides, and elephants can live for " +
+        "seventy years. The baobab tree stores water in its thick trunk to survive long dry seasons." +
+        " A noun is the name of a person, place or thing, and a verb is a doing word. Please help me with my homework: what " +
+        "is the plural of child? The plural of child is children. How do you greet someone in isiZulu? You say sawubona to " +
+        "one person and sanibonani to a group. Spell the word necessary. N, E, C, E, S, S, A, R, Y. My teacher asked us to " +
+        "write an essay about someone we admire. Start with an introduction, give three reasons in the body, and end with a " +
+        "conclusion. Reading every day makes your vocabulary bigger and your writing better.";
+
+    private const string WatchFirst =
         "What time is it in Johannesburg right now? Set a timer for ten minutes and remind me to call my sister at six. " +
         "The weather today is sunny with a light wind from the south, and tomorrow it may rain in the afternoon. " +
         "Water boils at one hundred degrees Celsius at sea level, and freezes at zero. The sun is a star, and the Earth " +
@@ -1700,6 +2467,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
         if (_stream is { Slots: > 0 })
         {
+            // A STREAMED TRUNK STREAMS ITS HEAD - two windows in RAM, the surface re-read from flash each pass. A plain turn
+            // reads it once a token, but an MTP head drafting reads it on EVERY draft step and verify, so streaming it is
+            // gigabytes of flash a turn (5.4 GB measured for 24 tokens at 2 drafts on the P30). HOLD IT IN RAM for the turn
+            // when there is room: loaded once, every draft reads it from RAM. Without room it streams as before.
+            if (HoldStreamedHeadInRam(_speculator is not null, MemoryNow.AvailableBytes(), DrafterReserve, SurfaceBytes(store, groups)))
+            {
+                CircleLog.Info(Area, Invariant($"head: held in RAM for the turn ({SurfaceBytes(store, groups) / 1048576.0:F0} MB), not re-streamed from flash each draft step - the MTP head reads it many times a turn"));
+                return LoadHead(store, groups);
+            }
             try
             {
                 return Task.FromResult<IHeadRows>(store.Stream(groups, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes)));
@@ -1770,7 +2546,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // when none is given, and null when the option turns it off.
     private static string? StoreDirectoryOf(ManagedGeneratorOptions options) => options.StoreDirectory switch
     {
-        null => Path.Combine(Path.GetTempPath(), "CircleAI", "store"),
+        null => DefaultStoreDirectory,
         "" => null,
         var given => given,
     };
@@ -1829,7 +2605,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
             return;
         }
         if (_speculator is not null)
-            CircleLog.Info(Area, "the head store serves no turn the MTP head drafts: those read the whole head");
+            CircleLog.Info(Area, _model.HeadFromStore
+                ? "the MTP head drafts from the head's store too (the turn's script surface), held in RAM for the turn where there is room"
+                : "the head is kept whole in RAM, so the MTP head's drafts read all of it");
 
         // A model that keeps no copy of its head has its store from the first turn: nothing else can score it.
         if (existing is not null) Volatile.Write(ref _headStore, existing);
@@ -1889,6 +2667,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 }
                 Volatile.Write(ref _channels, profile.Channels);
                 Volatile.Write(ref _readBytes, profile.ChunkBytes);
+                Volatile.Write(ref _flash, profile);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1994,34 +2773,84 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private void OpenLayers()
     {
         var mix = _mixStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no mixing store.");
-        var ffn = _ffnStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no feed-forward store.");
+        TileStore? ffn = _ffnStore ?? throw new InvalidOperationException("Every layer is read from flash, and this load found no feed-forward store.");
 
-        // AN INDEX SERVES THE FEED-FORWARD'S GATE AND UP: the stream brings ffn_down and the mixing alone.
-        if (_indexCore is not null) ffn = _ffnDownStore ??= TileStore.OverModel(_file, TileSet.FeedForward, [2]);
+        // AN INDEX SERVES THE KNOWLEDGE LAYERS - STEP 4 REACHING STEP 2, AND ONLY STEP 2 REACHING STEP 1 (the owner,
+        // 2026-11-15). With every thought's piece in step 2, a word's gate, up and down come as its pieces and the stream
+        // brings the mixing alone - unless the layers' own ffn_down is the fewer bytes (LayersTakeTheirOwnDown), when the
+        // stream brings it whole and the pieces give their gate and up alone. With only some pieces - a phone short of
+        // flash - the stream still brings ffn_down whole, and a word whose thought has no piece has its gate and up
+        // gathered from the model's own file. Step 2's layers come tiled from its own stores, so no pass repacks the
+        // model's file; where step 2 had no room for them, they are read from step 1 in place.
+        if (_indexCore is { } indexed)
+        {
+            mix = _indexMix ?? mix;
+            ffn = _indexCoreStore is { } pieces && pieces.HoldsAll(indexed) && pieces.HoldsDown && !TakesItsOwnDown(indexed)
+                ? null
+                : _indexDown ?? (_ffnDownStore ??= TileStore.OverModel(_file, TileSet.FeedForward, SplitByThoughts.DownKinds));
+        }
         var (warm, slots, available) = LayerRecipe(mix, ffn);
         var channels = Volatile.Read(ref _channels);
         var stream = new LayerStream(mix, ffn, channels, Volatile.Read(ref _readBytes), warm, slots);
         _model.Stream = stream;
         _stream = stream;
-        CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
-        if (_indexCore is { } core) ServeIndex(core, available, stream.Bytes);
+        CircleLog.Info(Area, Invariant($"layers: {stream.Describe()}{(stream.BringsFeedForward ? "" : ", the mixing alone")}, read from flash on {channels} channel(s){(stream.Direct ? " past the cache" : ", dropped from the cache")}; {(available is { } a ? $"{a / 1048576.0:F0} MB was available" : "the RAM available is not known")}"));
+        if (_indexCore is not { } core) return;
+        try
+        {
+            ServeIndex(core, available, stream.Bytes, withDown: !stream.BringsFeedForward);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // THE INDEX'S FILES ARE NOT THERE - a cache folder cleared under the engine. The turn is not failed for it: the
+            // index is put down, the stream opened again with the whole feed-forward, and every neuron is computed. The
+            // next load finds the queue's files gone and builds them again.
+            CircleLog.Warn(Area, $"index: it cannot serve ({ex.GetType().Name}: {ex.Message}); every neuron is computed until the next load");
+            StopServingIndex();
+            _model.Stream = null;
+            _stream = null;
+            stream.Dispose();
+            _indexCore = null;
+            _indexCoreStore = null;
+            _indexMix = null;
+            _indexDown = null;
+            _indexUse = null;
+            OpenLayers();
+        }
     }
 
-    // THE INDEX SERVING THE TURNS (the indexed mind): the warm index read into RAM - the hottest cached pieces, as many as the
-    // RAM left beside the layers' stream allows over what the phone keeps for itself - and the model's feed-forward taking
-    // its gate and up from the tiers. Under the gate.
-    private void ServeIndex(ThoughtIndex core, long? available, long streamBytes)
+    // THE INDEX SERVING THE TURNS (the indexed mind): step 4 read into RAM - whole thoughts, the ones the person's days
+    // used most first, as many as the RAM left beside the layers' stream allows over what the phone keeps for itself, with
+    // the slots step 2 reads ahead into - and the model's knowledge layers taking a word's pieces from it. Under the gate.
+    private void ServeIndex(ThoughtIndex core, long? available, long streamBytes, bool withDown = true)
     {
-        var budget = available is { } a ? Math.Max(0, a - IndexReserve - streamBytes) : 128L << 20;
-        var serving = new IndexedFeedForward(core, _indexCached, _file, budget, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes));
+        // RAM THAT IS REALLY SPARE (IndexingWhen.WarmRoom): what is available over the reserve and the stream, and on a
+        // phone that swaps no more than half the swap free above what is kept free.
+        var phone = MemoryNow.Phone();
+        var budget = IndexingWhen.WarmRoom(available, phone.SwapFree, phone.SwapTotal, IndexReserve, streamBytes);
+
+        // STEP 2'S READ-AHEAD FROM THE SAME ROOM: two slots at least - one the layer computes from, one coming in - and up
+        // to four, from half of it; step 4 takes the rest.
+        var held = IndexedFeedForward.HeldBytes(core, _indexCoreStore, withDown);
+        var ahead = core.Coherent ? (int)Math.Clamp(budget / 2 / Math.Max(1, held), 0, IndexedFeedForward.MostAhead) : 0;
+        if (ahead < 2) ahead = 0;
+        var serving = new IndexedFeedForward(core, _indexCoreStore, _file, budget - ahead * held, Volatile.Read(ref _channels), Volatile.Read(ref _readBytes), withDown, ahead);
         _indexServing = serving;
         _model.Index = serving;
-        CircleLog.Info(Area, Invariant($"index: {core.Groups} thought groups a layer, lists of {core.ListNeurons} of {core.FeedForward} neurons; warm {serving.WarmPieces} pieces ({serving.WarmBytes / 1048576.0:F0} MB) in RAM, read in {serving.WarmElapsed.TotalMilliseconds:F0} ms; cached {_indexCached?.Count ?? 0} pieces on flash; the rest from the model's own file"));
+        var reading = serving.AheadSlots > 0
+            ? Invariant($"step 2 reads a pass's pieces ahead into {serving.AheadSlots} slots ({serving.AheadBytesHeld / 1048576.0:F0} MB) once its words' thoughts are found at the first layer")
+            : "step 2 reads a piece when a layer asks for it";
+        CircleLog.Info(Area, Invariant($"index: {Thoughts(core)}, lists of {core.ListNeurons} of {core.FeedForward} neurons; step 4 holds {serving.WarmPieces} pieces of whole thoughts in RAM ({serving.WarmBytes / 1048576.0:F0} MB), read in {serving.WarmElapsed.TotalMilliseconds:F0} ms; {reading}; {_indexCoreStore?.Count ?? 0} pieces in step 2, any other gathered by step 2 from step 1, the model's own file{(withDown ? string.Empty : "; each piece's gate and up alone, the layers bringing their own ffn_down")}; the layers' attention {(_indexMix is not null ? "tiled in step 2" : "read from step 1 in place")}"));
     }
 
-    // The index stops serving: the model computes every neuron again, and RAM holds none of the warm index.
+    // WHETHER AN INDEX'S LAYERS TAKE THEIR OWN FFN_DOWN, WHOLE, OVER ITS PIECES' ROUNDED COPY (CachedIndex.LayersTakeTheirOwnDown).
+    internal static bool TakesItsOwnDown(ThoughtIndex core) => CachedIndex.LayersTakeTheirOwnDown(core);
+
+    // The index stops serving: the model computes every neuron again, and RAM holds none of the warm index. What the turns
+    // used of it goes to flash first, for the night.
     private void StopServingIndex()
     {
+        if (_indexServing is { } serving && _indexUse is { } use) use.Add(serving.TakeUsage());
         _model.Index = null;
         _indexServing?.Dispose();
         _indexServing = null;
@@ -2029,9 +2858,6 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // Kept for the phone when the warm index fills the RAM the layers' stream leaves.
     private const long IndexReserve = 384L << 20;
-
-    // What the cached index may take on flash: the groups the most words fell in, until this is spent.
-    private const long IndexFlashBudget = 2L << 30;
 
     // THE DRAFTER, ARMED WHEN A STREAMED TRUNK IS ABOUT TO DECODE. By then the trunk's ring, state, head windows and buffers
     // are in RAM, so what the phone has left is what it has: asked when the layers opened, the P30 said 597 MB before the
@@ -2128,6 +2954,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private static long SurfaceBytes(HeadStore store, IReadOnlyList<HeadStore.Group> groups) =>
         groups.SelectMany(g => Enumerable.Range(g.FirstChunk, g.Chunks)).Sum(c => (long)store.Chunks[c].Bytes);
 
+    // WHETHER A STREAMED HEAD IS HELD IN RAM FOR THE TURN instead of re-streamed from flash on every pass. A plain turn
+    // reads the head once a token; an MTP head drafting reads it on every draft step and verify, so a streamed head is
+    // gigabytes of flash a turn (5.4 GB measured for 24 tokens at 2 drafts on the P30). Holding its surface pays only
+    // when a drafter is running AND it fits beside what the phone is owed; without a drafter, without room, or when
+    // memory cannot be read, it streams as before. The served rows are identical either way (HeadStoreTests), so no
+    // output test guards this decision - the policy lives here, named and testable, so it cannot silently revert to
+    // per-step flash reads while every reply still matches to the bit.
+    internal static bool HoldStreamedHeadInRam(bool drafting, long? availableBytes, long reserveBytes, long surfaceBytes) =>
+        drafting && availableBytes is { } available && available - reserveBytes >= surfaceBytes;
+
     // The drafter's recurrent layers three times over - its state, the checkpoint its drafts start from, its primed start.
     // Its keys and values are a few KB a position, and a conversation's are counted in the phone's share.
     private static long DrafterStateBytes(ModelConfig c)
@@ -2179,13 +3015,26 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     // layer streamed through a ring of two slots (the 27B: 6.2 GB of layers a pass). Measured on the P30 on 2026-11-09:
     // three layers held warm beside the 27B's ring, head surface and state bought it 3/64 of a pass and cost 308 MB, and
     // took the phone to 3 MB of free swap - so a streaming turn holds no warm layer until a device measures that it pays.
-    private static (long Warm, int Slots, long? Available) LayerRecipe(TileStore mix, TileStore ffn)
+    private static (long Warm, int Slots, long? Available) LayerRecipe(TileStore mix, TileStore? ffn)
     {
         var available = MemoryNow.AvailableBytes();
-        var total = mix.DataBytes + ffn.DataBytes;
+        var total = mix.DataBytes + (ffn?.DataBytes ?? 0);
         if (available is not { } room || total + AllWarmReserve <= room) return (long.MaxValue, 0, available);
         return (0, 2, available);
     }
+
+    // Megabytes a second, of bytes that took the time given; none where no time was taken.
+    private static double PerSecond(long bytes, TimeSpan time) => time.TotalSeconds > 0 ? bytes / 1048576.0 / time.TotalSeconds : 0;
+
+    // What an index's groups are, said: coherent thoughts, each a word's from the first layer to the last, or each layer's own.
+    private static string Thoughts(ThoughtIndex core) => core.Coherent
+        ? Invariant($"{core.Groups} coherent thoughts, a word's one thought found at the first layer and kept through every layer")
+        : Invariant($"{core.Groups} thought groups a layer");
+
+    // What served the index's pieces, in the owner's steps: step 4 in RAM, step 2 read ahead and read when asked, step 1
+    // through step 2, and the words that took their piece where the word before left it.
+    internal static string Served(IndexCounts counts) => Invariant(
+        $"{counts.Warm} from step 4 in RAM, {counts.Ahead} read ahead by step 2 (the layers waited {counts.Waited.TotalMilliseconds:F0} ms on it), {counts.Asked} read by step 2 when a layer asked{(counts.FromModel > 0 ? Invariant($" - {counts.FromModel} of them gathered from step 1, the model's own file, step 2 holding no piece for them") : string.Empty)}{(counts.Again > 0 ? Invariant($", {counts.Again} where the word before left them") : string.Empty)}; {counts.Bytes / 1048576.0:F0} MB read for them");
 
     // A call has used the feed-forward: the idle clock starts again, and where it streams every turn it goes now. Under the gate.
     private void UsedFfn()
@@ -2194,13 +3043,30 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         Volatile.Write(ref _ffnUsed, Stopwatch.GetTimestamp());
         if (_stream is { Slots: > 0 } streaming)
         {
+            // WHAT THE LOADS' TIME WENT TO, flash or the CPU: a layer read in place is read and then repacked into tiles.
             var (waited, read, reading) = streaming.TakeCounts();
-            CircleLog.Info(Area, Invariant($"layers: {read / 1048576.0:F0} MB read from flash in {reading.TotalMilliseconds:F0} ms ({(reading.TotalSeconds > 0 ? read / 1048576.0 / reading.TotalSeconds : 0):F0} MB/s); the pass waited {waited.TotalMilliseconds:F0} ms for them"));
+            var (fromFlash, flashing, repacking) = streaming.TakeParts();
+            var parts = repacking > TimeSpan.Zero
+                ? Invariant($": {fromFlash / 1048576.0:F0} MB of the model's own file read in {flashing.TotalMilliseconds:F0} ms ({PerSecond(fromFlash, flashing):F0} MB/s), repacked into tiles in {repacking.TotalMilliseconds:F0} ms")
+                : string.Empty;
+            CircleLog.Info(Area, Invariant($"layers: {read / 1048576.0:F0} MB read from flash in {reading.TotalMilliseconds:F0} ms ({PerSecond(read, reading):F0} MB/s){parts}; the pass waited {waited.TotalMilliseconds:F0} ms for them"));
+
+            // AND THE STREAM'S FIRST LOAD, ALONE - read before any pass computed beside it: what reading and repacking take
+            // with the CPU to themselves, against what the pass's loads took beside the products.
+            if (streaming.TakeFirstLoad() is { } first)
+            {
+                var alone = first.Repacking > TimeSpan.Zero
+                    ? Invariant($": {first.FromFlash / 1048576.0:F0} MB of the model's own file read in {first.Reading.TotalMilliseconds:F0} ms ({PerSecond(first.FromFlash, first.Reading):F0} MB/s), repacked into tiles in {first.Repacking.TotalMilliseconds:F0} ms ({PerSecond(first.Bytes, first.Repacking):F0} MB/s)")
+                    : string.Empty;
+                CircleLog.Info(Area, Invariant($"layers: the first alone, before a pass computed beside it: {first.Bytes / 1048576.0:F0} MB of tiles in {first.Whole.TotalMilliseconds:F0} ms ({PerSecond(first.Bytes, first.Whole):F0} MB/s){alone}"));
+            }
         }
         if (_indexServing is { } serving)
         {
-            var (warm, cached, cachedBytes, core, coreBytes) = serving.TakeCounts();
-            CircleLog.Info(Area, Invariant($"index: {warm} pieces from RAM, {cached} from the cached index ({cachedBytes / 1048576.0:F0} MB), {core} from the model's own file ({coreBytes / 1048576.0:F0} MB)"));
+            var counts = serving.TakeCounts();
+            if (counts.Warm + counts.Ahead + counts.Asked + counts.Again > 0)
+                CircleLog.Info(Area, Invariant($"index: pieces {Served(counts)}"));
+            _indexUse?.Add(serving.TakeUsage());   // what the person's turns used, kept for the night's revision
         }
         if (Volatile.Read(ref _ffnKeepTicks) == 0) LetFfnGo("it streams in every turn here");
     }
@@ -2226,8 +3092,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         CircleLog.Info(Area, Invariant($"feed-forward let go ({why}): RAM holds none of its {warm.Bytes / 1048576.0:F0} MB"));
     }
 
-    // The idle clock: an engine idle for the recipe's time lets its warm feed-forward go, and a fidelity run asked for
-    // in the control file is done - never while a call runs.
+    // The idle clock: an engine idle for the recipe's time lets its warm feed-forward go; a fidelity run asked for in the
+    // control file is done; and the index is worked on - a unit of its queue, or the night's revision - when the phone is
+    // idle (IndexingWhen). Never while a call runs.
     private void IdleCheck(object? state)
     {
         var request = StoreDirectoryOf(_options) is { } directory ? Path.Combine(directory, FfnFidelityFile) : null;
@@ -2235,18 +3102,45 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         var indexRequest = StoreDirectoryOf(_options) is { } folder ? Path.Combine(folder, IndexFile) : null;
         var index = indexRequest is not null && File.Exists(indexRequest);
         var idle = (_ffnWarm is not null || _stream is not null) && Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed) >= Volatile.Read(ref _ffnKeepTicks);
-        if (!fidelity && !idle && !index) return;
+
+        // THE INDEX'S WORK WAITS FOR AN IDLE PHONE: nobody asking and not for a little while, nothing saying the phone is in use, the phone
+        // neither hot nor low - and the stores' own start-up work done, and the rest after the last unit over.
+        var pace = IndexingPace.Wait;
+        if (Volatile.Read(ref _indexing) is not null && _storeTask is not { IsCompleted: false } && Stopwatch.GetTimestamp() >= Volatile.Read(ref _indexNotBefore))
+            pace = IndexingWhen.Pace(Volatile.Read(ref _wanted) > 0, Stopwatch.GetElapsedTime(Volatile.Read(ref _lastCall)), PowerNow(), InUseNow());
+        if (pace != IndexingPace.Wait && ShortOfMemoryNow(out _)) pace = IndexingPace.Wait;   // no unit begins on a phone short of memory
+        if (!fidelity && !idle && !index && pace == IndexingPace.Wait) return;
         if (!_gate.Wait(0)) return;
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
             if (index)
             {
+                // ASKED FOR BY NAME: the queue is run to its end now, with the screen on or off - a call, heat, a low
+                // battery or the phone coming off its charger still stops it, and the idle clock carries the queue on
+                // from there. "groups,percent" asks for that index; an empty file for the one in hand.
                 var parts = File.ReadAllText(indexRequest!).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 File.Delete(indexRequest!);
-                var groups = parts.Length > 0 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var g) ? Math.Clamp(g, 1, 64) : 8;
-                var percent = parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) ? Math.Clamp(p, 1, 100) : 15;
-                RunIndexJob(groups, percent);
+                int? groups = parts.Length > 0 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var g) ? Math.Clamp(g, 1, 64) : null;
+                int? percent = parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) ? Math.Clamp(p, 1, 100) : null;
+                // "groups,percent,coherent": a word's one thought for every layer (ThoughtIndex.Coherent); without the
+                // third field, each layer groups its words on its own - what is named is what is built.
+                var coherent = parts.Length > 2 && string.Equals(parts[2], "coherent", StringComparison.OrdinalIgnoreCase);
+                var inHand = Volatile.Read(ref _indexing);
+                var ff = _model.Config.FeedForward;
+                var another = inHand is null
+                    || (groups is { } wanted && wanted != inHand.Plan.Groups)
+                    || (percent is { } share && ThoughtIndex.ListOf(Math.Max(Kernels.Ptq1PairMatrix.TileRows, ff * share / 100), ff) != ThoughtIndex.ListOf(inHand.Plan.ListNeurons, ff))
+                    || coherent != inHand.Plan.Coherent;
+                if (another)
+                {
+                    // A SHARE ASKED FOR BY NAME IS BUILT AS ASKED, every neuron too; with none named, the climb's rule
+                    // stands - a brain that computes every neuron from its own file builds nothing.
+                    DropIndex("another index was asked for");
+                    OpenIndex(groups ?? inHand?.Plan.Groups ?? IndexGroups, percent, asked: percent is not null, coherent: coherent);
+                }
+                if (Volatile.Read(ref _indexing) is { Complete: false } named) RunIndexing(named, named: true);
+                else CircleLog.Info(Area, Volatile.Read(ref _indexing) is null ? "index: asked for, and none is built for this model here" : "index: asked for, and it is complete already");
                 return;
             }
             if (fidelity)
@@ -2257,6 +3151,19 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 File.Delete(request!);
                 if (percents.Length > 0) RunFidelity(percents);
                 return;
+            }
+            if (pace != IndexingPace.Wait && Volatile.Read(ref _indexing) is { } queue)
+            {
+                if (!queue.Complete)
+                {
+                    RunIndexing(queue, named: false);
+                    return;
+                }
+                if (_indexUse is { } use && IndexingWhen.ReviseDue(use.Since, use.LastRevised, DateTimeOffset.UtcNow, pace))
+                {
+                    ReviseIndex(queue, use);
+                    return;
+                }
             }
             var since = Stopwatch.GetTimestamp() - Volatile.Read(ref _ffnUsed);
             if (since >= Volatile.Read(ref _ffnKeepTicks)) LetFfnGo(Invariant($"idle {since / (double)Stopwatch.Frequency:F0} s"));

@@ -958,7 +958,10 @@ public sealed class DurableQuestionsTests : IDisposable
             var f = FailureClassifier.Classify(facts);
             Assert.Equal(FailureKind.NativeWorkerCrashed, f.Kind);
             Assert.True(f.CountsAgainstModel);
-            Assert.False(FailurePolicy.HoldsOff(f.Kind, f.Phase), "a crash is a strike, not a wait");
+
+            // COUNTED, AND THE NEXT LOAD WAITS: no model is refused any more (the owner, 2026-11-15), so a crash holds the
+            // next try off like any other setback - where it used to refuse the model on its second.
+            Assert.True(FailurePolicy.HoldsOff(f.Kind, f.Phase), "a crash must hold the next load off, not refuse the model");
         }
     }
 
@@ -981,11 +984,16 @@ public sealed class DurableQuestionsTests : IDisposable
     [InlineData(FailureKind.Unknown, WorkPhase.Load, true)]
     [InlineData(FailureKind.Unknown, WorkPhase.Warm, true)]
     [InlineData(FailureKind.OutOfMemory, WorkPhase.Load, true)]
+    [InlineData(FailureKind.NativeWorkerCrashed, WorkPhase.Load, true)]
+    [InlineData(FailureKind.NativeWorkerCrashed, WorkPhase.Warm, true)]
+    [InlineData(FailureKind.NativeWorkerCrashed, WorkPhase.Prefill, true)]
+    [InlineData(FailureKind.NativeWorkerCrashed, WorkPhase.Decode, true)]
+    [InlineData(FailureKind.NativeWorkerCrashed, WorkPhase.Idle, false)]
     [InlineData(FailureKind.Unknown, WorkPhase.Decode, false)]
     [InlineData(FailureKind.OutOfMemory, WorkPhase.Idle, false)]
     [InlineData(FailureKind.AndroidStopped, WorkPhase.Load, false)]
     [InlineData(FailureKind.FaultInjected, WorkPhase.Load, false)]
-    public void Only_a_load_stopped_unexplained_or_for_memory_holds_the_next_one_off(FailureKind kind, WorkPhase phase, bool holds)
+    public void A_load_stopped_unexplained_or_for_memory_and_a_crash_while_working_hold_the_next_one_off(FailureKind kind, WorkPhase phase, bool holds)
         => Assert.Equal(holds, FailurePolicy.HoldsOff(kind, phase));
 
     // ── readiness ────────────────────────────────────────────────────────────

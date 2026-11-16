@@ -23,6 +23,13 @@ public static class ReadinessSentences
     /// <summary>No model yet.</summary>
     public const string NoModel = "No brain on this phone yet - finish setting it up.";
 
+    /// <summary>Once the brain's index is complete: what it keeps close follows what the person asks of it.</summary>
+    public const string Learning = "The more you use it the more it learns what the user needs.";
+
+    /// <summary>While the brain's index is being built in the phone's idle time: how far it has got, as a share of 100.</summary>
+    public static string Indexing(int percent) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Until indexing is complete AI is functioning at {System.Math.Clamp(percent, 0, 100)}%.");
+
     /// <summary>The sentence for a component's state.</summary>
     public static string For(ComponentState state) => state.Phase switch
     {

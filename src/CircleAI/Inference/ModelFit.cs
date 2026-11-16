@@ -256,6 +256,25 @@ public static class ModelFit
         ArgumentNullException.ThrowIfNull(e);
         ArgumentNullException.ThrowIfNull(probe);
 
+        // A BRAIN READ FROM FLASH IS HELD BY THE FLASH, and RAM keeps warm what it has room for (ReadFromFlash).
+        if (ReadFromFlash(e, probe)) return true;
+        return CouldKeepInRam(e, probe);
+    }
+
+    /// <summary>
+    /// Whether this device could ever keep the whole of this model in RAM, whatever happens to be free now: its weights
+    /// within the most of the device's memory one model may claim (<see cref="ResidentCeilingGb"/>).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CouldEverHold"/>'s rule for a model that is kept in RAM, and asked on its own of a brain read from
+    /// flash: one this says yes to can be all warm and answers as fast as it ever will; one it says no to is computed
+    /// from flash and waits on its index (BrainInWaiting).
+    /// </remarks>
+    public static bool CouldKeepInRam(ModelEntry e, DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(probe);
+
         // RamTotalBytes is supplied by a platform head and falls back to the
         // available figure on desktop, where the two are close. Zero means the
         // device could not be measured, and refusing everything on that basis is
@@ -358,6 +377,89 @@ public static class ModelFit
     public static bool Fits(ModelEntry e, DeviceProbe probe, bool? mmapAllowed = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
+        if (ReadFromFlash(e, probe)) return FitsStorage(e, probe.StorageFreeGb);
         return Fits(e, probe.UsableRamGb, probe.StorageFreeGb, mmapAllowed);
+    }
+
+    /// <summary>
+    /// The most the pieces of a brain's core index take, for each byte of its file - what is asked of the flash before
+    /// the file is here to be measured.
+    /// </summary>
+    /// <remarks>
+    /// THE ENGINE'S OWN SUM, AT ITS LARGEST (IndexingBudget.CompleteCore, with the engine's eight groups a layer and
+    /// lists of fifteen in a hundred neurons). The 27B's every piece in 1 MB reads is 7,168 MB - the P30 logged it on
+    /// 2026-11-13, "the core's pieces may take 2687 MB of the 7168 MB all of them are" - which is 1.264 of its 5.95 GB
+    /// file. The family's smaller models take less of their file, because the word table is more of it: the 4B 1.131,
+    /// the 2B 0.938 (the same sum, from the figures in their files on this PC). The 9B's figures are not on this PC, and
+    /// the margin above the 27B's is for it. So this asks a little more than an index takes and never less; once the
+    /// file is here the engine counts every piece, and that count governs. It is said as "needs" only where a fetch is
+    /// decided on it.
+    /// </remarks>
+    public const double IndexToFile = 1.36;
+
+    /// <summary>
+    /// Whether this device answers with this brain through its index: its engine reads the brain from flash
+    /// (<see cref="ReadFromFlash"/>) and its RAM cannot keep every layer warm (<see cref="CouldKeepInRam"/>).
+    /// </summary>
+    public static bool AnswersThroughItsIndex(ModelEntry e, DeviceProbe probe) => ReadFromFlash(e, probe) && !CouldKeepInRam(e, probe);
+
+    /// <summary>
+    /// The flash a brain's index takes, before its file is here: every piece of step 2 (<see cref="IndexToFile"/>), room
+    /// for step 2's tiled layers (ASSUMED: a quarter of the pieces, at most IndexingBudget.MostLayers - the room the cached
+    /// portion was asked for before it was taken out, so which brains are fetched does not change with it), and what is
+    /// kept free for the phone. Once the file is here the engine counts what the layers really take (IndexingBudget.For).
+    /// </summary>
+    public static long IndexRoomBytes(ModelEntry e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        var core = (long)(Math.Max(0, e.TotalBytes) * IndexToFile);
+        return core + Math.Min(Managed.Store.IndexingBudget.MostLayers, core / 4) + Managed.Store.IndexingBudget.Reserve;
+    }
+
+    /// <summary>
+    /// The flash this device needs free to carry this brain, in GB: its file, and - where it answers through its index
+    /// (<see cref="AnswersThroughItsIndex"/>) - the room for that index, complete (<see cref="IndexRoomBytes"/>).
+    /// </summary>
+    /// <remarks>
+    /// "CORE INDEX, ON FLASH: COMPLETE AND LASTING" (the indexed mind's design). A brain whose index has no room to be
+    /// complete is one the device's flash cannot carry: on the P30 on 2026-11-13 the 27B landed with room for 2.7 GB of
+    /// its 7.2 GB of pieces. The device takes the step below it and says so (ModelChoice.NextStep).
+    /// </remarks>
+    public static double FlashNeededGb(ModelEntry e, DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(probe);
+        return AnswersThroughItsIndex(e, probe) ? e.MinStorageGb + IndexRoomBytes(e) / DeviceProbe.BytesPerGb : e.MinStorageGb;
+    }
+
+    /// <summary>
+    /// Whether this device's engine computes this brain from flash as it goes: every layer read from the model's own
+    /// file as it is needed, no copy of them kept in RAM.
+    /// </summary>
+    /// <remarks>
+    /// "RAM IS THE TURBO NOT THE ENGINE" (the owner's rule for the indexed mind), AND EVERY FIT QUESTION ASKS IT HERE.
+    /// Such a brain is not held to its size in RAM: the engine keeps warm the layers RAM has room for and streams the
+    /// rest (on the P30 on 2026-11-09 the 27B ran "0 of 64 layers warm, 64 streamed through 2 slots of 103 MB" with
+    /// 917 MB available). What holds it is the flash, which the storage rules go on asking.
+    /// <para>
+    /// THE BUG IT ANSWERS (the owner, 2026-11-13: "if the model selector is built right then the best LLM will be
+    /// selected - if not then you have a bug"). That P30 held the 2B and the 27B and answered with the 2B: the 27B
+    /// declares 7.5 GB against a 2.37 GB ceiling, so no pick ever looked at it, and only a test's pin could load it.
+    /// </para>
+    /// <para>
+    /// TWO HALVES, EACH WITH ITS OWNER. The device's: its engine computes from flash at all
+    /// (<see cref="DeviceProbe.BrainsReadFromFlash"/>, which a head sets from the engine). The row's: it is a brain of
+    /// the C# engine in the packing that engine reads that way (ManagedChatGenerator.ReadsFromFlash). Anything else -
+    /// a PQ2_0 file, an MNN or llama.cpp brain, any brain on a device that loads it whole - is kept in RAM and is
+    /// held to its size as before. And where the prediction is wrong, the evidence still outranks it: a brain this
+    /// device was killed by is refused (CrashVerdict) whatever this says.
+    /// </para>
+    /// </remarks>
+    public static bool ReadFromFlash(ModelEntry e, DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(probe);
+        return probe.BrainsReadFromFlash && e.Engine == ModelEngine.Managed
+            && Managed.ManagedChatGenerator.ReadsFromFlash(e.Architecture, e.Quantization);
     }
 }

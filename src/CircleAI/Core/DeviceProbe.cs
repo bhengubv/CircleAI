@@ -207,6 +207,26 @@ public sealed record DeviceProbe(
     /// <summary>Total device storage in catalogue units (10^9). <c>0</c> = unknown.</summary>
     public double StorageTotalGb => StorageTotalBytes / BytesPerGb;
 
+    /// <summary>
+    /// Whether this device's own engine computes a brain from flash as it goes - every layer read from the model's file
+    /// as it is needed, no copy of them kept in RAM - where it reads the brain's packing that way. False where a brain
+    /// is loaded into RAM whole, and wherever no head has said.
+    /// </summary>
+    /// <remarks>
+    /// "RAM IS THE TURBO NOT THE ENGINE" (the owner's rule for the indexed mind). A fit rule that holds such a brain to
+    /// its size in RAM refuses what the device runs: on the P30 on 2026-11-13 the 27B sat in the store, read from flash
+    /// with 917 MB of memory available four days before, and the pick was the 2B because 7.5 GB does not fit 3.6 GB.
+    /// Which brains are read that way is the engine's to say (<c>ModelFit.ReadFromFlash</c>); this is the device's half.
+    /// </remarks>
+    public bool BrainsReadFromFlash { get; init; }
+
+    /// <summary>
+    /// Optional platform hook for <see cref="BrainsReadFromFlash"/>, for the same reason as
+    /// <see cref="PlatformMemoryProbe"/>: Core cannot know it. A head whose engine computes from flash installs it
+    /// beside the memory probe; left <c>null</c>, every <see cref="Snapshot"/> says no.
+    /// </summary>
+    public static Func<bool>? PlatformFlashReadProbe { get; set; }
+
     /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit; StorageTotalBytes = the whole drive, for the share of the device models may claim.</summary>
     public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null, long? StorageTotalBytes = null);
 
@@ -405,6 +425,10 @@ public sealed record DeviceProbe(
         // when no host wires the override.
         var thermal = thermalOverride ?? ThermalClass.Active;
 
+        var readsFromFlash = false;
+        try { readsFromFlash = PlatformFlashReadProbe?.Invoke() ?? false; }
+        catch { /* a head that cannot say has not said yes */ }
+
         return new DeviceProbe(
             RamAvailableBytes: ram,
             StorageFreeBytes:  storage,
@@ -419,6 +443,7 @@ public sealed record DeviceProbe(
             // "unknown" and falls back on rather than guessing from free space.
             StorageTotalBytes = storageTotalBytesOverride is > 0 ? storageTotalBytesOverride.Value : 0,
             RamSource = ramSource,
+            BrainsReadFromFlash = readsFromFlash,
         };
     }
 

@@ -363,14 +363,14 @@ public sealed class TheBrainThatWasWorkingTests : IDisposable
         Assert.Equal($"{Eyes} stopped while reading its turn as the Vision specialist (TimedOut, killed-by-watchdog); "
                      + "not held against the model", said[^1]);
 
-        // A crash while answering is a strike against the brain that was answering, said as one.
+        // A crash while answering is counted against the brain that was answering, said as one - and it is tried again.
         _cat.Upsert(new ModelEntry(Eyes, "1.0", "PTQ1_0")
         {
             Modality = ModelModality.Chat, Engine = ModelEngine.Managed, TotalBytes = 430_000_000,
             MinRamGb = 1, MinStorageGb = 1, QualityRank = 10, Capabilities = ["Default"],
         });
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb(Eyes), said.Add, doing: "answering as the Vision specialist");
-        Assert.Equal($"{Eyes} stopped while answering as the Vision specialist (1 of 2); trying it again before refusing it", said[^1]);
+        Assert.Equal($"{Eyes} stopped while answering as the Vision specialist, 1 time in a row: its files are checked before it is tried again, and each try waits longer than the last", said[^1]);
 
         // A load's words are as they were.
         CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb(Main), said.Add, killedByTheSystem: true);

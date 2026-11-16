@@ -147,14 +147,14 @@ public sealed record Failure(
 public static class FailurePolicy
 {
     /// <summary>
-    /// Whether a failure of this kind, in this phase, is a strike against the model.
+    /// Whether a failure of this kind, in this phase, is counted against the model: a death in a row
+    /// (CrashVerdict.Record), which paces its next tries and has its files checked before the next load. Never a refusal.
     /// </summary>
     /// <remarks>
-    /// ONLY A CRASH STRIKES: the native worker dying while it held the model (loading,
+    /// ONLY A CRASH IS COUNTED: the native worker dying while it held the model (loading,
     /// warming or generating) - that is the model or its runtime breaking. Everything
     /// else - Android stopping the service, a time limit, memory, damaged files, a
-    /// missing permission, our own deadlines - is about the moment or the device, and
-    /// refusing the model for it would refuse the only brain a phone can run.
+    /// missing permission, our own deadlines - is about the moment or the device.
     /// <para>
     /// A DEATH NOTHING CAN EXPLAIN NO LONGER STRIKES. It did, inside a load or warm-up,
     /// to keep the two-strike protection on a phone that cannot say why a process died
@@ -175,13 +175,24 @@ public static class FailurePolicy
         _ => false,
     };
 
-    /// <summary>Whether a load that ended this way makes the next load of that model wait (<see cref="HoldOff"/>).</summary>
+    /// <summary>Whether work that ended this way makes the next load of that model wait (<see cref="HoldOff"/>).</summary>
     /// <remarks>
-    /// Memory, and deaths nothing can explain - which on the P30 are memory too. Not an
-    /// update or a reboot: those were one moment, and the next load is fine.
+    /// Memory, and deaths nothing can explain - which on the P30 are memory too - in a load. Not an update or a reboot:
+    /// those were one moment, and the next load is fine.
+    /// <para>
+    /// AND A NATIVE CRASH WHILE THE MODEL WORKED, WHICH USED TO REFUSE IT INSTEAD (the owner, 2026-11-15: "no models
+    /// should be blocked - if it fails then check why it failed. clean up and try again"). Two in a row refused the
+    /// model here for good. Now it is tried again like any setback - its files checked first (the supervisor), each try
+    /// waiting longer than the last - so a model that crashes every time costs the phone a load an hour at most, and
+    /// one that crashed for a reason that has gone is back.
+    /// </para>
     /// </remarks>
-    public static bool HoldsOff(FailureKind kind, WorkPhase phase) =>
-        (phase is WorkPhase.Load or WorkPhase.Warm) && (kind is FailureKind.Unknown or FailureKind.OutOfMemory);
+    public static bool HoldsOff(FailureKind kind, WorkPhase phase) => kind switch
+    {
+        FailureKind.Unknown or FailureKind.OutOfMemory => phase is WorkPhase.Load or WorkPhase.Warm,
+        FailureKind.NativeWorkerCrashed => phase is WorkPhase.Load or WorkPhase.Warm or WorkPhase.Prefill or WorkPhase.Decode,
+        _ => false,
+    };
 
     /// <summary>How long the next load of a model waits after loads that stopped this way.</summary>
     /// <param name="stoppedLoadsInARow">Loads of the model that stopped in a row; 0 is none.</param>
@@ -209,7 +220,7 @@ public static class FailurePolicy
         FailureKind.AndroidStopped      => true,
         FailureKind.AndroidTimeout      => true,
         FailureKind.OutOfMemory         => true,
-        FailureKind.NativeWorkerCrashed => true,   // bounded by the attempt count, and by the strike rule
+        FailureKind.NativeWorkerCrashed => true,   // its files checked first, and paced by the hold-off (HoldOff)
         FailureKind.Unknown             => true,
         FailureKind.ModelFilesDamaged   => true,   // after the repair
         FailureKind.FaultInjected       => true,   // what the fault is there to test

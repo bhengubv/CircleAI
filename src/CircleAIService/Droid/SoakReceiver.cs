@@ -131,6 +131,10 @@ public sealed class SoakReceiver : BroadcastReceiver
                 //   ... --es do engine [--es engine Managed|LlamaCpp] [--es text "Hello! Who are you?"]
                 //       [--ei max 48] [--es model Ternary-Bonsai-2-2B] [--es dir <models folder>]
                 //       [--es image <picture, in the sideload folder or a full path>]
+                //       [--ei drafts 2] [--ei seed 7]
+                // "drafts" has a C# brain's own MTP head draft that many tokens ahead per pass of its trunk (a file with
+                // the head: PQ2_0-MTP), and "seed" samples every turn with one seed, so the same question asked with
+                // drafting on and off can be held to the same reply word for word. Neither outlives the check.
                 var engineName = intent?.GetStringExtra("engine");
                 CircleAI.Core.ModelEngine? engine = Enum.TryParse<CircleAI.Core.ModelEngine>(engineName ?? "Managed", ignoreCase: true, out var parsed)
                     ? parsed : null;
@@ -139,7 +143,9 @@ public sealed class SoakReceiver : BroadcastReceiver
                 var dir = intent?.GetStringExtra("dir");
                 var max = intent?.GetIntExtra("max", 48) ?? 48;
                 var picture = intent?.GetStringExtra("image");
-                System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max, picture));
+                var drafts = Math.Clamp(intent?.GetIntExtra("drafts", 0) ?? 0, 0, 8);
+                int? seed = intent is not null && intent.HasExtra("seed") ? intent.GetIntExtra("seed", 0) : null;
+                System.Threading.Tasks.Task.Run(() => AskThroughTheWorkerAsync(model, dir, engine, question, max, picture, drafts, seed));
                 break;
             case "talk":
                 // A RECORDED QUESTION THROUGH THE WHOLE SPOKEN TURN: the greeting, the gate, the
@@ -243,11 +249,12 @@ public sealed class SoakReceiver : BroadcastReceiver
                 WriteStoreControl("ffn-fidelity.txt", intent?.GetStringExtra("percents") is { Length: > 0 } percents ? percents : "75,50");
                 break;
             case "index":
-                // THE INDEXED MIND, BUILT ON THE PHONE when the brain is next idle: Watch over a text, the core index on
-                // flash, the cached index, then served with its warm part in RAM; the "index:" log lines say each step.
+                // THE INDEXED MIND, BUILT ON THE PHONE when the brain is next idle: Watch over a text, the core index (step
+                // 3), step 2's pieces and tiled layers on flash, then served with step 4 in RAM; the "index:" log lines say each step.
                 //   ... --es do index --ei groups 8 --ei percent 15
+                // With --ez coherent true a word's thought is found at the first layer and kept through every layer.
                 WriteStoreControl("index.txt", string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                    $"{Math.Clamp(intent?.GetIntExtra("groups", 8) ?? 8, 1, 64)},{Math.Clamp(intent?.GetIntExtra("percent", 15) ?? 15, 1, 100)}"));
+                    $"{Math.Clamp(intent?.GetIntExtra("groups", 8) ?? 8, 1, 64)},{Math.Clamp(intent?.GetIntExtra("percent", 15) ?? 15, 1, 100)}{(intent?.GetBooleanExtra("coherent", false) == true ? ",coherent" : "")}"));
                 break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
@@ -287,7 +294,7 @@ public sealed class SoakReceiver : BroadcastReceiver
     /// Loads a model in the inference process with an engine, asks it one question there and lets
     /// it go: the answer, its timing and the load's milliseconds. Set by the service's startup.
     /// </summary>
-    public static Func<string, string, CircleAI.Core.ModelEngine?, string, int, byte[]?,
+    public static Func<string, string, CircleAI.Core.ModelEngine?, string, int, byte[]?, int, int?,
         System.Threading.Tasks.Task<(string Text, CircleAI.Assistant.Requests.TurnTiming? Timing, long LoadMs)>>? AskOnce { get; set; }
 
     /// <summary>Submits one picture and its question as the adb caller, the way the link does. Set by the service's startup.</summary>
@@ -443,10 +450,13 @@ public sealed class SoakReceiver : BroadcastReceiver
     }
 
     private static async System.Threading.Tasks.Task AskThroughTheWorkerAsync(
-        string model, string? dir, CircleAI.Core.ModelEngine? engine, string question, int maxTokens, string? picture = null)
+        string model, string? dir, CircleAI.Core.ModelEngine? engine, string question, int maxTokens, string? picture = null,
+        int drafts = 0, int? seed = null)
     {
         const string area = "Engine";
-        var name = engine?.ToString() ?? "the row's engine";
+        var name = (engine?.ToString() ?? "the row's engine")
+            + (drafts > 0 ? $", its MTP head drafting {drafts} ahead" : string.Empty)
+            + (seed is { } s ? $", seed {s}" : string.Empty);
         try
         {
             if (AskOnce is not { } ask)
@@ -476,7 +486,7 @@ public sealed class SoakReceiver : BroadcastReceiver
 
             CircleAI.Core.Logging.CircleLog.Info(area, $"engine check ({name}): {model} from {dir}"
                 + (image is null ? string.Empty : $", with a {image.Length / 1024} kB picture"));
-            var (text, timing, loadMs) = await ask(model, dir, engine, question, maxTokens, image).ConfigureAwait(false);
+            var (text, timing, loadMs) = await ask(model, dir, engine, question, maxTokens, image, drafts, seed).ConfigureAwait(false);
             CircleAI.Core.Logging.CircleLog.Info(area, timing is null
                 ? $"engine check ({name}): loaded in {loadMs} ms, no timing came back: {text}"
                 : $"engine check ({name}): loaded in {loadMs} ms; {timing.PromptTokens} prompt tokens in {timing.PrefillMs} ms, "
