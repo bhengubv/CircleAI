@@ -247,6 +247,12 @@ public sealed class IndexedMindAskTests
             var x = new float[SyntheticQwen35.Vocabulary];
             var y = new float[SyntheticQwen35.Vocabulary];
             var same = 0;
+            // The stream prefetches its first window in the constructor, and that background read adds its bytes to the
+            // counter whenever it lands - which can be either side of the reset below. Join it first (reading chunk 0
+            // finishes the in-flight read) so its page is counted and then zeroed; otherwise, under parallel load the
+            // read lands after the reset and its bytes are charged to the first word, whose scoring then reads the whole
+            // surface. Seen as a flaky "word 5: read == SurfaceBytes" (token 5 is the first word) only under suite load.
+            stream.Chunk(0, out _, out _, out _);
             stream.TakeCounts();
             foreach (var token in Asked)
             {
