@@ -880,12 +880,21 @@ public static class WakeTurn
                 pushed = ask.Text;
             }
 
-            // A HOLDING LINE, ONCE, when the brain is still loading and nothing has been
-            // said - the same courtesy ColdTurn gave, from the record's own state.
-            if (!held && pushed.Length == 0 && waiting.Elapsed > TimeSpan.FromSeconds(4)
-                && ask.State is CircleAI.Assistant.Requests.AskState.WaitingForModel)
+            // A HOLDING LINE, ONCE, when nothing has been said and the wait is on - the same courtesy
+            // ColdTurn gives (warm ? Thinking : NotUpYet), from the record's own state. THE WARM CASE
+            // IS THE ONE THAT PLAYS ON AN ORDINARY TURN and the queue path never had it: the model is
+            // up and prefilling (the P30's 9B reads the prompt ~9 s before the first word), which is
+            // AssistantPersona.Thinking ("Let me think."), not the cold "still coming up" line. Only
+            // WaitingForModel was covered here, so a warm turn said nothing for the whole prefill - the
+            // same drift ColdTurn was already past. Warmed to PCM (WarmAsync) so it plays at once; it goes
+            // out when the queue's poll next wakes this loop with nothing said yet - measured on the P30 at
+            // ~0.8 s into a warm turn, so the 2 s poll above, not this grace, sets the floor on first sound
+            // (~2.5 s on the 9B). A shortcut that answers first is never led; this grace is only a floor under that.
+            if (!held && pushed.Length == 0 && !ask.IsFinal && waiting.Elapsed > TimeSpan.FromSeconds(0.1))
             {
-                mouth.Push(AssistantPersona.NotUpYet + "\n");
+                mouth.Push((ask.State is CircleAI.Assistant.Requests.AskState.WaitingForModel
+                    ? AssistantPersona.NotUpYet
+                    : AssistantPersona.Thinking) + "\n");
                 held = true;
             }
 
@@ -956,6 +965,13 @@ public static class WakeTurn
     // The other ways of saying it, rendered with it: the same word on every wake is a machine.
     private static readonly List<byte[]> OtherGreetings = [];
     private static int _greeted;
+
+    // THE HOLDING LINES, RENDERED ONCE IN THIS VERY VOICE (first-beat). The queue path plays one the
+    // instant it has the question, rather than synthesising two words while the person waits - the live
+    // render was most of the first sound. Warmed here, not taken from AckBank, for the same reason the
+    // greeting is: AckBank's other voice would hold in a different one from the answer. Null until warmed.
+    private static byte[]? _thinking;   // "Let me think." - the brain is up and prefilling
+    private static byte[]? _notUpYet;   // "My brain is still coming up." - it is still loading
 
     /// <summary>Whether the voice has been opened and the greeting rendered (Step 4: the voice primed).</summary>
     public static bool GreetingWarmed => _greeting is { Length: > 0 };
@@ -1028,6 +1044,13 @@ public static class WakeTurn
                 if (other.Length > 0) lock (OtherGreetings) OtherGreetings.Add(other);
             }
             Log.Info(Tag, $"greeting warmed in {clock.ElapsedMilliseconds} ms - a wake will not wait for the voice to load");
+
+            // THE FIRST-BEAT LINES, IN THE SAME VOICE: the queue path plays one the moment it has the
+            // question instead of rendering it live (RenderAsync reads these back). Never fatal.
+            var think = await speech.SpeakAsync(AssistantPersona.Thinking, null, ct).ConfigureAwait(false);
+            if (think.Length > 0) _thinking = think;
+            var notUp = await speech.SpeakAsync(AssistantPersona.NotUpYet, null, ct).ConfigureAwait(false);
+            if (notUp.Length > 0) _notUpYet = notUp;
 
             await RehearseAsync(ct).ConfigureAwait(false);
         }
@@ -1115,6 +1138,12 @@ public static class WakeTurn
         var speech = Speech;
         var words = PlainReply.ForTheEar(piece);
         if (speech is null || string.IsNullOrWhiteSpace(words)) return null;
+
+        // A HOLDING LINE IS PLAYED FROM ITS WARMED COPY, NOT SYNTHESISED NOW (first-beat): its two words
+        // are a fixed phrase whose live render was most of the first sound, and the warmed copy is this
+        // same voice (WarmAsync). Everything else is said as it is written.
+        if (_thinking is { Length: > 0 } && words == PlainReply.ForTheEar(AssistantPersona.Thinking)) { turn.FirstPiece(words.Length); return _thinking; }
+        if (_notUpYet is { Length: > 0 } && words == PlainReply.ForTheEar(AssistantPersona.NotUpYet)) { turn.FirstPiece(words.Length); return _notUpYet; }
 
         turn.FirstPiece(words.Length);
         var pcm = await speech.SpeakAsync(words, null, ct).ConfigureAwait(false);
