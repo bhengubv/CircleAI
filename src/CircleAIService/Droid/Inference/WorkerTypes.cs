@@ -22,11 +22,15 @@ public sealed record WorkerHello(int Pid, long StartedAtUnixMs, string? LoadedMo
 /// The brain is loaded so that its index gets built, not to answer (BrainInWaiting): it is built and not warmed -
 /// no first prefill, which for a model read from flash is minutes of reading that nobody is waiting for.
 /// </param>
-/// <param name="Drafts">Tokens a C# brain's own MTP head drafts ahead per pass - a developer's check only; 0 decodes plainly.</param>
+/// <param name="Drafts">
+/// Tokens a C# brain's own MTP head drafts ahead per pass - a developer's check only (SoakReceiver "engine" --ei drafts):
+/// null, every normal load, leaves drafting to the host (BrainFactory asks for it where the trunk streams); a value - 0,
+/// to measure plain decoding, included - is the check's exact count and overrides the host.
+/// </param>
 /// <param name="Seed">The seed every turn samples with - a developer's check only; null draws a new one each turn.</param>
 public sealed record WorkerLoadRequest(string ModelId, string ModelDirectory, bool SkipLoadHash, CircleAI.Core.ModelEngine? Engine = null,
                                        CircleAI.Core.KvCompressionMode? KvMode = null, double ContextShare = 1.0, bool ForItsIndex = false,
-                                       int Drafts = 0, int? Seed = null);
+                                       int? Drafts = null, int? Seed = null);
 
 /// <summary>The worker process died: when, and what it was doing.</summary>
 /// <param name="ModelId">The brain it was told to load - the main slot's.</param>

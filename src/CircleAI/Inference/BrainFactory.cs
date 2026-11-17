@@ -126,6 +126,9 @@ public sealed class BrainFactory : IBrainFactory
                 Generation = entry?.Generation,
                 Thinking = entry?.Generation?.EnableThinking ?? false,
                 ThinkingBudget = tuning.ThinkingBudget ?? 0,
+                // DRAFT WHERE THE TRUNK STREAMS, AND NOWHERE ELSE. This is the host asking for drafting (OPEN-GAPS C7),
+                // on the one evidence that it pays: a brain read from flash. A developer's DraftsForTest still overrides.
+                Drafts = StreamsFromFlash(request, entry) ? StreamedTrunkDrafts : 0,
             });
         }
 
@@ -171,6 +174,52 @@ public sealed class BrainFactory : IBrainFactory
     // both turn it down, and neither may undo the other; fewer bits is the larger mode.
     private static KvCompressionMode? Leaner(KvCompressionMode? a, KvCompressionMode? b) =>
         a is null ? b : b is null ? a : (KvCompressionMode)Math.Max((int)a.Value, (int)b.Value);
+
+    // DRAFTING PAYS ONLY WHERE THE TRUNK STREAMS, so the host asks for it exactly there and not in RAM, where a pass is
+    // cheap and the check loses (ManagedGeneratorOptions.Drafts, OPEN-GAPS C7). When a brain is read from flash every pass
+    // over the weights is the cost of a word, so the MTP head's drafts - checked in that one pass - come nearly free, and
+    // more of them per pass means fewer passes: the win grows with depth until the verify batch no longer fits.
+    // A DEPTH SWEEP on the P30 (2026-11-17, the 9B read from flash, lossless, its own sibling PQ2_0-MTP head, no second
+    // model, prose): plain 0.15 tokens a second, two 0.26 (57% of drafts kept), three 0.39 (67%), four 0.43 (50%). Four is
+    // barely ahead of three and fragile: the five-wide verify batch lands on a fresh phone only because the low-memory
+    // killer evicts other apps for it, and when memory cannot be freed - run straight after two and three - it is the
+    // inference process that is killed and the turn never finishes. Three gives nine tenths of four's speed without
+    // thrashing a 3 GB phone, so three is the depth.
+    private const int StreamedTrunkDrafts = 3;
+
+    // Whether this device will read this brain from flash - ModelFit.ReadFromFlash's two halves, asked here without a
+    // probe because this path has none: the device's engine computes brains from flash (a head installs the hook; null
+    // off the phone and in the inference server), and this is a C# brain in the packing it streams (PTQ1_0). The row says
+    // its packing where there is one; the inference-server and worker paths carry no row, so the file's own architecture
+    // and first ternary tensor answer, exactly as EngineOf reads them.
+    private static bool StreamsFromFlash(BrainRequest request, ModelEntry? entry)
+    {
+        if (DeviceProbe.PlatformFlashReadProbe?.Invoke() != true) return false;
+        var (architecture, quantization) = entry is not null
+            ? (entry.Architecture, entry.Quantization)
+            : ArchitectureAndPacking(request.ModelPath);
+        return Managed.ManagedChatGenerator.ReadsFromFlash(architecture, quantization);
+    }
+
+    // A GGUF's architecture and the packing of its first ternary tensor, as EngineOf reads them; (null, null) for a file
+    // that is not a GGUF or will not open - which StreamsFromFlash reads as "not streamed", leaving drafting off.
+    private static (string? Architecture, string? Quantization) ArchitectureAndPacking(string modelPath)
+    {
+        if (!modelPath.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)) return (null, null);
+        try
+        {
+            using var file = Managed.Gguf.GgufFile.Open(modelPath);
+            var architecture = file.TryGetValue("general.architecture", out var arch) ? arch.AsString() : null;
+            foreach (var tensor in file.Tensors)
+                if (tensor.Type is Managed.Gguf.GgmlType.PTQ1_0 or Managed.Gguf.GgmlType.PQ2_0)
+                    return (architecture, tensor.Type.ToString());
+            return (architecture, null);
+        }
+        catch (Exception)
+        {
+            return (null, null);
+        }
+    }
 
     /// <summary>The engine a model file needs, read from the file when no row says.</summary>
     /// <remarks>

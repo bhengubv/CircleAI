@@ -26,12 +26,13 @@ namespace CircleAI.Assistant.Requests;
 /// <param name="ContextShare">The share of the context asked for; 1 is all of it.</param>
 /// <param name="ForItsIndex">The brain is loaded so that its index gets built, not to answer (BrainInWaiting).</param>
 /// <param name="Drafts">
-/// Tokens a C# brain's own MTP head drafts ahead per pass of its trunk; 0, every load but a developer's check, decodes
-/// plainly (ManagedChatGenerator.DraftsForTest).
+/// Tokens a C# brain's own MTP head drafts ahead per pass of its trunk; null, every normal load, leaves drafting to the
+/// host (BrainFactory asks for it where the trunk streams). A value - 0, to measure plain decoding, included - is a
+/// developer's check and crosses as the count it is (ManagedChatGenerator.DraftsForTest).
 /// </param>
 /// <param name="Seed">The seed every turn of the brain samples with; null draws a new one each turn (ManagedChatGenerator.SeedForTest).</param>
 public readonly record struct WorkerLoadAsk(string? Model, string? Directory, bool SkipHash, CircleAI.Core.ModelEngine? Engine,
-    CircleAI.Core.KvCompressionMode? KvMode, double ContextShare, bool ForItsIndex, int Drafts = 0, int? Seed = null);
+    CircleAI.Core.KvCompressionMode? KvMode, double ContextShare, bool ForItsIndex, int? Drafts = null, int? Seed = null);
 
 /// <summary>Keys and encoders for the service-to-worker protocol.</summary>
 public static class WorkerWire
@@ -91,7 +92,10 @@ public static class WorkerWire
         if (ask.KvMode is { } kv) map[KvMode] = kv.ToString();
         if (ask.ContextShare is > 0 and < 1) map[ContextShare] = ask.ContextShare.ToString("R", CultureInfo.InvariantCulture);
         if (ask.ForItsIndex) map[ForIndex] = "1";
-        if (ask.Drafts > 0) map[Drafts] = ask.Drafts.ToString(CultureInfo.InvariantCulture);
+        // A CHECK'S COUNT CROSSES AS IT IS, 0 (plain) INCLUDED; a normal load (null) carries nothing and the worker leaves
+        // drafting to the host. That is why 0 is sent here where it once was dropped - a developer measuring plain against
+        // drafting needs the worker to hear "plain", not "whatever the host decides".
+        if (ask.Drafts is { } drafts) map[Drafts] = drafts.ToString(CultureInfo.InvariantCulture);
         if (ask.Seed is { } seed) map[Seed] = seed.ToString(CultureInfo.InvariantCulture);
     }
 
@@ -108,8 +112,8 @@ public static class WorkerWire
         var share = map.TryGetValue(ContextShare, out var shareText)
             && double.TryParse(shareText, NumberStyles.Float, CultureInfo.InvariantCulture, out var s)
             && s is > 0 and < 1 ? s : 1.0;
-        var drafts = map.TryGetValue(Drafts, out var draftsText)
-            && int.TryParse(draftsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var d) && d is > 0 and <= 8 ? d : 0;
+        int? drafts = map.TryGetValue(Drafts, out var draftsText)
+            && int.TryParse(draftsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var d) && d is >= 0 and <= 8 ? d : null;
         int? seed = map.TryGetValue(Seed, out var seedText)
             && int.TryParse(seedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sd) ? sd : null;
         return new WorkerLoadAsk(model, directory, Flag(map, SkipHash), engine, kv, share, Flag(map, ForIndex), drafts, seed);

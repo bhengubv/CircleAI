@@ -341,7 +341,9 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         _logits = new float[model.Config.Vocabulary];
         _state = model.NewState(options.ContextLength, options.KvMode, options.KeyForm);
 
-        var drafts = options.Drafts > 0 ? options.Drafts : DraftsForTest;
+        // A DEVELOPER'S CHECK (DraftsForTest) WINS; otherwise the host's count (BrainFactory asks for drafting where the
+        // trunk streams, and for none where a brain is held whole in RAM - OPEN-GAPS C7).
+        var drafts = DraftsForTest ?? (options.Drafts > 0 ? options.Drafts : 0);
         if (model.HasMtp && drafts > 0)
             _speculator = new Speculator(model, new MtpDrafter(model, _state.Capacity), drafts);
 
@@ -610,12 +612,13 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     public static int? SeedForTest { get; set; }
 
     /// <summary>
-    /// Tokens the MTP head drafts ahead per pass for a brain whose own options ask for none: 0, the default, decodes
-    /// plainly - so every brain the product builds is built without drafting (OPEN-GAPS C7; BrainFactory names no
-    /// drafts). A measurement's knob, set by the Android inference process from each load: only a developer's check asks
-    /// for it (SoakReceiver "engine" --ei drafts), on a phone, to measure whether drafting is faster there.
+    /// A developer's override of how many tokens the MTP head drafts ahead per pass: null, the default, leaves drafting to
+    /// the host (<see cref="ManagedGeneratorOptions.Drafts"/>, which BrainFactory asks for where the trunk streams); a
+    /// value wins over the host - 0, to hold a reply to plain decoding against drafting, included. A measurement's knob,
+    /// set by the Android inference process from each load: only a developer's check sets it (SoakReceiver "engine"
+    /// --ei drafts), on a phone, to measure drafting there. Every normal load leaves it null.
     /// </summary>
-    public static int DraftsForTest { get; set; }
+    public static int? DraftsForTest { get; set; }
 
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
@@ -649,7 +652,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 // head, but its sibling PQ2_0-MTP file holds one over the SAME trunk (proven bit for bit) - so when a
                 // measurement asks for drafts and this file has no head, the head is read from beside it and attached. One
                 // trunk computes, its own head drafts; no second model runs.
-                var askedDrafts = options.Drafts > 0 ? options.Drafts : DraftsForTest;
+                var askedDrafts = DraftsForTest ?? (options.Drafts > 0 ? options.Drafts : 0);
                 if (askedDrafts > 0 && !model.HasMtp)
                 {
                     if (FindMtpHead(ggufPath, file, options) is { } mtpPath)

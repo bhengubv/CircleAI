@@ -389,7 +389,8 @@ public sealed class TheServiceAndTheBrainInWaitingTests : IDisposable
     }
 
     // A developer's check of drafting (SoakReceiver "engine" --ei drafts --ei seed) crosses too, and only a check carries
-    // it: a plain load says nothing of drafting, and a brain built to draft is not the brain that decodes plainly.
+    // a count: a normal load says nothing of drafting and leaves it to the host (BrainFactory asks for it where the trunk
+    // streams), while a check carries its exact count - zero, to hold a reply to plain decoding against drafting, included.
     [Fact]
     public void A_check_of_drafting_crosses_to_the_worker_and_only_a_check_carries_it()
     {
@@ -400,21 +401,36 @@ public sealed class TheServiceAndTheBrainInWaitingTests : IDisposable
         Assert.Equal("7", map[WorkerWire.Seed]);
         Assert.Equal(check, WorkerWire.GetLoad(map));
 
-        var plain = check with { Drafts = 0, Seed = null };
-        Assert.False(WorkerWire.SameBrain(plain, check));
+        // A NORMAL load carries no count - drafting is the host's to decide - and is a different brain from one a check
+        // built to draft.
+        var normal = check with { Drafts = null, Seed = null };
+        map.Clear();
+        WorkerWire.PutLoad(map, normal);
+        Assert.False(map.ContainsKey(WorkerWire.Drafts));
+        Assert.Null(WorkerWire.GetLoad(map).Drafts);
+        Assert.False(WorkerWire.SameBrain(normal, check));
         Assert.True(WorkerWire.SameBrain(check, check));
 
-        // A number that is no count of drafts reads as plain decoding, and a seed that is no number as none.
-        foreach (var bad in new[] { "0", "-1", "9", "two" })
+        // A CHECK CAN ASK FOR PLAIN (zero), and it crosses as the count it is - so drafting on and off reach the worker as
+        // what they are, not as "the host decides". An explicit plain is not a normal load.
+        var checkPlain = check with { Drafts = 0 };
+        map.Clear();
+        WorkerWire.PutLoad(map, checkPlain);
+        Assert.Equal("0", map[WorkerWire.Drafts]);
+        Assert.Equal(0, WorkerWire.GetLoad(map).Drafts);
+        Assert.False(WorkerWire.SameBrain(checkPlain, normal));
+
+        // A count that is no count of drafts reads as absent - the host decides - and a seed that is no number as none.
+        foreach (var bad in new[] { "-1", "9", "two" })
         {
             map[WorkerWire.Drafts] = bad;
-            Assert.Equal(0, WorkerWire.GetLoad(map).Drafts);
+            Assert.Null(WorkerWire.GetLoad(map).Drafts);
         }
         map[WorkerWire.Seed] = "seven";
         Assert.Null(WorkerWire.GetLoad(map).Seed);
 
-        // And nothing the product builds drafts or fixes a seed unless a check asked (OPEN-GAPS C7).
-        Assert.Equal(0, CircleAI.Inference.Managed.ManagedChatGenerator.DraftsForTest);
+        // And nothing the product builds overrides the host's drafting, or fixes a seed, unless a check asked (OPEN-GAPS C7).
+        Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.DraftsForTest);
         Assert.Null(CircleAI.Inference.Managed.ManagedChatGenerator.SeedForTest);
     }
 
