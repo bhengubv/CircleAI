@@ -292,12 +292,37 @@ public static class ModelChoice
     /// is the standard the engine was built for, so a fleet brain the device can hold comes before any other,
     /// and MNN answers only where no fleet brain can. Speed is no gate. It was one - BrainSpeed's four tokens
     /// a second - and on the P30, where the C# 2B reads at 1.7, it handed every pick back to MNN. How fast a
-    /// brain answers on a device is the engine's to make the most of, not a reason to choose another brain.
+    /// brain answers on a device is the engine's to make the most of, not a reason to choose another brain. Making
+    /// the most of it includes reading the chosen brain in the packing this device decodes fastest - its encoding,
+    /// never another brain (<see cref="PackingSpeedHere"/>).
     /// </remarks>
     public static ModelEntry? Best(IEnumerable<ModelEntry> set)
     {
         ArgumentNullException.ThrowIfNull(set);
-        return set.OrderByDescending(Fleet).ThenByDescending(m => m.QualityRank).ThenBy(m => m.MinRamGb).FirstOrDefault();
+        var kernels = KernelsHere();
+        return set.OrderByDescending(Fleet).ThenByDescending(m => m.QualityRank)
+                  .ThenByDescending(m => PackingSpeedHere(m, kernels)).ThenBy(m => m.MinRamGb).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// How fast this device reads each packing; overridable for tests. Defaults to what the device measured
+    /// (<see cref="Managed.Kernels.KernelThreads"/>) - null before anything is measured, when no packing is chosen.
+    /// </summary>
+    internal static Func<Managed.Kernels.KernelThreads.Choice?> KernelsHere { get; set; } =
+        () => Managed.Kernels.KernelThreads.Known ?? Managed.Kernels.KernelThreads.Remembered();
+
+    // THE ENCODING OF THE CHOSEN BRAIN, NOT WHICH BRAIN (OPEN-GAPS C8). A brain's two packings carry the same
+    // QualityRank, so they tie above, and this breaks it by how fast THIS device DECODES each: the GB/s it reads a
+    // packing over the bytes a token reads - PQ2_0's simpler unpacking (higher GB/s) weighed against its larger file,
+    // not GB/s alone. MEASURED 2026-11-20, both devices we have decode PTQ1_0 faster and take it: an x64 laptop reads
+    // PTQ1_0 outright faster (2.05 vs 1.85 GB/s), and the P30 reads PQ2_0 faster per byte (1.70 vs 1.45) but over a
+    // 21%-larger file. A device that decoded PQ2_0 faster would take it. 0 where a packing was not measured or the row
+    // is another engine's, so the smaller packing then wins on MinRamGb, as before - speed chooses the encoding, never the brain.
+    private static double PackingSpeedHere(ModelEntry m, Managed.Kernels.KernelThreads.Choice? kernels)
+    {
+        if (m.TotalBytes <= 0) return 0;
+        var rate = kernels?.ReadGigabytesPerSecond(Managed.Kernels.KernelThreads.Packing(m.Quantization)) ?? 0;
+        return rate > 0 ? rate / m.TotalBytes : 0;
     }
 
     /// <summary>Whether <paramref name="m"/> is a better brain than <paramref name="than"/>, by <see cref="Best"/>'s rule.</summary>

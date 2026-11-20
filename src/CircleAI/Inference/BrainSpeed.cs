@@ -16,11 +16,13 @@
 // engine: producing a token means reading the weights once, so speed goes with the inverse of
 // their size. No measurement on that engine at all means no estimate - unknown, never assumed.
 //
-// AND READING THEM IS NOT EQUALLY QUICK IN EVERY PACKING (OPEN-GAPS C8). The C# engine reads
-// PQ2_0 about 3.6 times faster than PTQ1_0 on the desktop that built it and a little slower on
-// the P30, so a PQ2_0 brain scaled from a PTQ1_0 one by size alone was ruled too slow on the very
-// machine it ran fastest on. A brain is estimated from one in its own packing where one has run;
-// across packings, by how fast this device's kernels read each (KernelThreads, measured once).
+// AND READING THEM IS NOT EQUALLY QUICK IN EVERY PACKING (OPEN-GAPS C8), AND WHICH IS QUICKER IS THE
+// DEVICE'S TO SAY, NOT A CONSTANT. A brain is estimated from one in its own packing where one has run;
+// across packings, by how fast this device's kernels read each (KernelThreads, measured once). Measured
+// 2026-11-20, both devices we have decode PTQ1_0 faster - an x64 laptop reads it outright faster (2.05
+// vs 1.85 GB/s), the P30 reads PQ2_0 faster per byte but over a 21%-larger file. An earlier note here put
+// PQ2_0 about 3.6x faster on the build desktop; that no longer reproduces - which is exactly why the
+// factor is measured per device and never assumed.
 
 using System;
 using System.Collections.Generic;

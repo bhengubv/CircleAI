@@ -195,6 +195,42 @@ public sealed class OneBestLlmTests : IDisposable
         Assert.False(ModelFit.Fits(big, P30(readsFromFlash: true, storageFree: 3_000_000_000)));
     }
 
+    // PER-DEVICE PACKING (OPEN-GAPS C8): a brain's two packings carry the same QualityRank, so Best breaks the tie by how
+    // fast THIS device decodes each - the GB/s it reads a packing over the bytes a token reads, not GB/s alone. The brain
+    // is unchanged (speed is no gate); only its encoding is chosen, and only where both packings are candidates - a device
+    // with the RAM to hold the PQ2_0 one. On the P30 the PQ2_0 9B is filtered by fit before this (kept to RAM, 2.4 GB).
+    [Fact]
+    public void The_faster_decoding_packing_of_a_brain_is_taken_per_device()
+    {
+        var ptq1 = _registry.GetLatestModel(NineB)!;                        // Ternary-Bonsai-2-9B, PTQ1_0, 1.997 GB
+        var pq2 = _registry.GetLatestModel("Ternary-Bonsai-2-9B-PQ2_0")!;   // the same brain, PQ2_0, 2.417 GB
+        Assert.Equal(ptq1.QualityRank, pq2.QualityRank);                    // same rank: the tie this breaks
+        var set = new[] { ptq1, pq2 };
+
+        var saved = ModelChoice.KernelsHere;
+        try
+        {
+            // A desktop reads PQ2_0 about 3.6x faster; even over its larger file it decodes faster, so it is taken.
+            ModelChoice.KernelsHere = () => new CircleAI.Inference.Managed.Kernels.KernelThreads.Choice(
+                8, 0, "desktop", Ptq1GigabytesPerSecond: 1.0, Pq2GigabytesPerSecond: 3.6);
+            Assert.Equal("Ternary-Bonsai-2-9B-PQ2_0", ModelChoice.Best(set)!.Name);
+
+            // The P30's own kernel race: PQ2_0 reads a touch faster per byte (1.70 vs 1.45 GB/s) but is 21% larger, so
+            // PTQ1_0 decodes faster - GB/s alone would wrongly pick PQ2_0 here; GB/s over bytes keeps PTQ1_0.
+            ModelChoice.KernelsHere = () => new CircleAI.Inference.Managed.Kernels.KernelThreads.Choice(
+                3, 0, "p30", Ptq1GigabytesPerSecond: 1.451, Pq2GigabytesPerSecond: 1.698);
+            Assert.Equal(NineB, ModelChoice.Best(set)!.Name);
+
+            // Nothing measured yet (first run): no packing preference, the smaller PTQ1_0 wins on MinRamGb, as before.
+            ModelChoice.KernelsHere = () => null;
+            Assert.Equal(NineB, ModelChoice.Best(set)!.Name);
+        }
+        finally
+        {
+            ModelChoice.KernelsHere = saved;
+        }
+    }
+
     // "Best LLM is X, X is used; a missing X is fetched" - X does not depend on what happens to be on the phone. With room
     // for it to land, the best LLM is the one wanted; on the phone as it stood, with 4.8 GB free, it is not.
     [Fact]

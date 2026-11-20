@@ -52,6 +52,9 @@ public static class KernelThreads
             return a > 0 && b > 0 ? b / a : null;
         }
 
+        /// <summary>The GB/s this device read a packing's weights (PTQ1_0 or PQ2_0), or 0 when it did not measure that packing or the row is not the C# engine's.</summary>
+        public double ReadGigabytesPerSecond(string? packing) => Rate(packing);
+
         private double Rate(string? packing) => Packing(packing) switch
         {
             "PTQ1_0" => Ptq1GigabytesPerSecond,
@@ -136,9 +139,10 @@ public static class KernelThreads
                 var choice = Pick(results, fingerprint) ?? new Choice(Math.Max(1, fallback), 0, fingerprint);
 
                 // AND THE OTHER PACKING, WHILE THE DEVICE IS BEING MEASURED (OPEN-GAPS C8): a speed
-                // measured on a PTQ1_0 brain said nothing true about a PQ2_0 one - this PC read PQ2_0
-                // about 3.6 times faster, the P30 a little slower - so how fast each packing reads its
-                // weights here is kept beside the threads, for the planner to scale by.
+                // measured on a PTQ1_0 brain says nothing true about a PQ2_0 one, and which reads quicker
+                // is the device's to say - so how fast each packing reads its weights HERE is kept beside
+                // the threads, for the planner to scale by. (Measured 2026-11-20 both our devices read
+                // PTQ1_0 faster; an earlier "PQ2_0 3.6x" reading on the build PC no longer reproduces.)
                 var pq2 = MeasurePq2ForTest?.Invoke(most)
                           ?? (MeasureForTest is null ? KernelBench.Pq2LutThreads(passes: 4, maxThreads: most).Results : Array.Empty<KernelBench.Result>());
                 choice = choice with { Pq2GigabytesPerSecond = Fastest(pq2) };
