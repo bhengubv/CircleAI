@@ -34,8 +34,6 @@ namespace CircleAI.Assistant;
 public sealed record Exchange(string Said, string? Replied, string? Language, System.DateTimeOffset WhenUtc);
 
 /// <summary>The conversation, as everything that draws or reasons about it sees it.</summary>
-/// <param name="Phase">What the microphone and the model are doing.</param>
-/// <param name="Level">Microphone level 0..1, or zero when nothing measures one.</param>
 /// <param name="Heard">The transcript of the turn in progress.</param>
 /// <param name="Reply">The answer so far, as it streams.</param>
 /// <param name="Language">The language this turn is being answered in.</param>
@@ -55,8 +53,6 @@ public sealed record Exchange(string Said, string? Replied, string? Language, Sy
 /// </remarks>
 [FeatureState]
 public sealed record ConversationState(
-    TurnPhase Phase,
-    double Level,
     string? Heard,
     string? Reply,
     string? Language,
@@ -78,9 +74,14 @@ public sealed record ConversationState(
     public const int Keep = 6;
 
     /// <summary>Fluxor needs a parameterless constructor to seed the feature.</summary>
-    private ConversationState() : this(
-        TurnPhase.Idle, 0, null, null, null, null, []) { }
+    private ConversationState() : this(null, null, null, null, []) { }
 
-    /// <summary>Whether a turn is under way, from wherever it was started.</summary>
-    public bool Busy => Phase != TurnPhase.Idle;
+    // PHASE AND LEVEL ARE DELIBERATELY NOT HERE. They are the microphone's live
+    // meter — they move many times a second, and NO screen reads them off this
+    // store: MainLayout and Home read VoiceMark.Busy, and VoiceMark drives it from
+    // the same TurnState (draw.Report) this store is dispatched from. Holding them
+    // here as well re-created this record, and re-rendered every IState subscriber,
+    // on every meter frame for a value nobody read back — the churn this store was
+    // supposed to end, not add. VoiceMark owns the meter; this store owns the
+    // words. "Is a turn under way" is VoiceMark.Busy, never a field here.
 }

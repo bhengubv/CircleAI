@@ -21,29 +21,38 @@ public static class ConversationReducers
     /// </remarks>
     [ReducerMethod]
     public static ConversationState OnTurnStarted(ConversationState s, TurnStarted _) =>
-        s with { Phase = TurnPhase.Listening, Heard = null, Reply = null, Detail = null, Level = 0 };
+        s with { Heard = null, Reply = null, Detail = null };
 
     /// <summary>
-    /// A report from the turn. Nulls do not overwrite what is already known.
+    /// A report from the turn. Nulls do not overwrite what is already known, and a
+    /// report that changed no content returns the same state so nobody re-renders.
     /// </summary>
     /// <remarks>
     /// A LATER REPORT WITH A NULL FIELD IS NOT NEWS THAT THE FIELD IS EMPTY. The
     /// speaking phase reports Heard and Reply; the Idle report that follows it
     /// carries neither, and taking that literally wiped the transcript off the
-    /// screen the moment the answer finished. Only Phase and Level are always
-    /// authoritative, because they always describe now.
+    /// screen the moment the answer finished.
+    ///
+    /// AND MOST REPORTS CARRY NO NEW CONTENT AT ALL. The turn reports many times a
+    /// second to drive the microphone meter, but the meter is VoiceMark's, not this
+    /// store's — so a report that only moved the level leaves every field here
+    /// unchanged. Returning <paramref name="s"/> itself in that case means Fluxor
+    /// re-renders none of the conversation's subscribers for a meter frame, which on
+    /// a seven-tokens-a-second phone is the whole reason the meter is not kept here.
     /// </remarks>
     [ReducerMethod]
-    public static ConversationState OnTurnProgressed(ConversationState s, TurnProgressed a) =>
-        s with
+    public static ConversationState OnTurnProgressed(ConversationState s, TurnProgressed a)
+    {
+        var next = s with
         {
-            Phase = a.Turn.Phase,
-            Level = a.Turn.Level,
             Heard = a.Turn.Heard is { Length: > 0 } h ? h : s.Heard,
             Reply = a.Turn.Reply is { Length: > 0 } r ? r : s.Reply,
             Language = a.Turn.Language is { Length: > 0 } l ? l : s.Language,
             Detail = a.Turn.Detail is { Length: > 0 } d ? d : s.Detail,
         };
+
+        return next == s ? s : next;
+    }
 
     /// <summary>The turn is over; a real exchange joins the short-term cache.</summary>
     /// <remarks>
@@ -74,8 +83,6 @@ public static class ConversationReducers
 
         return s with
         {
-            Phase = TurnPhase.Idle,
-            Level = 0,
             Detail = a.Detail is { Length: > 0 } d ? d : s.Detail,
             Recent = recent,
         };
@@ -88,8 +95,6 @@ public static class ConversationReducers
     public static ConversationState OnCleared(ConversationState s, ConversationCleared _) =>
         s with
         {
-            Phase = TurnPhase.Idle,
-            Level = 0,
             Heard = null,
             Reply = null,
             Detail = null,

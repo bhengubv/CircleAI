@@ -26,8 +26,7 @@ namespace CircleAI.Samples.Ui.Tests;
 
 public class ConversationStoreTests
 {
-    private static ConversationState Fresh() => new(
-        TurnPhase.Idle, 0, null, null, null, null, []);
+    private static ConversationState Fresh() => new(null, null, null, null, []);
 
     // ---- the write half of the loop -------------------------------------
 
@@ -199,21 +198,43 @@ public class ConversationStoreTests
         Assert.Equal("where is the nearest garage", idle.Heard);
         Assert.Equal("Two blocks up.", idle.Reply);
         Assert.Equal("en", idle.Language);
-        Assert.Equal(TurnPhase.Idle, idle.Phase);
+
+        // And because that Idle report changed no content, it is the SAME state:
+        // the meter moved, the conversation did not, so no subscriber re-rendered.
+        Assert.Same(s, idle);
     }
 
     [Fact]
-    public void Phase_and_level_are_always_taken_literally()
+    public void A_meter_tick_does_not_touch_the_store_because_the_meter_is_not_here()
     {
-        // The two that always describe now, and so are the two a null report is
-        // never protecting.
-        var s = Fresh() with { Phase = TurnPhase.Thinking, Level = 0.8 };
+        // THE FLUXOR OPTIMISATION, PINNED. The turn reports many times a second to
+        // drive the microphone meter, but the meter is VoiceMark's — no screen
+        // reads a phase or a level off this store. A report that carries only those
+        // must leave this state exactly as it was, down to the reference, so Fluxor
+        // re-renders none of the conversation's subscribers for it. On a
+        // seven-tokens-a-second decoder, re-rendering the transcript on every meter
+        // frame is the cost this guards against.
+        var s = Fresh() with { Heard = "where is the nearest garage", Reply = "Two blocks up." };
+
+        var afterMeterTick = ConversationReducers.OnTurnProgressed(s,
+            new TurnProgressed(new TurnState(TurnPhase.Listening, Level: 0.8)));
+
+        Assert.Same(s, afterMeterTick);
+    }
+
+    [Fact]
+    public void A_report_that_carries_a_word_does_replace_the_state()
+    {
+        // The other side of it: a streaming fragment IS content, so the state is a
+        // new instance and the screen updates. The same-reference shortcut must
+        // never swallow the reply as it streams.
+        var s = Fresh() with { Reply = "Two" };
 
         var next = ConversationReducers.OnTurnProgressed(s,
-            new TurnProgressed(new TurnState(TurnPhase.Idle, Level: 0)));
+            new TurnProgressed(new TurnState(TurnPhase.Speaking, Reply: "Two blocks up.")));
 
-        Assert.Equal(TurnPhase.Idle, next.Phase);
-        Assert.Equal(0, next.Level);
+        Assert.NotSame(s, next);
+        Assert.Equal("Two blocks up.", next.Reply);
     }
 
     // ---- starting over ---------------------------------------------------
