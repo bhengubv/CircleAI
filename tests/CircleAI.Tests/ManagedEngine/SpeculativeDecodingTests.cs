@@ -285,11 +285,20 @@ public sealed class SpeculativeDecodingTests(ITestOutputHelper output)
     public void Drafting_is_off_unless_a_host_asks_for_it()
     {
         // OPEN-GAPS C7: lossless, and slower everywhere it was measured - 0.78-0.89 tokens a second
-        // against 1.60-2.08 on the desktop, and on the P30 the check pass alone 2.4 times dearer
-        // than single passes. So a brain is built without it; a host that measures it faster asks.
+        // against 1.60-2.08 on the desktop, and on the P30 the check pass alone 2.4 times dearer than
+        // single passes. So drafting stays off by default, and BrainFactory turns it on for ONE case:
+        // a brain streamed from flash, where the draft's check rides a pass over the weights the device
+        // already pays for (6673d84 wired it in). This pins the gate - the default is 0, and every place
+        // BrainFactory assigns Drafts sits behind StreamsFromFlash, so it cannot quietly go unconditional.
         Assert.Equal(0, new CircleAI.Inference.Managed.ManagedGeneratorOptions().Drafts);
         var factory = File.ReadAllText(Path.Combine(RepoRoot(), "src", "CircleAI", "Inference", "BrainFactory.cs"));
-        Assert.DoesNotContain("Drafts", factory, StringComparison.Ordinal);
+        foreach (var raw in factory.Split('\n'))
+        {
+            var mark = raw.IndexOf("//", StringComparison.Ordinal);   // the const name and the comments may read "Drafts"
+            var code = mark >= 0 ? raw[..mark] : raw;
+            if (System.Text.RegularExpressions.Regex.IsMatch(code, @"\bDrafts\s*="))   // a real assignment, not StreamedTrunkDrafts
+                Assert.Contains("StreamsFromFlash", code, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
