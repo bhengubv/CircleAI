@@ -4,7 +4,7 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — **A C# engine of our own, and an assistant you can talk to on a cheap phone**
+## [3.10.0] — 2026-11-22 — **A C# engine of our own, and an assistant you can talk to on a cheap phone**
 
 Since 3.9.2 CircleAI has its own language model engine, written in C#, and the spoken assistant on top of
 it runs on a P30 Lite: the first sound after a question went from 71 s to about 2.6 s, and the answer
