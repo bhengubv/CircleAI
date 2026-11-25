@@ -31,17 +31,28 @@ public static class IndexReadiness
     /// The file of the model asked about - the brain whose index is being built while another answers (BrainInWaiting).
     /// Null asks about the model the engine loaded last.
     /// </param>
-    public static ComponentState? Read(string? storeDirectory, DateTimeOffset now, string? modelFile = null)
+    /// <param name="offCharger">
+    /// Whether the phone is off its charger. While the index is unfinished this says the work is
+    /// paused for charge (<see cref="PauseReason.WaitingForCharge"/>), so a screen can say it
+    /// carries on while charging rather than show a bar that is not moving.
+    /// </param>
+    public static ComponentState? Read(string? storeDirectory, DateTimeOffset now, string? modelFile = null, bool offCharger = false)
     {
         if (string.IsNullOrWhiteSpace(storeDirectory)) return null;
         var read = string.IsNullOrWhiteSpace(modelFile) ? IndexingQueue.ReadStatus(storeDirectory) : IndexingQueue.ReadStatus(storeDirectory, modelFile);
         if (read is not { Total: > 0 } status) return null;
         if (status.Complete && !status.Serves) return null;   // an index that failed its check serves nobody: nothing is said of it
         if (status.FromItsOwnFile) return null;               // no index is built or served - every neuron from the model's own file: nothing to learn from use
+
+        // OFF ITS CHARGER IT BUILDS NOTHING (IndexingWhen): while the work is unfinished and the
+        // phone is off the cable the share is held where it is, so the component says it waits for
+        // charge - and a screen says "it carries on while charging" instead of showing a bar that
+        // is not moving and reads as stuck. A complete index waits for nothing.
+        var pause = !status.Complete && offCharger ? PauseReason.WaitingForCharge : PauseReason.None;
         return new ComponentState(
             ReadinessComponents.Index,
             status.Complete ? BrainPhase.Ready : BrainPhase.Loading,
-            LoadStep.None, null, PauseReason.None,
+            LoadStep.None, null, pause,
             Line(status), null, now,
             status.Complete ? null : status.Fraction);
     }
@@ -54,10 +65,11 @@ public static class IndexReadiness
     /// <param name="storeDirectory">Where the engine keeps its stores and records.</param>
     /// <param name="now">When this is said.</param>
     /// <param name="modelFile">The file of the model asked about; null asks about the model the engine loaded last.</param>
-    public static void Report(IReadinessTracker tracker, string? storeDirectory, DateTimeOffset now, string? modelFile = null)
+    /// <param name="offCharger">Whether the phone is off its charger, so an unfinished index says it waits for charge.</param>
+    public static void Report(IReadinessTracker tracker, string? storeDirectory, DateTimeOffset now, string? modelFile = null, bool offCharger = false)
     {
         ArgumentNullException.ThrowIfNull(tracker);
-        if (Read(storeDirectory, now, modelFile) is { } index)
+        if (Read(storeDirectory, now, modelFile, offCharger) is { } index)
         {
             tracker.Report(index);
             return;
@@ -68,6 +80,33 @@ public static class IndexReadiness
             if (component.Detail.Length > 0) tracker.Report(ComponentState.Of(ReadinessComponents.Index, BrainPhase.Unknown, string.Empty, now));
             return;
         }
+    }
+
+    /// <summary>The sentence shown while the optimise is paused for charge - one owner for the words.</summary>
+    public const string HoldLine = "It carries on while the phone is charging.";
+
+    /// <summary>
+    /// The index's progress for a screen, from the "index" component of <paramref name="snapshot"/>: null when
+    /// nothing is being built - no index component, or one that is complete (that is "learning", a quieter line
+    /// elsewhere) or has been taken back. Only a build in progress has a bar to draw.
+    /// </summary>
+    /// <remarks>
+    /// THE CLIENT HALF OF <see cref="Read"/>. Read puts the engine's record onto the snapshot as a component;
+    /// this reads that one component back as the typed view a screen draws a bar from - so the share and the
+    /// "waits for charge" state have one owner across the link rather than a parser on each side.
+    /// </remarks>
+    public static IndexProgress? Progress(ReadinessSnapshot? snapshot)
+    {
+        if (snapshot is null) return null;
+        foreach (var component in snapshot.Components)
+        {
+            if (!string.Equals(component.Component, ReadinessComponents.Index, StringComparison.Ordinal)) continue;
+            if (component.Phase != BrainPhase.Loading) return null;   // Ready is "learning"; Unknown is taken back
+            var percent = component.Progress is { } fraction ? (int)Math.Clamp(Math.Round(fraction * 100), 0, 100) : 0;
+            var onHold = component.Pause == PauseReason.WaitingForCharge;
+            return new IndexProgress(percent, component.Detail, onHold, onHold ? HoldLine : null);
+        }
+        return null;
     }
 
     /// <summary>

@@ -1,0 +1,75 @@
+@*
+    THE BRAIN, STILL IMPROVING ITSELF.
+
+    After a model is on the phone it is "ready" — but the engine then spends hours of the
+    phone's idle, charging time optimising it into an index (IndexingQueue), and until this
+    nothing on a screen said so past a one-line caption. This shows how far that has got, as
+    a share, and — when the phone is off its charger — that it carries on once it is back on.
+
+    NO COUNTDOWN, AND THAT IS THE HONEST SHAPE OF IT. The optimise is built from the model
+    already here, a unit at a time, only while the phone is idle and on the charger — so it
+    has no byte rate and no time left to give. A bar and a share is the whole truth; a ticking
+    estimate would be a guess, which is the one thing a progress bar must never be.
+
+    SILENT WHEN THERE IS NOTHING TO OPTIMISE. Null from IndexingAsync renders no markup, so
+    this can sit on Home and Setup without becoming furniture — the same contract as
+    PairingNotice.
+*@
+@inject ISetup Setup
+@implements IDisposable
+
+@if (_index is { } ix)
+{
+    <section class="optimising" aria-labelledby="optimising-title">
+        <div class="optimising-title" id="optimising-title">Optimising the brain</div>
+        <div class="optimising-bar"><span style="width:@($"{Math.Clamp(ix.Percent, 0, 100)}%")"></span></div>
+        <div class="optimising-line">@ix.Line</div>
+        @if (ix.OnHold && ix.HoldReason is { Length: > 0 })
+        {
+            <div class="optimising-hold">@ix.HoldReason</div>
+        }
+    </section>
+}
+
+@code {
+    private IndexProgress? _index;
+    private bool _gone;
+
+    // ADAPTIVE, NOT A FIXED TICK. Nothing is optimising most of the time, so when there is
+    // nothing to show the link is asked only every twenty seconds — one cheap verb, the same
+    // floor Home's own idle poll uses. While it IS building the bar should feel live, so the
+    // read quickens; either way it is one poll, stopped the moment the component goes.
+    private static readonly TimeSpan WhenBuilding = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan WhenIdle = TimeSpan.FromSeconds(20);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReadAsync();
+        _ = WatchAsync();
+    }
+
+    private async Task WatchAsync()
+    {
+        while (!_gone)
+        {
+            try { await Task.Delay(_index is null ? WhenIdle : WhenBuilding); } catch { return; }
+            if (_gone) return;
+            await ReadAsync();
+        }
+    }
+
+    private async Task ReadAsync()
+    {
+        IndexProgress? fresh;
+        try { fresh = await Setup.IndexingAsync(); }
+        catch { return; }   // a failed read leaves the card where it was, rather than blanking it
+        if (_gone || Equals(fresh, _index)) return;   // IndexProgress is a record: value equality, no needless repaint
+        await InvokeAsync(() =>
+        {
+            _index = fresh;
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => _gone = true;
+}

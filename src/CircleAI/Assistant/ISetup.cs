@@ -260,6 +260,25 @@ public sealed record SetupProgressReport(
 /// </remarks>
 public sealed record TourStep(string Title, string Body, string? Action, string? Route);
 
+/// <summary>How far the brain's background index-build has got, for a person to see.</summary>
+/// <param name="Percent">0..100 of the index while it is being built.</param>
+/// <param name="Line">The sentence to show — the service's own words for it.</param>
+/// <param name="OnHold">True when the build is paused rather than running — off its charger.</param>
+/// <param name="HoldReason">Why it is paused, in a sentence, or null while it is running.</param>
+/// <remarks>
+/// AN OPTIMISE, NOT A DOWNLOAD, AND THE DIFFERENCE IS WHY THIS IS ITS OWN TYPE. The index is
+/// built from the model already on the phone, in its idle time on the charger, over hours
+/// (IndexingQueue) — so there is no byte rate and no honest countdown, only how far it has got.
+/// A card shows the share and says it continues while charging; it never invents a time left,
+/// because the engine has no rate to give one from.
+/// <para>
+/// NULL FROM <see cref="ISetup.IndexingAsync"/> MEANS NOTHING IS BEING BUILT — the brain has
+/// finished optimising, or was never indexing — and the card is absent. "Done" is silence here,
+/// the way a finished download leaves a clean census and no bar.
+/// </para>
+/// </remarks>
+public sealed record IndexProgress(int Percent, string Line, bool OnHold, string? HoldReason);
+
 /// <summary>What first run needs, and how to do it.</summary>
 public interface ISetup
 {
@@ -311,6 +330,23 @@ public interface ISetup
     /// the progress up where it is instead of duplicating the work.
     /// </remarks>
     Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default);
+
+    /// <summary>
+    /// How far the brain's background index-build has got, or null when nothing is being built.
+    /// </summary>
+    /// <remarks>
+    /// AFTER READY, NOT DURING SETUP. A model is "ready" the moment its bytes are down and it is
+    /// warmed; the engine THEN spends hours of the phone's idle, charging time optimising the brain
+    /// from that model (IndexingQueue), and until this nothing on a screen said so past a one-line
+    /// caption. The service already measures it and carries it over the Status verb as the "index"
+    /// component; this is the typed view a screen needs to draw a bar rather than re-parse a
+    /// sentence.
+    /// <para>
+    /// NULL BY DEFAULT, so a head with nothing to optimise — the browser tab, every test fake —
+    /// need not answer, exactly like <see cref="OfferMicrophoneAsync"/>.
+    /// </para>
+    /// </remarks>
+    Task<IndexProgress?> IndexingAsync(CancellationToken ct = default) => Task.FromResult<IndexProgress?>(null);
 
     /// <summary>What to offer while the wait runs.</summary>
     Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default);

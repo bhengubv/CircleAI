@@ -1,0 +1,51 @@
+/*
+    Quiet and ambient: the phone works now, and this is it getting better — not a wait and
+    not something to act on. So a titled block with a bar sitting in the column, like the
+    setup bar, rather than a shadowed card that reads as a thing to tap.
+
+    Its own bar, not Home's .bar, because scoped CSS is per component: a class that looked
+    identical and was not would be worse than this small duplicate. Tokens are the shared
+    theme's, so it tracks light and dark with everything else.
+*/
+.optimising {
+    width: 100%;
+    margin-top: 12px;
+    text-align: center;
+}
+
+.optimising-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.optimising-bar {
+    width: calc(100% - 48px);
+    height: 6px;
+    margin: 8px auto 0;
+    background: var(--raised);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+/* A fraction, so the fill is SET and eased, never swept: the share is known, and an
+   animation over a known quantity throws the quantity away. */
+.optimising-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--brand-blue);
+    width: 0;
+    transition: width 240ms linear;
+}
+
+.optimising-line {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+.optimising-hold {
+    font-size: 13px;
+    color: var(--ink-soft);
+    padding-top: 2px;
+}

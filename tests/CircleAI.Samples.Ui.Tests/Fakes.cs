@@ -65,6 +65,17 @@ internal sealed class FakeSetup : ISetup
     public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    /// <summary>What the brain's background optimise is doing, or null for "nothing being built".</summary>
+    /// <remarks>
+    /// NULL BY DEFAULT, so the optimise card is absent from every test that is not about it - the same
+    /// reason the download bar is. A test that wants the card sets this. Synchronous, like every fake
+    /// here: it answers with Task.FromResult and never yields, so a component that awaits it renders
+    /// exactly as it does on a phone whose engine has nothing to say.
+    /// </remarks>
+    public IndexProgress? Indexing { get; set; }
+
+    public Task<IndexProgress?> IndexingAsync(CancellationToken ct = default) => Task.FromResult(Indexing);
+
     public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<TourStep>>([]);
 

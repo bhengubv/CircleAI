@@ -107,6 +107,10 @@
         }
     }
 
+    @* A brain already here can be optimising in the background while another is set up —
+       shown from the same source as Home, silent when there is nothing. *@
+    <OptimisingNotice />
+
     @if (_granted is { Length: > 0 })
     {
         <p class="granted">@_granted</p>

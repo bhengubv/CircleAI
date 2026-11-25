@@ -99,6 +99,15 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
 
     /// <inheritdoc />
     /// <remarks>
+    /// CIRCLEAI'S OWN MEASURE, over the link. The optimise happens in the service's inference
+    /// process and this app does nothing but show it; until the service is installed there is
+    /// nothing being built, so the honest answer is null and the card stays absent.
+    /// </remarks>
+    public Task<IndexProgress?> IndexingAsync(CancellationToken ct = default)
+        => brain.ServiceInstalled ? _link.IndexingAsync(ct) : Task.FromResult<IndexProgress?>(null);
+
+    /// <inheritdoc />
+    /// <remarks>
     /// IT TOLD PEOPLE TO INSTALL SOMETHING THEY HAD INSTALLED. One step, returned
     /// unconditionally, on a device where CircleAI was installed, approved, and
     /// downloading models for this app while the card was on screen - and whose

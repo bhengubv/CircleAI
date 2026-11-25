@@ -26,6 +26,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Assistant;
+using CircleAI.Assistant.Lifecycle;
 using CircleAI.Linking;
 
 namespace CircleAI.Client;
@@ -178,6 +179,34 @@ public sealed class LinkedSetup(LinkedBrain brain)
 
         var reply = await client.SetupProgressAsync(ct).ConfigureAwait(false);
         return reply.Ok ? LinkSettingsRows.ReadItems(reply.Rows) : [];
+    }
+
+    /// <summary>
+    /// How far the brain's background index-build has got, from the "index" component of the
+    /// service's Status snapshot; null when the link is down or nothing is being optimised.
+    /// </summary>
+    /// <remarks>
+    /// THE SAME NUMBER THE SERVICE ALREADY PUBLISHES, NOT A SECOND WIRE FORMAT. IndexReadiness
+    /// reports the index as one component of the readiness snapshot, its share carried as the
+    /// component's Progress, and the Status verb already crosses every component. So this reads
+    /// that one component and maps it — rather than adding an index row to SetupProgress, which
+    /// would measure the same thing twice.
+    /// <para>
+    /// ONLY WHILE IT IS BEING BUILT. A complete index reads Ready with the "learning" line, which
+    /// belongs under "Tap and talk" rather than in a progress bar; a build taken back reads
+    /// Unknown. Either way there is nothing to show here, and the card is absent.
+    /// </para>
+    /// </remarks>
+    public async Task<IndexProgress?> IndexingAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return null;
+
+        var reply = await client.StatusAsync(ct: ct).ConfigureAwait(false);
+        if (!reply.Ok) return null;
+
+        var (_, _, snapshot) = LinkAskRows.ReadStatus(reply.Rows);
+        return IndexReadiness.Progress(snapshot);
     }
 
     private static Readiness NotLinked => new(

@@ -1650,7 +1650,13 @@ public sealed class InferenceSupervisor : IBrainWorker
                 {
                     string? waitingFile;
                     lock (_gate) waitingFile = _inWaitingFile;
-                    IndexReadiness.Report(_readiness, CircleAI.Inference.Managed.ManagedChatGenerator.DefaultStoreDirectory, DateTimeOffset.UtcNow, waitingFile);
+
+                    // OFF ITS CHARGER THE INDEX BUILDS NOTHING (IndexingWhen), so an unfinished index
+                    // off the cable says it waits for charge - the same power reading the idle check uses.
+                    var power = DeviceContext.PowerProbe?.Invoke() ?? PowerState.Unknown;
+                    var offCharger = CircleAI.Inference.Managed.Store.IndexingWhen.OffItsCharger(power);
+
+                    IndexReadiness.Report(_readiness, CircleAI.Inference.Managed.ManagedChatGenerator.DefaultStoreDirectory, DateTimeOffset.UtcNow, waitingFile, offCharger);
                 }
                 catch (Exception ex)
                 {
