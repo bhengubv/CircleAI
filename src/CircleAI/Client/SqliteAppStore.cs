@@ -22,6 +22,13 @@ namespace CircleAI.Assistant.Device;
 public sealed class SqliteAppStore : IDisposable
 {
     private readonly SqliteConnection _db;
+
+    // ONE CONNECTION, SO ONE OPERATION AT A TIME. DeviceSettings now reads and writes
+    // these off the UI thread (Task.Run), so Get and Set can land on different pool
+    // threads at once - and a single SqliteConnection is not safe for concurrent
+    // commands. This gate serialises them; settings access is tiny and infrequent, so
+    // the cost is nil, and the UI thread it used to run on was itself a serialiser.
+    private readonly object _gate = new();
     private bool _disposed;
 
     /// <summary>Opens (and creates) the store at a path.</summary>
@@ -52,32 +59,38 @@ public sealed class SqliteAppStore : IDisposable
     /// <summary>The stored value, or <paramref name="fallback"/>.</summary>
     public string? Get(string key, string? fallback = null)
     {
-        using var cmd = _db.CreateCommand();
-        cmd.CommandText = "SELECT value FROM setting WHERE key = $k;";
-        cmd.Parameters.AddWithValue("$k", key);
-        return cmd.ExecuteScalar() as string ?? fallback;
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT value FROM setting WHERE key = $k;";
+            cmd.Parameters.AddWithValue("$k", key);
+            return cmd.ExecuteScalar() as string ?? fallback;
+        }
     }
 
     /// <summary>Store a value, or remove it when null.</summary>
     public void Set(string key, string? value)
     {
-        using var cmd = _db.CreateCommand();
-        if (value is null)
+        lock (_gate)
         {
-            cmd.CommandText = "DELETE FROM setting WHERE key = $k;";
-            cmd.Parameters.AddWithValue("$k", key);
+            using var cmd = _db.CreateCommand();
+            if (value is null)
+            {
+                cmd.CommandText = "DELETE FROM setting WHERE key = $k;";
+                cmd.Parameters.AddWithValue("$k", key);
+            }
+            else
+            {
+                // Upsert, so a setting written twice does not throw on the second.
+                cmd.CommandText = """
+                    INSERT INTO setting (key, value) VALUES ($k, $v)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                    """;
+                cmd.Parameters.AddWithValue("$k", key);
+                cmd.Parameters.AddWithValue("$v", value);
+            }
+            cmd.ExecuteNonQuery();
         }
-        else
-        {
-            // Upsert, so a setting written twice does not throw on the second.
-            cmd.CommandText = """
-                INSERT INTO setting (key, value) VALUES ($k, $v)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-                """;
-            cmd.Parameters.AddWithValue("$k", key);
-            cmd.Parameters.AddWithValue("$v", value);
-        }
-        cmd.ExecuteNonQuery();
     }
 
     /// <summary>Convenience for the several boolean settings.</summary>
@@ -89,16 +102,22 @@ public sealed class SqliteAppStore : IDisposable
 
     private void Execute(string sql)
     {
-        using var cmd = _db.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.ExecuteNonQuery();
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_disposed) return;
-        _db.Dispose();
-        _disposed = true;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _db.Dispose();
+            _disposed = true;
+        }
     }
 }

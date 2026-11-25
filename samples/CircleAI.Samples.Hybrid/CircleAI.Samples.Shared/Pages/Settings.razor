@@ -45,7 +45,13 @@
     }
 </div>
 
-@if (_tab == 0)
+@if (!_loaded)
+{
+<section class="group">
+    <span class="row-title">Loading…</span>
+</section>
+}
+else if (_tab == 0)
 {
 <section class="group">
 
@@ -1029,6 +1035,12 @@ else
     int _open;
 
     AppSettings _s = new();
+    // False until Reload has the real settings. Store.LoadAsync runs off the UI thread now
+    // (DeviceSettings reads SQLite on a pool thread), so on device the first paint happens
+    // before _s is read. This gates the tab content to "Loading…" until it lands, instead of
+    // flashing the default-constructed _s (Assistant mode, wake off) before the real values.
+    // In tests the fake store returns synchronously, so _loaded is already true at first paint.
+    bool _loaded;
     IReadOnlyList<StoredDocument> _docs = [];
     IReadOnlyList<AbilityRow> _abilities = [];
 
@@ -1177,6 +1189,11 @@ else
             _wake = await Phrases.ForAsync(_s.Language);
         }
         catch (Exception ex) { _trouble = $"Settings: {Trouble.Say(ex)}"; }
+
+        // The tab content can paint now: whether LoadAsync succeeded or failed, _s holds a
+        // usable value (the real settings, or the default plus _trouble). The rest below
+        // fills in behind this first paint exactly as it already did.
+        _loaded = true;
 
         // ITS OWN try, for the same reason: a phone that cannot answer whether it
         // will keep the assistant running must not take the rest of the screen

@@ -39,8 +39,14 @@ public sealed class DeviceSettings : ISettings
     private static string DocumentsDir => AppPaths.Data;
 
     /// <inheritdoc />
+    // OFF THE LOOPER. This is read on nearly every screen's OnInitializedAsync, and it
+    // was sync-over-async - a dozen blocking SqliteAppStore reads wrapped in
+    // Task.FromResult, so awaiting it ran them on whatever called in. On the UI thread,
+    // one of those reads contended by the service writing models to the same flash was a
+    // 28-second input-dispatch ANR. Task.Run puts the reads on a pool thread; the store
+    // is now lock-serialised so the concurrency that buys is safe.
     public Task<AppSettings> LoadAsync(CancellationToken ct = default)
-        => Task.FromResult(new AppSettings(
+        => Task.Run(() => new AppSettings(
             ReadMode(_store.Get(ModeKey, nameof(AppMode.Assistant))!),
             // THE LANGUAGE THE APP WORKS IN. Set first, because everything below
             // reads off it: the wake phrase is whichever one this language has,
@@ -62,7 +68,7 @@ public sealed class DeviceSettings : ISettings
             // BORROWING CONSENT, through the same two-row pattern: whether pooled
             // intelligence is on, and the node the person hand-picked. Off by default.
             _store.GetBool(BorrowOnKey, false),
-            _store.Get(BorrowNodeKey)));
+            _store.Get(BorrowNodeKey)), ct);
 
     /// <inheritdoc />
     /// <summary>The stored mode, including the name it used to be saved under.</summary>
@@ -147,15 +153,12 @@ public sealed class DeviceSettings : ISettings
     /// </remarks>
     public Task<string?> ServiceSettingAsync(
         string service, string key, string? fallback = null, CancellationToken ct = default)
-        => Task.FromResult(_store.Get($"service.{service}.{key}", fallback));
+        => Task.Run(() => _store.Get($"service.{service}.{key}", fallback), ct);
 
     /// <inheritdoc />
     public Task SetServiceSettingAsync(
         string service, string key, string? value, CancellationToken ct = default)
-    {
-        _store.Set($"service.{service}.{key}", value);
-        return Task.CompletedTask;
-    }
+        => Task.Run(() => _store.Set($"service.{service}.{key}", value), ct);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<StoredDocument>> DocumentsAsync(CancellationToken ct = default)

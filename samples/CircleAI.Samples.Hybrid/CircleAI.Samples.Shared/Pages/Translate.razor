@@ -160,6 +160,9 @@
     {
         // A REMEMBERED PAIR WINS, because it was chosen. Only a first run
         // falls through to what the phone can work out.
+        //
+        // The settings reads below are off the UI thread in DeviceSettings now (it runs
+        // the blocking SqliteAppStore reads on a pool thread), so this reads plainly.
         var (mine, theirs, why) = LanguageSuggestion.Pair(Spoken.Current, Where.Locate());
         _pairReason = why;
 
