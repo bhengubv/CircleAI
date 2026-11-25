@@ -12,6 +12,7 @@
 *@
 @page "/career"
 @inject ICareerInterview Interview
+@inject ICareerArticulator Articulate
 @inject ISettings Settings
 @inject ISpokenLanguage Spoken
 @inject IConversation Talk
@@ -38,7 +39,7 @@
     <div class="question">@_step.Question</div>
     <div class="why">@_step.Why</div>
 
-    @if (!_step.Done)
+    @if (!_step.Done && _suggestion is null)
     {
 @*
             @bind:event="oninput", NOT value= with @oninput.
@@ -62,16 +63,44 @@
                @onkeydown="OnKey" />
     }
 
-    <div class="buttons">
-        @* Two, side by side and equal. The left is the softer option in both
-           states, so the position keeps its meaning as the screen changes. *@
-        <button class="btn-soft" @onclick="Secondary" disabled="@_busy">
-            @(_step.Done ? "Aim it at a job" : Verify)
-        </button>
-        <button class="btn-primary" @onclick="Primary" disabled="@_busy">
-            @(_step.Done ? "Save my CV" : "Next")
-        </button>
-    </div>
+    @if (_wording)
+    {
+        <div class="wording">Wording it better…</div>
+    }
+
+    @if (_suggestion is { Length: > 0 })
+    {
+        @*
+            SUGGEST, THEN CONFIRM. The model only proposes; the person taps "Use
+            this" or "Keep mine", so every word on the CV is one they chose. Their
+            own answer stays visible under it - the choice is "instead of", never
+            "behind your back". This is the whole reason it is safe to let a model
+            near a CV at all.
+        *@
+        <div class="suggestion">
+            <div class="suggestion-label">A clearer way to say it</div>
+            <div class="suggestion-text">@_suggestion</div>
+            <div class="suggestion-note">You said: @_answer</div>
+        </div>
+
+        <div class="buttons">
+            <button class="btn-soft" @onclick="KeepMine" disabled="@_busy">Keep mine</button>
+            <button class="btn-primary" @onclick="UseSuggestion" disabled="@_busy">Use this</button>
+        </div>
+    }
+    else
+    {
+        <div class="buttons">
+            @* Two, side by side and equal. The left is the softer option in both
+               states, so the position keeps its meaning as the screen changes. *@
+            <button class="btn-soft" @onclick="Secondary" disabled="@_busy">
+                @(_step.Done ? "Aim it at a job" : Verify)
+            </button>
+            <button class="btn-primary" @onclick="Primary" disabled="@_busy">
+                @(_step.Done ? "Save my CV" : "Next")
+            </button>
+        </div>
+    }
 </div>
 
 <div class="progress">@_progress</div>
@@ -133,6 +162,13 @@
     string? _saved;
     bool _busy;
 
+    // The model's proposed wording for the current answer, shown for the person to
+    // accept or reject, and whether it is being fetched. Null means no offer on the
+    // table - the honest default when the field is a fact, the model is busy, or it
+    // had nothing better to say than what they already said.
+    string? _suggestion;
+    bool _wording;
+
     /// <summary>
     /// The script says which answers must be read back before they are kept.
     /// </summary>
@@ -169,19 +205,71 @@
     async Task Primary()
     {
         if (_busy) return;
+
+        if (_step.Done)
+        {
+            _busy = true;
+            try { _saved = await Interview.SaveAsync(); }
+            finally { _busy = false; }
+            return;
+        }
+
+        var text = _answer;
+
+        // A blank Next re-asks; "skip" and the like pass straight through to the
+        // host, which advances without storing. Neither is worth a wording round,
+        // so the articulator is only asked about a real descriptive answer.
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            await Commit(text);
+            return;
+        }
+
+        // OFFER A SHARPER WORDING FIRST. If the model has one worth showing, the
+        // card turns into "use this, or keep mine?" and nothing is stored until the
+        // person says which. If it has nothing - a fact field, a busy model, the
+        // same words back - we keep theirs and move on, exactly as before.
+        _busy = true;
+        _wording = true;
+        try
+        {
+            var better = await Articulate.SuggestAsync(text);
+            if (better is { Length: > 0 }
+                && !string.Equals(better.Trim(), text.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _suggestion = better;
+                return;
+            }
+        }
+        finally
+        {
+            _wording = false;
+            _busy = false;
+        }
+
+        await Commit(text);
+    }
+
+    /// <summary>Take the model's wording.</summary>
+    Task UseSuggestion() => Commit(_suggestion ?? _answer);
+
+    /// <summary>Keep the person's own words.</summary>
+    Task KeepMine() => Commit(_answer);
+
+    /// <summary>
+    /// Stores an answer, clears the box and any offer, and asks the next question.
+    /// </summary>
+    async Task Commit(string text)
+    {
+        if (_busy) return;
         _busy = true;
         try
         {
-            if (_step.Done)
-            {
-                _saved = await Interview.SaveAsync();
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_answer))
-                await Interview.AnswerAsync(_answer);
+            if (!string.IsNullOrWhiteSpace(text))
+                await Interview.AnswerAsync(text);
 
             _answer = "";
+            _suggestion = null;
             await Refresh();
         }
         finally

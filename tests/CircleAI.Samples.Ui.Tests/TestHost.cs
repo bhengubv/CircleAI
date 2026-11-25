@@ -46,9 +46,12 @@ internal sealed class FakeHealingView : IHealingView
 
 internal sealed class FakeCareer : ICareerInterview
 {
+    /// <summary>The last answer stored, so a test can assert which wording was kept.</summary>
+    public string? Stored { get; private set; }
+
     public Task<CareerStep> StepAsync(CancellationToken ct = default)
         => Task.FromResult(new CareerStep("What do you do?", "so it can help", false, false));
-    public Task AnswerAsync(string text, CancellationToken ct = default) => Task.CompletedTask;
+    public Task AnswerAsync(string text, CancellationToken ct = default) { Stored = text; return Task.CompletedTask; }
     public Task<IReadOnlyList<CvLine>> PreviewAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<CvLine>>([]);
     public Task<string> ProgressAsync(CancellationToken ct = default) => Task.FromResult("");
@@ -60,6 +63,23 @@ internal sealed class FakeTailor : IJobSpecTailor
     public Task<TailorResult> TailorAsync(
         string advert, IProgress<string>? progress = null, CancellationToken ct = default)
         => Task.FromResult(new TailorResult(false, "no model in a test"));
+}
+
+/// <summary>Offers no wording help, so a test drives the answer itself.</summary>
+/// <remarks>
+/// SYNCHRONOUS ON PURPOSE: like every fake here it answers with Task.FromResult and
+/// never yields, so a screen that awaits it renders exactly as it does on a phone
+/// whose model has nothing to add. A fake that forced a real yield would make the
+/// screen render before its data and flake under the suite's parallel load.
+/// </remarks>
+internal sealed class FakeArticulator : ICareerArticulator
+{
+    /// <summary>What to propose. Null (the default) is "no wording help", as on a
+    /// phone whose model has nothing to add; a test that wants the offer sets it.</summary>
+    public string? Suggestion { get; init; }
+
+    public Task<string?> SuggestAsync(string rawAnswer, CancellationToken ct = default)
+        => Task.FromResult(Suggestion);
 }
 
 internal sealed class FakeProfile : IProfile
@@ -152,6 +172,7 @@ internal static class TestHost
         s.AddSingleton<IFormFactor>(new FakeFormFactor());
         s.AddSingleton<ICareerInterview>(new FakeCareer());
         s.AddSingleton<IJobSpecTailor>(new FakeTailor());
+        s.AddSingleton<ICareerArticulator>(new FakeArticulator());
         s.AddSingleton<IProfile>(new FakeProfile());
         s.AddSingleton<IDeviceFacts>(new FakeDeviceFacts());
         s.AddSingleton<IWakePhrases>(new FakeWakePhrases());

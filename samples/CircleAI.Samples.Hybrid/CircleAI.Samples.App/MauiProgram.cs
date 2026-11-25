@@ -127,6 +127,7 @@ public static class MauiProgram
             sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
+        builder.Services.AddSingleton<ICareerArticulator, CareerArticulator>();
         // WAKE PHRASES ARE THE SERVICE'S, AND NOW THEY ARE SETTABLE FROM HERE. The
         // first version of this refused and told the person to "open CircleAI" - an
         // app with no launcher icon, so the advice could not be followed. The judging

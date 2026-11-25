@@ -45,3 +45,16 @@ public sealed class BrowserTailor : IJobSpecTailor
         => Task.FromResult(new TailorResult(false,
             "Aiming your CV at a job needs the model on the phone."));
 }
+
+/// <inheritdoc />
+/// <remarks>
+/// The browser never runs the interview (see <see cref="BrowserCareer"/>), so there
+/// is no answer to reword here. It offers nothing - which is also what a phone with
+/// no model does, so the screen behaves the same way in both.
+/// </remarks>
+public sealed class BrowserArticulator : ICareerArticulator
+{
+    /// <inheritdoc />
+    public Task<string?> SuggestAsync(string rawAnswer, CancellationToken ct = default)
+        => Task.FromResult<string?>(null);
+}

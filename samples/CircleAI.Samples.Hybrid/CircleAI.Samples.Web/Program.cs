@@ -44,6 +44,7 @@ builder.Services.AddSingleton(sp => CapabilityRegistry.For(
     sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
 builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
+builder.Services.AddSingleton<ICareerArticulator, BrowserArticulator>();
 builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 builder.Services.AddSingleton<IWakePhrases, BrowserWakePhrases>();
 builder.Services.AddSingleton<IShareTarget, BrowserShareTarget>();

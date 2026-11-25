@@ -139,3 +139,50 @@
     border: 1px solid var(--hairline);
     border-radius: 10px;
 }
+
+/*
+    The wording the model proposes, offered beside the person's own answer.
+
+    ON THE PAGE COLOUR WITH A BLUE EDGE, so it reads as a suggestion to weigh, not
+    as something already done. The person's own words sit under it, quieter,
+    because the only choice is "use this instead" - they can always keep what they
+    said.
+*/
+.suggestion {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--page);
+    border-left: 3px solid var(--brand-blue);
+    border-radius: 10px;
+}
+
+.suggestion-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--brand-blue);
+}
+
+/* pre-line: "what you did" comes back as two or three lines, and they are the point. */
+.suggestion-text {
+    font-size: 16px;
+    color: var(--ink);
+    padding-top: 6px;
+    white-space: pre-line;
+}
+
+.suggestion-note {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding-top: 8px;
+}
+
+/*
+    Shown while the model is finding words. Quiet, because it is optional help -
+    the Next it stands in for never blocked, and this must not feel like it does.
+*/
+.wording {
+    font-size: 13px;
+    color: var(--brand-blue);
+    padding-top: 12px;
+}
