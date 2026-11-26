@@ -254,7 +254,9 @@ public sealed class InferenceWorkerService : global::Android.App.Service
         // meant is coming in behind it, a token before the brain has let go.
         Job? ending;
         lock (Gate) ending = _job;
-        if (ending is { Final: false } && (ending.JustRead || ending.Cts.IsCancellationRequested))
+        if (ending is not null
+            && BrainSlot.Next(jobPresent: true, jobFinished: ending.Final, headStart: ending.JustRead,
+                              toldToStop: ending.Cts.IsCancellationRequested) == BrainSlotMove.StepAsideThenAdmit)
         {
             ending.Cts.Cancel();
             SpinWait.SpinUntil(() => ending.Final, TimeSpan.FromSeconds(1));
@@ -270,7 +272,9 @@ public sealed class InferenceWorkerService : global::Android.App.Service
                     _loaded?.ModelId, "not-ready", "the model is not loaded in the worker", DateTimeOffset.UtcNow));
                 return res;
             }
-            if (_job is { Final: false })
+            if (BrainSlot.Next(jobPresent: _job is not null, jobFinished: _job?.Final ?? true,
+                               headStart: _job?.JustRead ?? false, toldToStop: _job?.Cts.IsCancellationRequested ?? false)
+                != BrainSlotMove.Admit)
             {
                 res[WorkerWire.Ok] = "0";
                 WorkerWire.PutFailure(res, new Failure(FailureKind.Rejected, Certainty.Certain, WorkPhase.Prefill,

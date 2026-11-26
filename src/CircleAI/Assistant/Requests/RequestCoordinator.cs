@@ -74,6 +74,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     // What somebody has said so far, for the brain to read when it is free; the latest wins.
     private AskSubmission? _readNext;
     private Task? _reading;
+    private CancellationTokenSource? _readingCts;   // stops the head start so a real answer can take the brain back (RunOneAsync)
     private CancellationTokenSource? _runningCts;
 
     // WHAT A BACKGROUND ASK IS DOING WITH THE BRAIN, for a person's ask to stop (Submit), and whether one did.
@@ -630,7 +631,16 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 Tools: ask.Agentic,
                 Conversation: Kept(ask));
 
-        lock (_gate) _readNext = null;
+        // THE HEAD START LETS THE BRAIN GO FIRST. A read-ahead ran its prefill in the brain's one slot; while it is in
+        // flight the answer that supersedes it was rejected as busy on a brain read from flash, which cannot stop within
+        // the worker's one-second wait (the P30 conversation, 2026-11-17: every turn's head start outlived the second,
+        // every real answer told the brain was busy, "brain ?" the only tell in the line). Stop it and wait for it to
+        // let go, so the slot is the answer's when it asks.
+        CancellationTokenSource? readCts;
+        Task? reading;
+        lock (_gate) { _readNext = null; readCts = _readingCts; reading = _reading; }
+        try { readCts?.Cancel(); } catch (ObjectDisposedException) { /* it finished first */ }
+        if (reading is not null) { try { await reading.ConfigureAwait(false); } catch { /* only ever a head start */ } }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(_limits.GenerationDeadline);
@@ -1030,6 +1040,12 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                 return;
             }
 
+            // CANCELLABLE, SO A REAL ANSWER CAN TAKE THE BRAIN BACK (RunOneAsync). The worker supersedes a head start on
+            // its own, but a brain read from flash cannot stop within the second the worker waits, so the answer that
+            // supersedes it was told the brain was busy. The answer drains this first instead - and that needs a token
+            // its own thread can pull, not the CancellationToken.None this ran with.
+            var readCts = new CancellationTokenSource();
+            lock (_gate) _readingCts = readCts;
             try
             {
                 var now = _clock.GetUtcNow();
@@ -1044,13 +1060,18 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
                     Effort: ReasoningEffort.Off,
                     JustRead: true,
                     Conversation: Kept(ask));
-                await foreach (var _ in _worker.GenerateAsync(job, CancellationToken.None).ConfigureAwait(false)) { }
+                await foreach (var _ in _worker.GenerateAsync(job, readCts.Token).ConfigureAwait(false)) { }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 // ONLY EVER A HEAD START: the question reads it all itself, and takes the brain from it.
                 _log($"reading ahead stopped: {ex.GetType().Name}");
                 return;
+            }
+            finally
+            {
+                lock (_gate) { if (ReferenceEquals(_readingCts, readCts)) _readingCts = null; }
+                readCts.Dispose();
             }
         }
     }

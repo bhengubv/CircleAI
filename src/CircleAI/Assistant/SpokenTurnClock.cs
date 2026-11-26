@@ -75,6 +75,19 @@ public sealed class SpokenTurnClock
     public string Report()
     {
         if (ToFirstSound is not { } total) return "spoken turn: no sound came out";
+
+        // A FIRST SOUND IS NOT AN ANSWER. With a holding line ("Let me think.") the first sound is that line, not
+        // the brain; when the brain then gave nothing - FirstText never came - a clean time here would call the turn
+        // fast while the person got no answer at all. That is the trap the first beat laid on the P30 on 2026-11-17:
+        // four turns read about 1.8 s to the first sound and the brain spoke in none of them, "brain ?" the only tell
+        // in a line that otherwise looked like a win. Say it plainly instead, so no measurement reads a holding line
+        // as an answer.
+        if (_firstText < 0)
+            return string.Create(CultureInfo.InvariantCulture,
+                $"spoken turn: the brain gave no answer; only the holding line played, {total.TotalMilliseconds:F0} ms "
+                + $"from the last word to it: microphone {Ms(_stopped, _closed)}, ears {Ms(_closed, _heard)}, "
+                + $"voice {Ms(_firstPiece, _firstSound)} ({_firstPieceChars} chars)");
+
         return string.Create(CultureInfo.InvariantCulture,
             $"spoken turn: {total.TotalMilliseconds:F0} ms from the last word to the first sound: "
             + $"microphone {Ms(_stopped, _closed)}, ears {Ms(_closed, _heard)}, brain {Ms(_heard, _firstText)}, "

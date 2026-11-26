@@ -126,4 +126,24 @@ public sealed class SpokenTurnClockTests
         Assert.Null(clock.ToFirstSound);
         Assert.Equal("spoken turn: no sound came out", clock.Report());
     }
+
+    [Fact]
+    public void A_holding_line_with_no_answer_behind_it_is_not_reported_as_a_fast_turn()
+    {
+        // The first beat plays "Let me think." (a first piece and a first sound) while the brain works; when the brain
+        // then gives nothing, FirstText is never called. The line must not read as a fast turn - it is a failed one.
+        var clock = Clock();
+        clock.MicrophoneClosed(TimeSpan.FromSeconds(1));
+        Pass(400);
+        clock.Heard();
+        Pass(300);
+        clock.FirstPiece(13);   // "Let me think." - the holding line, not the brain
+        Pass(200);
+        clock.FirstSound();     // it plays; no answer ever comes behind it
+
+        Assert.Equal(TimeSpan.FromMilliseconds(1900), clock.ToFirstSound);
+        Assert.Equal(
+            "spoken turn: the brain gave no answer; only the holding line played, 1900 ms from the last word to it: microphone 1000, ears 400, voice 200 (13 chars)",
+            clock.Report());
+    }
 }

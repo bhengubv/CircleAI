@@ -862,8 +862,13 @@ public static class WakeTurn
         });
 
         var pushed = string.Empty;
-        var held = false;
-        var waiting = Stopwatch.StartNew();
+
+        // FIRST-BEAT AT ONCE: the warmed holding line goes into the mouth the instant the question is
+        // admitted, ahead of the brain, so the first sound is the ~1.7 s mic tail plus its ~60 ms cached
+        // play (WarmAsync/RenderAsync), not the queue's ~0.8 s poll. It leads even a fast answer (always-
+        // ack, as the app's "One moment." does). The brain this path asks is the worker's, not
+        // CircleNeuronService.Node, so a warm turn is the rule: "Let me think.", one cached sentence.
+        mouth.Push(AssistantPersona.Thinking + "\n");
 
         while (!ct.IsCancellationRequested)
         {
@@ -878,24 +883,6 @@ public static class WakeTurn
                 turn.FirstText();
                 mouth.Push(ask.Text[pushed.Length..]);
                 pushed = ask.Text;
-            }
-
-            // A HOLDING LINE, ONCE, when nothing has been said and the wait is on - the same courtesy
-            // ColdTurn gives (warm ? Thinking : NotUpYet), from the record's own state. THE WARM CASE
-            // IS THE ONE THAT PLAYS ON AN ORDINARY TURN and the queue path never had it: the model is
-            // up and prefilling (the P30's 9B reads the prompt ~9 s before the first word), which is
-            // AssistantPersona.Thinking ("Let me think."), not the cold "still coming up" line. Only
-            // WaitingForModel was covered here, so a warm turn said nothing for the whole prefill - the
-            // same drift ColdTurn was already past. Warmed to PCM (WarmAsync) so it plays at once; it goes
-            // out when the queue's poll next wakes this loop with nothing said yet - measured on the P30 at
-            // ~0.8 s into a warm turn, so the 2 s poll above, not this grace, sets the floor on first sound
-            // (~2.5 s on the 9B). A shortcut that answers first is never led; this grace is only a floor under that.
-            if (!held && pushed.Length == 0 && !ask.IsFinal && waiting.Elapsed > TimeSpan.FromSeconds(0.1))
-            {
-                mouth.Push((ask.State is CircleAI.Assistant.Requests.AskState.WaitingForModel
-                    ? AssistantPersona.NotUpYet
-                    : AssistantPersona.Thinking) + "\n");
-                held = true;
             }
 
             if (!ask.IsFinal) continue;
