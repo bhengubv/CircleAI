@@ -37,6 +37,17 @@ public sealed class WorkerPool : IDisposable
     /// </remarks>
     public static readonly TimeSpan HeldSpin = TimeSpan.FromMilliseconds(20);
 
+    /// <summary>
+    /// Holds the pool's workers to the device's big cores, off by default and read from the system property
+    /// debug.circleai.pinbig each time a pool is built (the A/B switch; false off-phone). The pool already
+    /// balances by stealing, so a product waits only for its slowest worker - and that is a worker the
+    /// scheduler parked on a little core while it slept across a streamed layer's gap, ~11x behind. Pinning
+    /// to the big-core SET keeps stealing free to move work among the fast cores while never landing on an A53.
+    /// </summary>
+    public static bool PinToBigCores;
+
+    [ThreadStatic] private static bool _callerPinned;
+
     private readonly Thread[] _threads;
     private readonly object _gate = new();
     private readonly long _spinTicks;
@@ -61,6 +72,7 @@ public sealed class WorkerPool : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(threads, 1);
         Threads = threads;
+        PinToBigCores = CoreAffinity.PinRequestedByProperty();
         _spinTicks = (long)((spin ?? TimeSpan.FromMicroseconds(200)).TotalSeconds * Stopwatch.Frequency);
         _heldSpinTicks = (long)((heldSpin ?? HeldSpin).TotalSeconds * Stopwatch.Frequency);
         _threads = new Thread[threads - 1];
@@ -124,6 +136,12 @@ public sealed class WorkerPool : IDisposable
             return;
         }
 
+        if (PinToBigCores && !_callerPinned)
+        {
+            CoreAffinity.PinCurrentThreadToBigCores();
+            _callerPinned = true;
+        }
+
         _work = work;
         _error = null;
         Volatile.Write(ref _pending, Threads - 1);
@@ -170,8 +188,14 @@ public sealed class WorkerPool : IDisposable
     private void Loop(int worker)
     {
         var seen = 0;
+        var pinned = false;
         while (WaitForWork(ref seen))
         {
+            if (PinToBigCores && !pinned)
+            {
+                CoreAffinity.PinCurrentThreadToBigCores();
+                pinned = true;
+            }
             try
             {
                 _work!.Execute(worker, Threads);
