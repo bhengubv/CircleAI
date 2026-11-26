@@ -217,13 +217,58 @@ public sealed unsafe class FlashFile : IDisposable
         }
     }
 
-    /// <summary>Memory aligned for direct reads, <paramref name="bytes"/> long; free it with <see cref="Free"/>.</summary>
-    public static byte* Allocate(long bytes) => (byte*)NativeMemory.AlignedAlloc((nuint)Math.Max(Page, bytes), Page);
+    /// <summary>A huge page, and what a huge-page-backed buffer is aligned to.</summary>
+    public const int HugePage = 2 << 20; // 2 MB
 
-    /// <summary>Frees what <see cref="Allocate"/> gave.</summary>
+    /// <summary>
+    /// Whether the weight buffers are backed by huge pages (transparent, MADV_HUGEPAGE): 512x fewer page-table entries
+    /// and TLB misses than 4 KB pages for the same memory, so the compute walks 1.3 GB of weights a token without the
+    /// OS's per-4-KB-page work in the loop. Read from debug.circleai.hugepages so a run can turn it on without a rebuild.
+    /// </summary>
+    public static bool HugePages { get; set; } = Linux && Property("debug.circleai.hugepages") == "1";
+
+    /// <summary>Memory aligned for direct reads, <paramref name="bytes"/> long; free it with <see cref="Free"/>.</summary>
+    public static byte* Allocate(long bytes)
+    {
+        var size = (nuint)Math.Max(Page, bytes);
+        if (HugePages && Linux && bytes >= HugePage)
+        {
+            var big = NativeMemory.AlignedAlloc(size, HugePage); // 2 MB-aligned so transparent huge pages can back it
+            if (big != null)
+            {
+                try { LinuxCalls.AdviseMemory(big, size, LinuxCalls.HugePageAdvice); }
+                catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { }
+                return (byte*)big;
+            }
+        }
+        return (byte*)NativeMemory.AlignedAlloc(size, Page);
+    }
+
+    /// <summary>Frees what <see cref="Allocate"/> gave; both huge-page and plain buffers come from AlignedAlloc.</summary>
     public static void Free(byte* memory)
     {
         if (memory != null) NativeMemory.AlignedFree(memory);
+    }
+
+    // One Android system property, null when there is none or no libc to ask. A byte* name dodges the string
+    // marshalling that threw on the CoreCLR worker (MarshalDirectiveException, 2026-11-19).
+    private static string? Property(string name)
+    {
+        if (!Linux) return null;
+        try
+        {
+            var ask = Encoding.UTF8.GetBytes(name + "\0");
+            var value = stackalloc byte[92];
+            fixed (byte* n = ask)
+            {
+                var length = LinuxCalls.PropertyGet(n, value);
+                return length > 0 ? Encoding.ASCII.GetString(value, length) : null;
+            }
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return null;
+        }
     }
 
     /// <summary><paramref name="value"/> rounded up to whole pages.</summary>
@@ -246,6 +291,7 @@ internal static unsafe class LinuxCalls
     public const int CloseOnExec = 0x80000;
     public const int DontNeed = 4;       // POSIX_FADV_DONTNEED
     public const int MemoryDontNeed = 4; // MADV_DONTNEED
+    public const int HugePageAdvice = 14; // MADV_HUGEPAGE
     public const int Interrupted = 4;    // EINTR
 
     public static int DirectFlag => RuntimeInformation.ProcessArchitecture is Architecture.Arm64 or Architecture.Arm
@@ -266,4 +312,7 @@ internal static unsafe class LinuxCalls
 
     [DllImport("libc", EntryPoint = "madvise")]
     public static extern int AdviseMemory(void* address, nuint length, int advice);
+
+    [DllImport("libc", EntryPoint = "__system_property_get")]
+    public static extern int PropertyGet(byte* name, byte* value);
 }

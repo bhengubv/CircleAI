@@ -34,8 +34,9 @@ namespace CircleAI.Inference.Managed.Store;
 /// <param name="Done">Units done and recorded.</param>
 /// <param name="Total">Units in the queue.</param>
 /// <param name="Agreement">
-/// What the check measured, the queue's last unit: of a thousand held-out words, how many the index gave the same top
-/// word as every neuron gives. Null until the check has run.
+/// What the check measured, the queue's last unit, as a rate per thousand: of the held-out words the check read, how
+/// many in every thousand the index gave the same top word as every neuron gives (nine hundred is nine in ten). Null
+/// until the check has run.
 /// </param>
 /// <param name="EveryNeuron">
 /// Whether the index lists every neuron of each layer, by this engine (<see cref="IndexingQueue.EngineVersion"/>): the last
@@ -49,8 +50,8 @@ namespace CircleAI.Inference.Managed.Store;
 public readonly record struct IndexingStatus(int Done, int Total, int? Agreement = null, bool EveryNeuron = false, bool FromItsOwnFile = false)
 {
     /// <summary>
-    /// The least the check must measure for an index to serve: nine hundred of a thousand held-out words given the same
-    /// top word as every neuron gives.
+    /// The least the check must measure for an index to serve, a rate per thousand: nine in ten of the held-out words
+    /// giving the same top word as every neuron gives (nine hundred in every thousand, whatever the count checked).
     /// </summary>
     /// <remarks>
     /// "REPORT ONLY PASS OR FAIL AGAINST A MEASUREMENT" (the owner's rule for the indexed mind), AND THE CHECK IS THE
@@ -200,8 +201,8 @@ public interface IIndexingHost
 
     /// <summary>
     /// The check, once the index is on flash - step 3, <paramref name="core"/>, and step 2, <paramref name="split"/>:
-    /// held-out words through every neuron and through the index. Returns how often they agree - of a thousand words, how
-    /// many the index gave the same top word - which the queue keeps with its record
+    /// held-out words through every neuron and through the index. Returns how often they agree, a rate per thousand - of
+    /// the held-out words, how many in every thousand the index gave the same top word - which the queue keeps with its record
     /// (<see cref="IndexingStatus.Agreement"/>). Null when <paramref name="stop"/> said to stop: it is run again later.
     /// </summary>
     int? Check(ThoughtIndex core, SplitByThoughts split, Func<bool>? stop);

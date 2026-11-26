@@ -11,6 +11,7 @@
 // mixing alone, from the model's own file or tiled in step 2.
 
 using System.Numerics;
+using CircleAI.Inference.Managed;
 using CircleAI.Inference.Managed.Gguf;
 using CircleAI.Inference.Managed.Model;
 using CircleAI.Inference.Managed.Store;
@@ -516,6 +517,81 @@ public sealed class IndexedMindTests
         copy.ForwardBatch(tokens, a, [null, null, null, null, null, null, null, x]);
         other.ForwardBatch(tokens, b, [null, null, null, null, null, null, null, y]);
         Assert.Equal(x.Select(BitConverter.SingleToInt32Bits), y.Select(BitConverter.SingleToInt32Bits));
+    }
+
+    // ---- THE SERVE-CHECK'S MEASUREMENT (the outcome, not just the index's plumbing) ----
+
+    // THE GATE IS A RATE PER THOUSAND, NOT A COUNT OF A THOUSAND WORDS. The check reads CheckWords held-out words and the
+    // bar an index must clear (IndexingStatus.LeastAgreement = 900) is nine in ten of them: at thirty-two words, twenty-nine
+    // agree and it serves, twenty-eight and it does not. The P30's coherent 9B measured "40.6%" - thirteen of thirty-two.
+    // Every doc once said "of a thousand held-out words"; this pins what the number really is so the claim cannot drift back.
+    [Fact]
+    public void The_serve_bar_is_a_rate_per_thousand_of_the_words_checked_not_a_thousand_words()
+    {
+        Assert.Equal(32, ManagedChatGenerator.CheckWords);
+        Assert.Equal(1000, ManagedChatGenerator.AgreementPerThousand(32, 32));
+        Assert.Equal(906, ManagedChatGenerator.AgreementPerThousand(29, 32));   // 29 of 32 clears the bar
+        Assert.Equal(875, ManagedChatGenerator.AgreementPerThousand(28, 32));   // 28 of 32 does not
+        Assert.Equal(406, ManagedChatGenerator.AgreementPerThousand(13, 32));   // the P30's coherent 9B
+        Assert.True(ManagedChatGenerator.AgreementPerThousand(29, 32) >= IndexingStatus.LeastAgreement);
+        Assert.False(ManagedChatGenerator.AgreementPerThousand(28, 32) >= IndexingStatus.LeastAgreement);
+        Assert.Equal(0, ManagedChatGenerator.AgreementPerThousand(0, 0));       // no words: no agreement, not a divide-by-zero
+    }
+
+    // THE OUTCOME A PARTIAL INDEX IS GATED ON. An index that lists every neuron gives every top word the dense model gives
+    // (a perfect rate), and one that lists only some is measured against it - the dense-vs-index top-word comparison the
+    // serve-check makes. Until now the suite proved every-neuron BIT-exactness and the tiers' reads, but never ran this
+    // agreement on a partial index: the measurement that decides whether a brain serves had no test of its own.
+    [Fact]
+    public void A_partial_index_is_measured_against_every_neuron_and_every_neuron_agrees_fully()
+    {
+        WithModel(103, (file, directory) =>
+        {
+            var dense = LanguageModel.Load(file, null, headFromStore: false, pairedOverride: true);
+
+            var whole = ThoughtIndex.Build(Watch(file, directory, kept: SyntheticQwen35.FeedForward),
+                Path.Combine(directory, "whole.index"), groups: 1, listNeurons: SyntheticQwen35.FeedForward);
+            var wholePieces = CachedIndex.Build(whole, file, Path.Combine(directory, "whole.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            Assert.Equal(1000, AgreementOverWords(file, dense, whole, wholePieces));
+
+            var part = ThoughtIndex.Build(Watch(file, directory, kept: SyntheticQwen35.FeedForward),
+                Path.Combine(directory, "part.index"), groups: 1, listNeurons: SyntheticQwen35.FeedForward / 2);
+            Assert.True(part.ListNeurons < SyntheticQwen35.FeedForward);
+            var partPieces = CachedIndex.Build(part, file, Path.Combine(directory, "part.core"), budget: long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+            Assert.InRange(AgreementOverWords(file, dense, part, partPieces), 0, 1000);
+        });
+    }
+
+    // The serve-check's comparison at the harness's scale: the held-out Words through every neuron, then through the index,
+    // and how often the top word agrees - scaled by the engine's own rate (ManagedChatGenerator.AgreementPerThousand).
+    private static int AgreementOverWords(GgufFile file, LanguageModel dense, ThoughtIndex core, CachedIndex pieces)
+    {
+        var denseLogits = Logits(Words.Length);
+        dense.ForwardBatch(Words, dense.NewState(32), denseLogits);
+        var tops = denseLogits.Select(TopWord).ToArray();
+
+        var indexed = LanguageModel.Load(file, null, headFromStore: false, pairedOverride: true);
+        using var serving = new IndexedFeedForward(core, pieces, file, long.MaxValue, channels: 2, readBytes: FlashFile.Page);
+        indexed.Index = serving;
+        var indexedLogits = Logits(Words.Length);
+        indexed.ForwardBatch(Words, indexed.NewState(32), indexedLogits);
+
+        var same = Enumerable.Range(0, Words.Length).Count(i => TopWord(indexedLogits[i]) == tops[i]);
+        return ManagedChatGenerator.AgreementPerThousand(same, Words.Length);
+    }
+
+    private static float[][] Logits(int n)
+    {
+        var logits = new float[n][];
+        for (var i = 0; i < n; i++) logits[i] = new float[SyntheticQwen35.Vocabulary];
+        return logits;
+    }
+
+    private static int TopWord(float[] logits)
+    {
+        var best = 0;
+        for (var i = 1; i < logits.Length; i++) if (logits[i] > logits[best]) best = i;
+        return best;
     }
 
     private static void WithModel(int seed, Action<GgufFile, string> use)

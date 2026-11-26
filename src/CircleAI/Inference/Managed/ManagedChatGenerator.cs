@@ -620,6 +620,16 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     /// </summary>
     public static int? DraftsForTest { get; set; }
 
+    /// <summary>
+    /// A developer's override that serves an index whose check fell short of the bar an index must reach
+    /// (<see cref="IndexingStatus.LeastAgreement"/>): false, the default, leaves the gate as it is - a failed index is
+    /// not adopted and every neuron is computed. True takes it up regardless, for the warm-cache trial, where the
+    /// prompts must run through the index (step 4 in RAM, then step 2's pieces, then the model's own file) so the cache
+    /// fills and each tier's reads are measured, whatever the check said. A lossy index serves lossy answers by that
+    /// check's measure; this is a trial's knob, off on every normal load.
+    /// </summary>
+    public static bool AdoptUnprovenIndex { get; set; }
+
     /// <summary>Opens <paramref name="ggufPath"/> and makes the model, its tokenizer and its chat template ready.</summary>
     public static ManagedChatGenerator Load(string ggufPath, ManagedGeneratorOptions? options = null)
     {
@@ -1880,8 +1890,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     {
         if (!queue.Status.Serves)
         {
-            CircleLog.Info(Area, Invariant($"index: complete, and its check measured {(queue.Status.Agreement ?? 0) / 10.0:F1}% against the {IndexingStatus.LeastAgreement / 10.0:F0}% an index must reach: it does not serve, and every neuron is computed"));
-            return;
+            if (!AdoptUnprovenIndex)
+            {
+                CircleLog.Info(Area, Invariant($"index: complete, and its check measured {(queue.Status.Agreement ?? 0) / 10.0:F1}% against the {IndexingStatus.LeastAgreement / 10.0:F0}% an index must reach: it does not serve, and every neuron is computed"));
+                return;
+            }
+            CircleLog.Warn(Area, Invariant($"index: its check measured {(queue.Status.Agreement ?? 0) / 10.0:F1}% against the {IndexingStatus.LeastAgreement / 10.0:F0}% it must reach, but it is served anyway (AdoptUnprovenIndex, the warm-cache trial): answers are lossy by that measure"));
         }
         if (ThoughtIndex.Open(queue.IndexPath) is not { } core || queue.Split() is not { } split)
         {
@@ -2198,7 +2212,7 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
             // PASS OR FAIL AGAINST THE MEASUREMENT (IndexingStatus.LeastAgreement): an index that gives another top word
             // too often serves nobody - every neuron is computed, and the queue keeps the measure with its record.
-            var agreement = (int)Math.Round(1000.0 * same / Math.Max(1, n));
+            var agreement = AgreementPerThousand(same, n);
             var passed = agreement >= IndexingStatus.LeastAgreement;
 
             // THE FLASH'S SPEED BESIDE THE RESULT: a device finds its own limit by climbing (ModelChoice.NextStep), and
@@ -2251,8 +2265,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
         }
     }
 
-    // Held-out words the check reads: every position's logits in RAM at once, the vocabulary wide each.
-    private const int CheckWords = 32;
+    // Held-out words the check reads: every position's logits in RAM at once, the vocabulary wide each. Internal so a
+    // test can pin what the serve-bar means at this count (CircleAI.Tests exercises the serve-check's measurement).
+    internal const int CheckWords = 32;
+
+    // How often the index and every neuron chose the same top word, as a RATE PER THOUSAND of the words checked - the form
+    // the serve-bar (IndexingStatus.LeastAgreement = 900) and the record (IndexingStatus.Agreement) are kept in. It is a
+    // rate, not a count of a thousand words: at CheckWords held-out words the bar of 900 is twenty-nine of thirty-two, and
+    // the P30's "40.6%" was thirteen of thirty-two. Max(1, words) so no words is no agreement, not a divide-by-zero.
+    internal static int AgreementPerThousand(int same, int words) => (int)Math.Round(1000.0 * same / Math.Max(1, words));
 
     // WHAT WATCH READS: plain, varied English - questions, tasks, facts, a story - the kind of words a phone's assistant hears
     // and says. Not the check's text (FidelityText), which is held out.
@@ -2568,10 +2589,11 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     private static string FfnPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".ffn");
 
-    // The feed-forward read in place from the model's own file, so this load keeps no copy of it in RAM and flash keeps no
-    // second one; null when stores are off or the model does not compute in the vector kernel's tiles here.
+    // The feed-forward's store: the written one on flash when a past load cut it (pre-tiled, read ready - no repack), else
+    // read in place from the model's own file and repacked each pass. Null when stores are off or the model does not tile here.
     private static TileStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
-        InPlace(file, options, TileSet.FeedForward);
+        (StoreDirectoryOf(options) is { } directory ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null)
+            ?? InPlace(file, options, TileSet.FeedForward);
 
     // The mixing, read in place the same way: with the feed-forward's, every layer is read from flash, none copied into RAM.
     private static TileStore? ExistingMixStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
@@ -2708,31 +2730,54 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
                 var bringBack = rate > 0 ? TimeSpan.FromSeconds(existing.DataBytes / (rate * 1024 * 1024)) : TimeSpan.FromSeconds(10);
                 var keep = bringBack < FfnStreamEveryTurnBelow ? TimeSpan.Zero : FfnKeptWarm;
                 Volatile.Write(ref _ffnKeepTicks, (long)(keep.TotalSeconds * Stopwatch.Frequency));
-                CircleLog.Info(Area, Invariant($"the feed-forward is read from {(existing.InPlace ? "the model's own file" : "its store on flash")}: {existing.DataBytes / 1048576.0:F0} MB as tiles, no copy of it in RAM; bringing it in takes about {bringBack.TotalMilliseconds:F0} ms here, so {(keep == TimeSpan.Zero ? "it streams in every turn" : $"a warm one stays {keep.TotalSeconds:F0} s after a turn")}"));
-                return;
+                CircleLog.Info(Area, Invariant($"the feed-forward is read from {(existing.InPlace ? "the model's own file, repacked each pass" : "its store on flash, pre-tiled")}: {existing.DataBytes / 1048576.0:F0} MB as tiles, no copy of it in RAM; bringing it in takes about {bringBack.TotalMilliseconds:F0} ms here, so {(keep == TimeSpan.Zero ? "it streams in every turn" : $"a warm one stays {keep.TotalSeconds:F0} s after a turn")}"));
+                // A written store is already pre-tiled: nothing to write. Read in place: serve as above this session, and
+                // write the store below so the NEXT load reads it pre-tiled - no repack every pass.
+                if (!existing.InPlace) return;
             }
             if (FfnStore.Unreadable(_file) is { } why)
             {
-                CircleLog.Info(Area, $"no feed-forward store: {why}; the feed-forward stays in RAM");
+                CircleLog.Info(Area, $"no feed-forward store: {why}; the feed-forward is repacked from the file each pass");
                 return;
             }
             var path = FfnPath(directory, ggufPath);
-            var started = Stopwatch.GetTimestamp();
-            var store = FfnStore.Open(_file, path);
-            if (store is null)
+            if (FfnStore.Open(_file, path) is not null)
             {
-                store = FfnStore.Write(_file, path, ct);
+                CircleLog.Info(Area, "the feed-forward's store is already on flash; the next load reads it instead of repacking");
+                return;
+            }
+            if (existing is not null && FreeFlash(directory) is { } free && free < existing.DataBytes + StoreMargin)
+            {
+                CircleLog.Info(Area, Invariant($"no feed-forward store written: {free / 1048576.0:F0} MB free on flash, the store wants about {existing.DataBytes / 1048576.0:F0} MB plus {StoreMargin / 1048576.0:F0} MB spare; the feed-forward is repacked from the file each pass"));
+                return;
+            }
+            lock (StoreWriteGate)
+            {
+                if (!WritingStores.Add(path))
+                {
+                    CircleLog.Info(Area, "the feed-forward's store is already being written by another load; this one is repacked from the file each pass");
+                    return;
+                }
+            }
+            try
+            {
+                var started = Stopwatch.GetTimestamp();
+                var store = FfnStore.Write(_file, path, ct);
                 var written = Stopwatch.GetElapsedTime(started);
                 var wrong = store.Verify(_file);
                 CircleLog.Info(Area, Invariant($"the feed-forward's store written: {store.Entries.Count} tensors, {store.DataBytes / 1048576.0:F0} MB in {written.TotalMilliseconds:F0} ms; checked in {(Stopwatch.GetElapsedTime(started) - written).TotalMilliseconds:F0} ms: {wrong} of {store.Entries.Count} differ from the model"));
                 if (wrong != 0)
                 {
                     File.Delete(path);
-                    CircleLog.Warn(Area, "the feed-forward's store was wrong and is gone; the feed-forward stays in RAM");
+                    CircleLog.Warn(Area, "the feed-forward's store was wrong and is gone; the feed-forward is repacked from the file each pass");
                     return;
                 }
+                CircleLog.Info(Area, "the feed-forward's store is ready; from the next load the feed-forward is read from flash pre-tiled, no repack");
             }
-            CircleLog.Info(Area, "the feed-forward's store is ready; from the next load the feed-forward is read from flash, its copy in RAM gone");
+            finally
+            {
+                lock (StoreWriteGate) { WritingStores.Remove(path); }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2746,6 +2791,15 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
 
     // Where the flash brings the feed-forward back faster than this, it streams in every turn; else a warm one stays this long.
     private static readonly TimeSpan FfnStreamEveryTurnBelow = TimeSpan.FromMilliseconds(300);
+
+    // Flash kept free beyond a written layer store; below this the layers are repacked from the model's file each pass.
+    private const long StoreMargin = 512L << 20;
+
+    // One writer per store path within a process: the worker can build a brain on two pipelines at once, and both
+    // reaching the write raced on the same .partial file (IO_SharingViolation, 2026-11-19). The first claims the path
+    // and writes it; the rest serve in place and read it on the next load.
+    private static readonly object StoreWriteGate = new();
+    private static readonly HashSet<string> WritingStores = new();
     private static readonly TimeSpan FfnKeptWarm = TimeSpan.FromMinutes(3);
 
     // THE FEED-FORWARD IS ARMED BEFORE A TOKEN RUNS, streamed in from flash when it is cold - or, for a model that reads
