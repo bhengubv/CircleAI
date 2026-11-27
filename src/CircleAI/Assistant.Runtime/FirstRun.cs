@@ -405,7 +405,18 @@ public static class FirstRun
                     // the long tail of voices, so the person can talk within minutes.
                     if (pick is not null)
                     {
-                        steps.Add(new SetupStep(title, modality, pick));
+                        // THE BRAIN IS THE FAMILY, NOT THE PACKING. Best picks the packing this
+                        // device decodes fastest ("...-4B-PQ2_0", a larger file); the store, the
+                        // best-installed pick and the log name AND size the brain by its family
+                        // ("...-4B"), the folder it lands in - and that pick reads a device-measured
+                        // static, so carrying it here would size the step by a packing that varies by
+                        // device and, in the suite, by run order. So the step carries the family's
+                        // primary row (BrainCompanions.Canonical) - its name and its own sizes - and
+                        // the fetch resolves it to this device's packing (BundleModelLoader).
+                        // AddCompanions asks the real pick.
+                        steps.Add(new SetupStep(title, modality,
+                            CircleAI.Inference.BrainCompanions.Canonical(
+                                CircleAI.Inference.BrainCompanions.Family(pick), eligible, pick)));
                         AddCompanions(pick);
                     }
                     continue;

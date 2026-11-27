@@ -178,13 +178,43 @@ public static class BrainCompanions
     }
 
     /// <summary>A brain's name less its packing: "Ternary-Bonsai-2-4B-PQ2_0" is family "Ternary-Bonsai-2-4B".</summary>
-    internal static string Family(ModelEntry brain)
+    public static string Family(ModelEntry brain)
     {
         var name = brain.Name ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(brain.Quantization)
             && name.EndsWith("-" + brain.Quantization, StringComparison.OrdinalIgnoreCase))
             return name[..^(brain.Quantization.Length + 1)];
         return name;
+    }
+
+    /// <summary>
+    /// The one row that stands for a brain's family wherever a brain is named and SIZED by its
+    /// family - the climb (<see cref="ModelChoice.NextStep"/>), the first-run plan, the store and
+    /// the log: its primary packing, the row named for the family itself, carrying the family's
+    /// name and its own sizes.
+    /// </summary>
+    /// <remarks>
+    /// A family is catalogued once per packing - "Ternary-Bonsai-2-4B" (PTQ1_0) and
+    /// "Ternary-Bonsai-2-4B-PQ2_0" beside it, a 21%-larger file. WHICH packing a device decodes
+    /// fastest is the loader's call (<see cref="ModelChoice.Best"/>'s <c>PackingSpeedHere</c>
+    /// tie-break) and belongs to how a brain is read, not to how it is named, sized or fitted.
+    /// Carrying that pick where the family is meant sizes the climb by the wrong packing - and
+    /// because the pick reads a device-measured static, it did so differently from one run to the
+    /// next, so a leg could disagree with another on identical input. The primary's size is the
+    /// family's, it is the folder the store lands the brain in, and it is the packing both devices
+    /// we have actually run; so this is the row the family-named world carries, and it is
+    /// deterministic. <see cref="Family(ModelEntry)"/> leaves an MNN brain's name whole, so such a
+    /// brain is its own family and its own primary.
+    /// </remarks>
+    /// <param name="family">The family name (<see cref="Family(ModelEntry)"/>).</param>
+    /// <param name="candidates">Rows to find the family's primary among: the family's packings, or any superset.</param>
+    /// <param name="fallback">The row to carry, renamed to the family, for a family with no row of its own name.</param>
+    public static ModelEntry Canonical(string family, IEnumerable<ModelEntry> candidates, ModelEntry fallback)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentNullException.ThrowIfNull(fallback);
+        return candidates.FirstOrDefault(e => string.Equals(e.Name, family, StringComparison.Ordinal))
+               ?? (fallback with { Name = family });
     }
 
     private static bool Names(string? text, params string[] words)

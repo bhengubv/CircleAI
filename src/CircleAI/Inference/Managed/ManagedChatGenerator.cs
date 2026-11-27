@@ -2590,9 +2590,12 @@ public sealed class ManagedChatGenerator : IToolCallingGenerator, ISeeingGenerat
     private static string FfnPath(string directory, string ggufPath) => Path.Combine(directory, Path.GetFileName(ggufPath) + ".ffn");
 
     // The feed-forward's store: the written one on flash when a past load cut it (pre-tiled, read ready - no repack), else
-    // read in place from the model's own file and repacked each pass. Null when stores are off or the model does not tile here.
+    // read in place from the model's own file and repacked each pass. EITHER WAY ONLY FOR A MODEL THAT WOULD PAIR - the
+    // store holds the vector kernel's tiles, which ffnFromStore requires (LanguageModel's ctor throws otherwise); without
+    // this guard a .ffn left on disk turned ffnFromStore on for an unpaired model and every high-level Load threw. Null
+    // when stores are off or the model does not tile here.
     private static TileStore? ExistingFfnStore(string ggufPath, GgufFile file, ManagedGeneratorOptions options) =>
-        (StoreDirectoryOf(options) is { } directory ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null)
+        (StoreDirectoryOf(options) is { } directory && LanguageModel.WouldPair(file) ? FfnStore.Open(file, FfnPath(directory, ggufPath)) : null)
             ?? InPlace(file, options, TileSet.FeedForward);
 
     // The mixing, read in place the same way: with the feed-forward's, every layer is read from flash, none copied into RAM.

@@ -384,7 +384,25 @@ public static class ModelChoice
         bool Here(ModelEntry e) => isHere.TryGetValue(e.Name, out var known) ? known : isHere[e.Name] = present(e.Name);
         StepState Went(ModelEntry e) => went.TryGetValue(e.Name, out var known) ? known : went[e.Name] = state(e);
 
-        var rows = chat.Where(e => EngineChoice.CanRun(e, engines)).ToList();
+        // A RUNG IS A FAMILY, NOT A PACKING. The catalogue carries a row per packing of a brain -
+        // "Ternary-Bonsai-2-4B" (PTQ1_0) and "Ternary-Bonsai-2-4B-PQ2_0" beside it - but the climb,
+        // the store and every caller name AND size a brain by its family: the file lands in a
+        // family-named folder (BundleModelLoader), BestInstalledChatModel reports the family, and the
+        // log reads it that way. So each family is collapsed to one rung - its primary packing, the
+        // row named for the family (BrainCompanions.Canonical) - so present and state are asked, and
+        // Fetch, Answers and Said say and SIZE, the one name the store and the device both know.
+        //
+        // NOT the packing Best would pick. Which packing a device decodes fastest is the loader's
+        // call (Best/PackingSpeedHere) and a LARGER file (PQ2_0); carrying it here sized the climb by
+        // the wrong packing, so a rung the primary clears fails the flash check and the climb stalls -
+        // and because that pick reads a device-measured static, it did so on one leg and not another
+        // from identical input. The primary's size is the family's, and it is the packing both devices
+        // we have actually run. BrainCompanions.Family leaves an MNN brain's name whole, so a Qwen rung
+        // is itself.
+        var rows = chat.Where(e => EngineChoice.CanRun(e, engines))
+                       .GroupBy(BrainCompanions.Family, StringComparer.Ordinal)
+                       .Select(g => BrainCompanions.Canonical(g.Key, g, Best(g)!))
+                       .ToList();
         var here = rows.Where(Here).ToList();
         if (here.Count == 0) return new UpgradeStep(null, null, false, "no brain is here yet: the first run fetches one");
 
