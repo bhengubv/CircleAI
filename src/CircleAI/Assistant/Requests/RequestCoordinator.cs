@@ -643,7 +643,13 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         if (reading is not null) { try { await reading.ConfigureAwait(false); } catch { /* only ever a head start */ } }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
-        cts.CancelAfter(_limits.GenerationDeadline);
+
+        // THE DEADLINE RUNS ON THE INJECTED CLOCK, not the system timer that CancellationTokenSource.CancelAfter
+        // uses, so a test drives it with a fake TimeProvider and in production (TimeProvider.System) it keeps the
+        // exact behaviour it had. One-shot, re-armed on every word below so each word gives the answer as long again.
+        using var deadline = _clock.CreateTimer(
+            static s => { try { ((CancellationTokenSource)s!).Cancel(); } catch (ObjectDisposedException) { /* the turn finished first */ } },
+            cts, _limits.GenerationDeadline, Timeout.InfiniteTimeSpan);
         lock (_gate)
         {
             // WITHDRAWN WHILE THE JOB WAS BEING PUT TOGETHER: see Cancel.
@@ -688,7 +694,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
                     // THE DEADLINE IS A WORD'S, NOT THE ANSWER'S (ServiceLimits.GenerationDeadline): each word gives the
                     // answer as long again. The 27B streamed on the P30 writes one every 30 s or so.
-                    cts.CancelAfter(_limits.GenerationDeadline);
+                    deadline.Change(_limits.GenerationDeadline, Timeout.InfiniteTimeSpan);
                 }
                 if (chunk.Final) workerTiming = chunk.Timing;
 
