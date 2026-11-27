@@ -120,7 +120,7 @@ public class CatalogueMeshCarrierTests
         {
             await sender.ShareAsync(Registry(unique));
 
-            var (reg, source) = await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var (reg, source) = await Eventually.CompletesAsync(arrived.Task, "the catalogue to arrive over the mesh");
             Assert.Equal("aethernet", source);                       // arrived over the mesh
             Assert.Contains(reg.Models, m => m.Name == unique);
             Assert.Equal("abc123", reg.Models.Single(m => m.Name == unique).BundleFiles![0].Sha256);  // SHA survived the wire

@@ -229,9 +229,7 @@ public sealed class VoicePipelineTests
         await pipeline.StartAsync();
         wake.FireWakeWord();
 
-        var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (caught is null && DateTime.UtcNow < deadline)
-            await Task.Delay(20);
+        await Eventually.TrueAsync(() => caught is not null, "the activation to fail");
 
         Assert.NotNull(caught);
         Assert.IsType<InvalidOperationException>(caught);
@@ -274,13 +272,10 @@ public sealed class VoicePipelineTests
         wake.FireWakeWord();
         wake.FireWakeWord(); // fires while first may still be in progress
 
-        // Give time for both activations to settle
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (completedCount < 1 && DateTime.UtcNow < deadline)
-            await Task.Delay(30);
-
-        // At least one transcription must have completed; no crashes.
-        Assert.True(completedCount >= 1);
+        // Wait for the precondition, not a duration: under full-suite load the activations are starved
+        // past a few seconds, and a fixed window fails a turn that was fine (Eventually.cs says why).
+        await Eventually.TrueAsync(() => Volatile.Read(ref completedCount) >= 1,
+            "at least one of the two activations to complete");
     }
 
     // ------------------------------------------------------------------
@@ -343,9 +338,7 @@ public sealed class VoicePipelineTests
         await pipeline.StartAsync();
         wake.FireWakeWord();
 
-        var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (received is null && DateTime.UtcNow < deadline)
-            await Task.Delay(20);
+        await Eventually.TrueAsync(() => received is not null, "the non-final partial to be surfaced");
 
         // The last partial (IsFinal=false) is still converted to a
         // TranscriptionResult and surfaced via Transcribed.

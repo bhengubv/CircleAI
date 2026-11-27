@@ -13,7 +13,11 @@ public sealed class LiveHearingTests
 {
     private const int Block = 3_200;
 
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    // A FAILSAFE, NOT A PACE. The ears run on a background thread, and under a full parallel test run it can be
+    // starved well past a few seconds - a 5 s bound timed this file's waits out and failed a test that was fine.
+    // The waits below are blocking, so a generous bound costs nothing until a test genuinely hangs; it only sets
+    // how long a real stall takes to show.
+    private static readonly TimeSpan Wait = TimeSpan.FromMinutes(2);
 
     private static TimeSpan Ms(int ms) => TimeSpan.FromMilliseconds(ms);
 
@@ -38,8 +42,9 @@ public sealed class LiveHearingTests
 
     private static async Task Until(Func<bool> done)
     {
-        for (var i = 0; i < 500 && !done(); i++) await Task.Delay(10);
-        Assert.True(done());
+        var deadline = DateTimeOffset.UtcNow + Wait;
+        while (!done() && DateTimeOffset.UtcNow < deadline) await Task.Delay(10);
+        Assert.True(done(), "it never happened");
     }
 
     private sealed class Scripted(params string[] lines) : IHearing
@@ -215,9 +220,9 @@ public sealed class LiveHearingTests
 
         // The words of the open line can still change, so they wait for it to close.
         live.Hear(Audio(), TimeSpan.Zero);
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref script.Updates) == 3, Wait));
+        await Until(() => Volatile.Read(ref script.Updates) == 3);
         live.Hear(Audio(), TimeSpan.Zero);
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref script.Updates) == 4, Wait));
+        await Until(() => Volatile.Read(ref script.Updates) == 4);
         await live.FinishAsync().WaitAsync(Wait);
         Assert.Equal(0, still.Count);
     }
@@ -258,7 +263,7 @@ public sealed class LiveHearingTests
         live.HeldStill += still.Add;
 
         live.Hear(Audio(), TimeSpan.Zero);
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref script.Updates) == 1, Wait));
+        await Until(() => Volatile.Read(ref script.Updates) == 1);
         live.Hear(Audio(), TimeSpan.Zero);
         Assert.True(still.TryTake(out var first, Wait));
         Assert.Equal("Name one kind", first);

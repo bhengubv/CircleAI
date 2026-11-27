@@ -147,8 +147,8 @@ public sealed class SpokenOpeningTests
 
         reply.Push("One. ");
         reply.Push("Three. ");
-        await firstPlaying.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        for (var i = 0; i < 200 && Volatile.Read(ref rendered) < 2; i++) await Task.Delay(5);
+        await Eventually.CompletesAsync(firstPlaying.Task, "the first opening line to start playing");
+        await Eventually.TrueAsync(() => Volatile.Read(ref rendered) >= 2, "both opening lines to render");
 
         Assert.Equal(2, Volatile.Read(ref rendered));
 

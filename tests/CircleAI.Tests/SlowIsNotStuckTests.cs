@@ -579,8 +579,11 @@ public sealed class TheAskNamesTheBrainWorkingOnItTests : IDisposable
         var row = LinkAskRows.ReadAsk(LinkAskRows.Ask(done, -1))!;
         Assert.Equal((Eyes, Eyes), (row.ModelId, row.Timing!.ModelId));
 
-        // The queue listens for its own turn only.
-        Assert.True(SpinWait.SpinUntil(() => !brain.Listened, TimeSpan.FromSeconds(30)), "the queue still listens after the turn");
+        // The queue listens for its own turn only. A blocking poll, not a busy spin: the spin stole the core from
+        // the very turn that stops the listening, and under a full test run it could outlast its own wait.
+        var quietDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (brain.Listened && DateTimeOffset.UtcNow < quietDeadline) await Task.Delay(10);
+        Assert.False(brain.Listened, "the queue still listens after the turn");
     }
 
     [Fact]

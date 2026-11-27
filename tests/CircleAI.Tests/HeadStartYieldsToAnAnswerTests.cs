@@ -78,7 +78,7 @@ public sealed class HeadStartYieldsToAnAnswerTests : IDisposable
 
         // The brain reads ahead on the conversation so far: it takes the one slot and will not give it up on its own.
         front.ReadAhead(new AskSubmission("internal:assistant", "read-ahead", "assistant", AskLane.Foreground, "The tallest mountain"));
-        Assert.True(await worker.HeadStartHoldsTheBrain.WaitAsync(TimeSpan.FromSeconds(5)), "the head start never reached the brain");
+        Assert.True(await worker.HeadStartHoldsTheBrain.WaitAsync(Eventually.DefaultTimeout), "the head start never reached the brain");
 
         // Now somebody asks. The answer must take the brain back, not be told it is busy.
         var id = front.Submit(new AskSubmission("internal:adb", "question", "adb", AskLane.Foreground, "What is the tallest mountain?")).Record!.Id;

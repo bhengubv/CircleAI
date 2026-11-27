@@ -400,7 +400,7 @@ public sealed class DurableQuestionsTests : IDisposable
 
         front.ReadAhead(SoFar("What is the"));
 
-        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+        await Until(() => brain.Jobs.Count == 1);
         Assert.True(brain.Jobs[0].JustRead);
         Assert.Equal(ReasoningEffort.Off, brain.Jobs[0].Effort);
         Assert.Equal("What is the", brain.Jobs[0].Messages[^1].Content);
@@ -416,13 +416,13 @@ public sealed class DurableQuestionsTests : IDisposable
         await using var front = new RequestCoordinator(store, brain, Quick);
 
         front.ReadAhead(SoFar("What"));
-        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+        await Until(() => brain.Jobs.Count == 1);
 
         front.ReadAhead(SoFar("What is"));
         front.ReadAhead(SoFar("What is the capital"));
         brain.HoldAnswer.SetResult();
 
-        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 2, TimeSpan.FromSeconds(5)));
+        await Until(() => brain.Jobs.Count == 2);
         Assert.Equal("What is the capital", brain.Jobs[1].Messages[^1].Content);
     }
 
@@ -449,7 +449,7 @@ public sealed class DurableQuestionsTests : IDisposable
         front.Start();
 
         var admission = front.Submit(Ask("What is the capital of Kenya?"));
-        Assert.True(SpinWait.SpinUntil(() => brain.Jobs.Count == 1, TimeSpan.FromSeconds(5)));
+        await Until(() => brain.Jobs.Count == 1);
 
         front.ReadAhead(SoFar("Something else"));
         brain.HoldAnswer.SetResult();

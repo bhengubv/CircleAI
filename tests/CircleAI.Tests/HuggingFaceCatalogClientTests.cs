@@ -130,7 +130,7 @@ public class HuggingFaceCatalogClientTests
         {
             var ok = await client.RefreshAsync();
             Assert.True(ok);
-            Assert.Equal("internet", await arrived.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+            Assert.Equal("internet", await Eventually.CompletesAsync(arrived.Task, "the catalogue source to be reported"));
         }
         finally
         {
